@@ -16,6 +16,30 @@ test('phones never scroll sideways, and long tab rows scroll on their own', asyn
   noErrors();
 });
 
+test('every screen size fits: no sideways scroll, and the message box keeps its send button inside', async ({ page }) => {
+  const noErrors = trackErrors(page);
+  await signIn(page, 'alex@acme.test');
+  const { projectId, generalId } = await page.evaluate(async () => ({
+    projectId: (await (await fetch('/api/projects')).json())[0].id,
+    generalId: (await (await fetch('/api/channels')).json()).find((c: { name: string }) => c.name === 'general').id,
+  }));
+  const paths = [`/channels/${generalId}`, '/', '/meetings', '/people', '/admin', '/admin?tab=invitations', `/projects/${projectId}`, '/knowledge'];
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const path of paths) {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, `sideways scroll on ${path} at ${width}px`).toBeLessThanOrEqual(0);
+      if (path.startsWith('/channels/')) {
+        const [send, box] = await Promise.all([page.getByRole('button', { name: 'Send', exact: true }).first().boundingBox(), page.locator('.composer').first().boundingBox()]);
+        expect(send!.x + send!.width, `send button inside the message box at ${width}px`).toBeLessThanOrEqual(box!.x + box!.width);
+      }
+    }
+  }
+  noErrors();
+});
+
 test('a direct message is filed under Chats, with a preview in the list', async ({ page }) => {
   await signIn(page, 'alex@acme.test');
   await page.goto('/chats');

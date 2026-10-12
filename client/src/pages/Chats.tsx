@@ -1307,35 +1307,38 @@ function Composer({
         }}
       />
       <div className="composer-bar">
-        <button className="icon-btn xs" onClick={() => fileInput.current?.click()} aria-label="Attach a file" title="Attach a file" disabled={uploading}>
-          <Icon name="paperclip" size={16} />
-        </button>
-        <input ref={fileInput} type="file" hidden onChange={(e) => e.target.files?.[0] && (upload(e.target.files[0]), (e.target.value = ''))} />
-        <VoiceNoteButton onRecorded={upload} disabled={uploading} />
-        <button className="icon-btn xs" onClick={() => setPolling(true)} aria-label="Create a poll" title="Create a poll">
-          <Icon name="poll" size={16} />
-        </button>
-        <button className="icon-btn xs" onClick={() => onChange(`${text}${text && !text.endsWith(' ') ? ' ' : ''}@`)} aria-label="Mention someone" title="Mention">
-          @
-        </button>
-        <label className={`urgent-toggle ${urgent ? 'on' : ''}`} title="Urgent messages break through quiet hours and focus time">
-          <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> Urgent
-        </label>
-        <label className="enter-toggle" title={enterSends ? 'Shift+Enter starts a new line' : 'Ctrl+Enter (⌘+Enter on a Mac) sends'}>
-          <input type="checkbox" checked={enterSends} onChange={(e) => setEnterSends(e.target.checked)} /> Enter to send
-        </label>
-        <span className="muted small hide-mobile">
-          {enterSends ? 'Shift+Enter for a new line' : 'Ctrl+Enter to send'} · **bold**, *italic*, `code`
-        </span>
-        <button
-          className="icon-btn xs"
-          onClick={() => setLater(true)}
-          disabled={!text.trim() || files.length > 0}
-          aria-label="Send later"
-          title={files.length ? 'Attachments cannot be scheduled' : 'Send later'}
-        >
-          <Icon name="clock" size={16} />
-        </button>
+        {/* The tools wrap onto a second line on narrow screens; the send button always stays in view. */}
+        <div className="composer-tools">
+          <button className="icon-btn xs" onClick={() => fileInput.current?.click()} aria-label="Attach a file" title="Attach a file" disabled={uploading}>
+            <Icon name="paperclip" size={16} />
+          </button>
+          <input ref={fileInput} type="file" hidden onChange={(e) => e.target.files?.[0] && (upload(e.target.files[0]), (e.target.value = ''))} />
+          <VoiceNoteButton onRecorded={upload} disabled={uploading} />
+          <button className="icon-btn xs" onClick={() => setPolling(true)} aria-label="Create a poll" title="Create a poll">
+            <Icon name="poll" size={16} />
+          </button>
+          <button className="icon-btn xs" onClick={() => onChange(`${text}${text && !text.endsWith(' ') ? ' ' : ''}@`)} aria-label="Mention someone" title="Mention">
+            @
+          </button>
+          <label className={`urgent-toggle ${urgent ? 'on' : ''}`} title="Urgent messages break through quiet hours and focus time">
+            <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> Urgent
+          </label>
+          <label className="enter-toggle" title={enterSends ? 'Shift+Enter starts a new line' : 'Ctrl+Enter (⌘+Enter on a Mac) sends'}>
+            <input type="checkbox" checked={enterSends} onChange={(e) => setEnterSends(e.target.checked)} /> Enter to send
+          </label>
+          <span className="muted small hide-mobile">
+            {enterSends ? 'Shift+Enter for a new line' : 'Ctrl+Enter to send'} · **bold**, *italic*, `code`
+          </span>
+          <button
+            className="icon-btn xs"
+            onClick={() => setLater(true)}
+            disabled={!text.trim() || files.length > 0}
+            aria-label="Send later"
+            title={files.length ? 'Attachments cannot be scheduled' : 'Send later'}
+          >
+            <Icon name="clock" size={16} />
+          </button>
+        </div>
         <button className="btn primary sm send" onClick={send} disabled={uploading || (!text.trim() && !files.length)} aria-label="Send">
           <Icon name="send" size={15} />
         </button>
