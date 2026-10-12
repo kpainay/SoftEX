@@ -686,7 +686,8 @@ function ProjectTasks({ project }: { project: ProjectFull }) {
   const move = async (taskId: string, status: TaskStatus) => {
     setData(tasks?.map((t) => (t.id === taskId ? { ...t, status } : t)));
     await act(() => api.patch(`/tasks/${taskId}`, { status }));
-    reload();
+    // Waited for, so the ticked box doesn't flick back before the fresh list arrives.
+    await reload();
   };
 
   const replace = (task: Task) => setData(tasks?.map((t) => (t.id === task.id ? task : t)));

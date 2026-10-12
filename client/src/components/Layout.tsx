@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api, type Channel } from '../api';
 import { useApi, useRealtime } from '../hooks';
@@ -16,6 +16,7 @@ import { Logo, LogoMark } from './Logo';
 import { setTheme, useTheme } from '../theme';
 import { NotificationsMenu } from './NotificationsMenu';
 import { PushPrompt } from './PushPrompt';
+import { SaveBar } from './SaveBar';
 import { FavoritesNav } from './Favorites';
 
 interface Shell {
@@ -83,6 +84,18 @@ export function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setNavOpen(false);
     setMenu(null);
+  }, [location.pathname]);
+
+  // Moving between pages fades the new one in, which also smooths over the moment its data loads.
+  const content = useRef<HTMLDivElement>(null);
+  const firstPage = useRef(true);
+  useEffect(() => {
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    content.current?.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
   }, [location.pathname]);
 
   useRealtime((e) => {
@@ -167,6 +180,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={shell}>
+      <SaveBar />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -379,7 +393,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
           )}
           <AccountBanners />
-          <div className="content">
+          <div className="content" ref={content}>
             <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>
           </div>
         </main>

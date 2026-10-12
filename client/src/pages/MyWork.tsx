@@ -45,7 +45,8 @@ export function MyWork() {
   };
   const toggle = async (t: Task, done: boolean) => {
     await act(() => api.patch(`/tasks/${t.id}`, { status: done ? 'done' : 'todo' }), done ? 'Nice work — task completed' : 'Task reopened');
-    reload();
+    // Waited for, so the ticked box doesn't flick back before the fresh list arrives.
+    await reload();
   };
 
   if (error) return <ErrorState error={error} retry={reload} />;

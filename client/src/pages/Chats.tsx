@@ -12,6 +12,7 @@ import { Empty, ErrorState, Field, Loading, Modal, PeoplePicker, StatusPill, use
 import { bytes, plainMentions, timeAgo, timeOf } from '../format';
 import { useApi, useRealtime, useViewing } from '../hooks';
 import { realtime } from '../realtime';
+import { outbox, useOutbox, type Outgoing } from '../outbox';
 import { useSession } from '../session';
 import { MediaAttachment, VideoLinks, isPlayable } from '../components/Media';
 import { FavoriteButton } from '../components/Favorites';
@@ -258,6 +259,24 @@ export function ChannelView() {
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const highlight = params.get('message');
+  // Messages still on their way to the server show at the bottom straight away.
+  const outgoing = useOutbox(id, null);
+  // Messages that arrived while the chat was open glide in; ones already on screen as "sending" just settle.
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
+  useEffect(
+    () =>
+      outbox.onDelivered((message) => {
+        if (message.channel_id !== id) return;
+        if (message.parent_id) return void refreshMessage(message.parent_id);
+        stickToBottom.current = true;
+        setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id],
+  );
+  useEffect(() => {
+    if (outgoing.length) stickToBottom.current = true;
+  }, [outgoing.length]);
 
   const load = async (before?: string) => {
     const res = await api.get<{ messages: Message[]; has_more: boolean }>(`/channels/${id}/messages${qs({ before, limit: 50 })}`);
@@ -268,6 +287,7 @@ export function ChannelView() {
 
   useEffect(() => {
     setMessages([]);
+    setFresh(new Set());
     setLoaded(false);
     setThreadId(null);
     stickToBottom.current = true;
@@ -291,7 +311,7 @@ export function ChannelView() {
 
   useLayoutEffect(() => {
     if (stickToBottom.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [messages]);
+  }, [messages, outgoing.length]);
 
   // While this chat (and any open thread) is on screen, new messages in it don't become notifications.
   useViewing(id ? [`/channels/${id}`, ...(threadId ? [`/channels/${id}?thread=${threadId}`] : [])] : []);
@@ -309,10 +329,12 @@ export function ChannelView() {
 
   useRealtime((e) => {
     if (e.type === 'message.created' && e.message.channel_id === id) {
+      const settled = e.message.user?.id === me!.user.id && outbox.settle(e.message);
       if (e.message.parent_id) refreshMessage(e.message.parent_id);
       else {
         const el = scroller.current;
         stickToBottom.current = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120 || e.message.user?.id === me!.user.id;
+        if (!settled) setFresh((f) => new Set(f).add(e.message.id));
         setMessages((prev) => (prev.some((m) => m.id === e.message.id) ? prev : [...prev, e.message]));
       }
       if (document.visibilityState === 'visible') api.post(`/channels/${id}/read`).catch(() => {});
@@ -344,7 +366,12 @@ export function ChannelView() {
 
   const actions = {
     forward: (m: Message) => setForwarding(m),
-    react: async (m: Message, emoji: string) => act(() => api.post(`/messages/${m.id}/reactions`, { emoji })),
+    react: async (m: Message, emoji: string) => {
+      // Show the reaction at once; undo it if the server says no.
+      const flip = () => setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: toggleReaction(x.reactions, emoji) } : x)));
+      flip();
+      if ((await act(() => api.post(`/messages/${m.id}/reactions`, { emoji }))) === undefined) flip();
+    },
     pin: async (m: Message) => act(() => api.post(`/messages/${m.id}/pin`), m.pinned ? 'Unpinned' : 'Pinned to channel'),
     save: async (m: Message) => {
       const res = await act(() => api.post<{ saved: boolean }>(`/messages/${m.id}/save`), m.saved ? 'Removed from saved' : 'Saved for later');
@@ -465,9 +492,15 @@ export function ChannelView() {
                   isAnnouncement={channel.kind === 'announcement'}
                   canPost={channel.can_post}
                   actions={actions}
+                  entering={fresh.has(m.id)}
                 />
               </div>
             );
+          })}
+          {outgoing.map((o, i) => {
+            const last = i === 0 ? messages[messages.length - 1] : null;
+            const grouped = i > 0 || (!!last && last.user?.id === me!.user.id && Date.now() - new Date(last.created_at).getTime() < 5 * 60_000);
+            return <OutgoingMessage key={o.key} item={o} grouped={grouped} />;
           })}
         </div>
         <div className="typing" aria-live="polite">
@@ -723,6 +756,7 @@ function MessageItem({
   canPost,
   actions,
   inThread = false,
+  entering = false,
 }: {
   message: Message;
   grouped: boolean;
@@ -731,6 +765,8 @@ function MessageItem({
   canPost: boolean;
   actions: Actions;
   inThread?: boolean;
+  /** Arrived while the chat was open: glides in instead of popping in. */
+  entering?: boolean;
 }) {
   const { me } = useSession();
   const [editing, setEditing] = useState(false);
@@ -763,7 +799,7 @@ function MessageItem({
   }
 
   return (
-    <article className={`message ${grouped ? 'grouped' : ''} ${highlight ? 'highlight' : ''} ${m.urgent ? 'urgent' : ''}`} id={`m-${m.id}`}>
+    <article className={`message ${grouped ? 'grouped' : ''} ${highlight ? 'highlight' : ''} ${m.urgent ? 'urgent' : ''} ${entering ? 'enter' : ''}`} id={`m-${m.id}`}>
       <span className="msg-gutter">{grouped ? <time className="hover-time">{timeOf(m.created_at)}</time> : <Avatar user={m.user} size="md" />}</span>
       <div className="msg-body">
         {!grouped && (
@@ -940,6 +976,69 @@ function MessageItem({
   );
 }
 
+/** Add or remove my reaction, as the server does when it is toggled. */
+function toggleReaction(reactions: Message['reactions'], emoji: string): Message['reactions'] {
+  const r = reactions.find((x) => x.emoji === emoji);
+  if (!r) return [...reactions, { emoji, count: 1, mine: true }];
+  if (r.mine) return r.count > 1 ? reactions.map((x) => (x === r ? { ...x, count: x.count - 1, mine: false } : x)) : reactions.filter((x) => x !== r);
+  return reactions.map((x) => (x === r ? { ...x, count: x.count + 1, mine: true } : x));
+}
+
+/** A message on its way to the server: shown at once, faded while sending, with Retry if it couldn't be sent. */
+function OutgoingMessage({ item, grouped }: { item: Outgoing; grouped: boolean }) {
+  const { me } = useSession();
+  const failed = item.status === 'failed';
+  return (
+    <article className={`message outgoing enter ${failed ? 'failed' : 'sending'} ${grouped ? 'grouped' : ''}`} aria-busy={!failed}>
+      <span className="msg-gutter">{grouped ? null : <Avatar user={me!.user} size="md" />}</span>
+      <div className="msg-body">
+        {!grouped && (
+          <header>
+            <span className="msg-author">{me!.user.name}</span>
+            {item.urgent && <span className="pill prio-urgent">Urgent</span>}
+          </header>
+        )}
+        {item.body && <Markdown text={item.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')} compact />}
+        {item.fileNames.length > 0 && (
+          <div className="pending-files">
+            {item.fileNames.map((name) => (
+              <span key={name} className="chip">
+                <Icon name="file" size={13} /> {name}
+              </span>
+            ))}
+          </div>
+        )}
+        <p className="outgoing-status" role={failed ? 'alert' : 'status'}>
+          {failed ? (
+            <>
+              <Icon name="alert" size={13} /> Not sent{item.error ? `: ${item.error}` : ''}.{' '}
+              <button className="link-btn" onClick={() => outbox.retry(item.key)}>
+                Retry
+              </button>{' '}
+              ·{' '}
+              <button
+                className="link-btn"
+                onClick={() => {
+                  outbox.discard(item.key);
+                  window.dispatchEvent(new CustomEvent('kuu:restore-draft', { detail: { channelId: item.channelId, parentId: item.parentId, body: item.body } }));
+                }}
+              >
+                Edit
+              </button>{' '}
+              ·{' '}
+              <button className="link-btn" onClick={() => outbox.discard(item.key)}>
+                Discard
+              </button>
+            </>
+          ) : (
+            'Sending…'
+          )}
+        </p>
+      </div>
+    </article>
+  );
+}
+
 function ThreadPanel({
   messageId,
   onClose,
@@ -957,10 +1056,13 @@ function ThreadPanel({
 }) {
   const { data, error, reload } = useApi<{ root: Message; replies: Message[]; channel: { id: string; name: string } }>(`/messages/${messageId}/thread`);
   const end = useRef<HTMLDivElement>(null);
+  const outgoing = useOutbox(data?.root.channel_id, data?.root.id ?? null);
+  useEffect(() => outbox.onDelivered((m) => m.parent_id === messageId && reload()), [messageId, reload]);
   useRealtime((e) => {
+    if (e.type === 'message.created' && e.message.parent_id === data?.root.id) outbox.settle(e.message);
     if ((e.type === 'message.created' && (e.message.parent_id === data?.root.id || e.message.id === data?.root.id)) || (e.type === 'message.updated' && data && (e.parentId === data.root.id || e.messageId === data.root.id))) reload();
   });
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [data?.replies.length]);
+  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [data?.replies.length, outgoing.length]);
   return (
     <aside className="side-panel thread" aria-label="Thread">
       <div className="panel-head">
@@ -981,6 +1083,9 @@ function ThreadPanel({
             </div>
             {data.replies.map((r) => (
               <MessageItem key={r.id} message={r} grouped={false} isAnnouncement={false} canPost actions={actions} inThread />
+            ))}
+            {outgoing.map((o) => (
+              <OutgoingMessage key={o.key} item={o} grouped={false} />
             ))}
             <div ref={end} />
           </div>
@@ -1026,7 +1131,6 @@ function Composer({
   const [query, setQuery] = useState<string | null>(null);
   const [files, setFiles] = useState<{ id: string; name: string; preview?: string; kind?: 'image' | 'video' }[]>([]);
   const [urgent, setUrgent] = useState(false);
-  const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [later, setLater] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -1042,6 +1146,18 @@ function Composer({
       /* ignore */
     }
   }, [text, storageKey]);
+
+  // "Edit" on a message that failed to send puts its text back here.
+  useEffect(() => {
+    const onRestore = (e: Event) => {
+      const d = (e as CustomEvent<{ channelId: string; parentId: string | null; body: string }>).detail;
+      if (d.channelId !== channelId || d.parentId !== (parentId ?? null)) return;
+      setText((current) => (current.trim() ? `${current}\n${d.body}` : d.body));
+      window.setTimeout(() => ref.current?.focus(), 0);
+    };
+    window.addEventListener('kuu:restore-draft', onRestore);
+    return () => window.removeEventListener('kuu:restore-draft', onRestore);
+  }, [channelId, parentId]);
 
   const candidates = useMemo(() => {
     if (query === null) return [];
@@ -1072,21 +1188,21 @@ function Composer({
     window.setTimeout(() => ref.current?.focus(), 0);
   };
 
-  const send = async () => {
-    if ((!text.trim() && !files.length) || sending) return;
+  // The message shows in the chat at once (see outbox.ts) and the box is ready for the next one; a failed send
+  // stays in the chat with Retry, so nothing typed is lost.
+  const send = () => {
+    if (!text.trim() && !files.length) return;
     let body = text.trim();
     for (const [name, id] of Object.entries(mentions)) body = body.split(`@${name}`).join(`@[${name}](${id})`);
-    setSending(true);
-    const ok = await act(() => api.post(`/channels/${channelId}/messages`, { body, parentId, fileIds: files.map((f) => f.id), urgent }));
-    setSending(false);
-    if (ok) {
-      setText('');
-      for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
-      setFiles([]);
-      setMentions({});
-      setUrgent(false);
-      onSent?.();
-    }
+    outbox.send({ channelId, parentId: parentId ?? null, body, fileIds: files.map((f) => f.id), fileNames: files.map((f) => f.name), urgent });
+    setText('');
+    for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview);
+    setFiles([]);
+    setMentions({});
+    setUrgent(false);
+    setQuery(null);
+    onSent?.();
+    ref.current?.focus();
   };
 
   const schedule = async (sendAt: string) => {
@@ -1220,7 +1336,7 @@ function Composer({
         >
           <Icon name="clock" size={16} />
         </button>
-        <button className="btn primary sm send" onClick={send} disabled={sending || uploading || (!text.trim() && !files.length)} aria-label="Send">
+        <button className="btn primary sm send" onClick={send} disabled={uploading || (!text.trim() && !files.length)} aria-label="Send">
           <Icon name="send" size={15} />
         </button>
       </div>

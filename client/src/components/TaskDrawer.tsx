@@ -546,15 +546,35 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
 }
 
 /** Compact task row used in lists across the app. */
-export function TaskRow({ task, onOpen, onToggle, showProject = true }: { task: Task; onOpen: () => void; onToggle?: (done: boolean) => void; showProject?: boolean }) {
+export function TaskRow({
+  task,
+  onOpen,
+  onToggle,
+  showProject = true,
+}: {
+  task: Task;
+  onOpen: () => void;
+  onToggle?: (done: boolean) => void | Promise<unknown>;
+  showProject?: boolean;
+}) {
+  // Ticked at once; the list's own data takes over again when the server has answered.
+  const [pending, setPending] = useState<boolean | null>(null);
+  const done = pending ?? task.status === 'done';
   return (
-    <div className={`task ${task.status === 'done' ? 'is-done' : ''}`}>
+    <div className={`task ${done ? 'is-done' : ''}`}>
       <input
         type="checkbox"
         className="task-check"
-        checked={task.status === 'done'}
-        onChange={(e) => onToggle?.(e.target.checked)}
-        aria-label={`Mark ${task.title} ${task.status === 'done' ? 'not done' : 'done'}`}
+        checked={done}
+        onChange={async (e) => {
+          setPending(e.target.checked);
+          try {
+            await onToggle?.(e.target.checked);
+          } finally {
+            setPending(null);
+          }
+        }}
+        aria-label={`Mark ${task.title} ${done ? 'not done' : 'done'}`}
         disabled={!onToggle}
       />
       <button className="task-body" onClick={onOpen}>
