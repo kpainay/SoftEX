@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api, type Channel } from '../api';
 import { useApi, useRealtime } from '../hooks';
@@ -16,6 +16,7 @@ import { Logo, LogoMark } from './Logo';
 import { setTheme, useTheme } from '../theme';
 import { NotificationsMenu } from './NotificationsMenu';
 import { PushPrompt } from './PushPrompt';
+import { SaveBar } from './SaveBar';
 import { FavoritesNav } from './Favorites';
 
 interface Shell {
@@ -85,6 +86,18 @@ export function Layout({ children }: { children: ReactNode }) {
     setMenu(null);
   }, [location.pathname]);
 
+  // Moving between pages fades the new one in, which also smooths over the moment its data loads.
+  const content = useRef<HTMLDivElement>(null);
+  const firstPage = useRef(true);
+  useEffect(() => {
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    content.current?.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  }, [location.pathname]);
+
   useRealtime((e) => {
     if (e.type === 'notification') {
       reloadCounts();
@@ -111,11 +124,10 @@ export function Layout({ children }: { children: ReactNode }) {
   }, []);
 
   // Opening a meeting, page, project, goal or file reads what you were notified about it (chats do this as they are read).
-  const unread = counts?.unread ?? 0;
+  // Not gated on the unread count: on a direct load (or a push notification tap) the count hasn't arrived yet.
   useEffect(() => {
-    if (!unread || !READS_NOTIFICATIONS.test(location.pathname)) return;
+    if (!READS_NOTIFICATIONS.test(location.pathname)) return;
     void api.post('/notifications/read-group', { group: location.pathname }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   // Keep unread counts fresh when a channel is read.
@@ -168,6 +180,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={shell}>
+      <SaveBar />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -380,7 +393,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
           )}
           <AccountBanners />
-          <div className="content">
+          <div className="content" ref={content}>
             <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>
           </div>
         </main>

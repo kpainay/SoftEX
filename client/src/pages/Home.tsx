@@ -92,7 +92,8 @@ export function Home() {
   const first = me!.user.name.split(' ')[0];
   const complete = async (t: Task, done: boolean) => {
     await act(() => api.patch(`/tasks/${t.id}`, { status: done ? 'done' : 'todo' }), done ? 'Task marked complete' : 'Task reopened');
-    reload();
+    // Waited for, so the ticked box doesn't flick back before the fresh list arrives.
+    await reload();
   };
   const show = (id: Section) => !hidden.includes(id);
 
