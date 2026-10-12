@@ -962,7 +962,7 @@ function Risks({ project }: { project: ProjectFull }) {
         <h2>Risk register</h2>
         {!data && <Loading />}
         {data && !data.length && <p className="muted">No risks recorded.</p>}
-        <table className="table">
+        <div className="scroll-x"><table className="table">
           <thead>
             <tr>
               <th>Risk</th>
@@ -1000,7 +1000,7 @@ function Risks({ project }: { project: ProjectFull }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
       {project.can_contribute && (
         <form

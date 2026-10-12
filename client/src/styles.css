@@ -863,13 +863,16 @@ main {
   min-width: 0;
 }
 .page-head > :last-child:not(:first-child) {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 .welcome h1 {
   font-size: 30px;
 }
 .welcome-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .eyebrow {
@@ -2594,11 +2597,20 @@ a.activity:hover {
 }
 .composer-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
   padding: 4px 8px 8px;
 }
+.composer-tools {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
 .composer-bar .send {
+  flex: none;
   margin-left: auto;
 }
 .composer-disabled {
@@ -6997,4 +7009,46 @@ audio.recording-player {
 }
 .search-dialog[open] {
   animation: modal-in 0.18s var(--ease-out);
+}
+
+/* ---------- Fit every screen: nothing may push the page wider than the window ---------- */
+/* Wide tables scroll sideways inside their own box. */
+.scroll-x {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* Rows of buttons and controls wrap rather than run off the edge. */
+.row-gap {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 720px) {
+  /* Long button labels wrap onto two lines on small screens instead of overflowing. */
+  .btn {
+    white-space: normal;
+    height: auto;
+    min-height: 38px;
+    max-width: 100%;
+    text-align: center;
+    line-height: 1.25;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .btn.sm {
+    min-height: 30px;
+  }
+  .page-head,
+  .welcome {
+    flex-wrap: wrap;
+  }
+  .page-head > *,
+  .welcome > * {
+    min-width: 0;
+  }
 }

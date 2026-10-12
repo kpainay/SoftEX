@@ -97,7 +97,7 @@ function Members() {
   return (
     <div className="card">
       <input className="filter" placeholder="Filter members" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter members" />
-      <table className="table">
+      <div className="scroll-x"><table className="table">
         <thead>
           <tr>
             <th>Person</th>
@@ -166,7 +166,7 @@ function Members() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -673,7 +673,7 @@ function Audit() {
         </select>
       </div>
       {!data && <Loading />}
-      <table className="table">
+      <div className="scroll-x"><table className="table">
         <thead>
           <tr>
             <th>When</th>
@@ -696,7 +696,7 @@ function Audit() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -959,7 +959,7 @@ function Webhooks() {
               </button>
             </div>
             {open === w.id && (
-              <table className="table">
+              <div className="scroll-x"><table className="table">
                 <tbody>
                   {(deliveries.data ?? []).map((d) => (
                     <tr key={d.id}>
@@ -979,7 +979,7 @@ function Webhooks() {
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         ))}
@@ -1049,7 +1049,7 @@ function EmailOutbox() {
           Email delivery is not configured, so messages are recorded here but not sent. Set <code>SOFTEX_SMTP_URL</code> and <code>SOFTEX_MAIL_FROM</code> on the server.
         </p>
       )}
-      <table className="table">
+      <div className="scroll-x"><table className="table">
         <thead>
           <tr>
             <th>When</th>
@@ -1081,7 +1081,7 @@ function EmailOutbox() {
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
