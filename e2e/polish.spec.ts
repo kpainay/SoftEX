@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn, trackErrors } from './helpers';
+import { emulateSafariButtons, offscreen, signIn, trackErrors } from './helpers';
 
 test('phones never scroll sideways, and long tab rows scroll on their own', async ({ page }) => {
   const noErrors = trackErrors(page);
@@ -9,8 +9,7 @@ test('phones never scroll sideways, and long tab rows scroll on their own', asyn
   for (const path of ['/', '/inbox', '/chats', `/projects/${projectId}`, '/admin', '/meetings', '/workload', '/goals', '/help']) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow, `sideways scroll on ${path}`).toBeLessThanOrEqual(0);
+    expect(await offscreen(page), `sideways scroll on ${path}`).toEqual([]);
   }
   await expect(page.getByRole('button', { name: 'Notifications' }).or(page.locator('.notification')).first()).toBeInViewport();
   noErrors();
@@ -29,8 +28,7 @@ test('every screen size fits: no sideways scroll, and the message box keeps its 
     for (const path of paths) {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-      expect(overflow, `sideways scroll on ${path} at ${width}px`).toBeLessThanOrEqual(0);
+      expect(await offscreen(page), `sideways scroll on ${path} at ${width}px`).toEqual([]);
       if (path.startsWith('/channels/')) {
         const [send, box] = await Promise.all([page.getByRole('button', { name: 'Send', exact: true }).first().boundingBox(), page.locator('.composer').first().boundingBox()]);
         expect(send!.x + send!.width, `send button inside the message box at ${width}px`).toBeLessThanOrEqual(box!.x + box!.width);
@@ -66,4 +64,47 @@ test('owners of a new workspace get a setup guide', async ({ page }) => {
   await expect(page.getByText('Recent activity in your workspace')).toBeVisible();
   await guide.getByRole('button', { name: 'Hide' }).click();
   await expect(guide).toBeHidden();
+});
+
+test('long titles, names and links fit on an iPhone-sized screen', async ({ page }) => {
+  const noErrors = trackErrors(page);
+  await emulateSafariButtons(page);
+  await signIn(page, 'alex@acme.test');
+  // The kind of content people really type: long sentences, long names, links with no spaces.
+  const ids = await page.evaluate(async () => {
+    const post = async (path: string, body: unknown) =>
+      (await fetch(`/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+    const me = await (await fetch('/api/me')).json();
+    const today = new Date().toISOString().slice(0, 10);
+    const project = await post('/projects', { name: 'Mobile point of sale rollout for retailers across Montserrado County' });
+    const task = await post('/tasks', {
+      title: 'Send the final version of the point of sale app to the CTO for review and support before the investor meeting',
+      projectId: project.id, ownerId: me.user?.id ?? me.id, dueDate: today, status: 'in_progress',
+    });
+    await post('/tasks', { title: 'Review https://docs.example.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789/edit?usp=sharing', projectId: project.id, ownerId: me.user?.id ?? me.id, dueDate: today });
+    const channel = await post('/channels', { name: `pos-launch-coordination-${Date.now().toString(36)}`, topic: 'Coordinating the launch with every retail partner and field agent in Monrovia' });
+    await post(`/channels/${channel.id}/messages`, { body: 'Build: https://drive.example.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGh/view?usp=sharing' });
+    const goal = await post('/goals', { title: 'Grow adoption to two hundred active retailers across Montserrado County this quarter' });
+    return { project: project.id, task: task.id, channel: channel.id, goal: goal.id };
+  });
+  const paths = ['/', '/my-work', '/inbox', '/goals', `/goals/${ids.goal}`, `/projects/${ids.project}`, `/tasks/${ids.task}`, `/channels/${ids.channel}`, '/directory'];
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const path of paths) {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      expect(await offscreen(page), `${path} at ${width}px`).toEqual([]);
+    }
+    // Long task titles wrap inside their card instead of running past it.
+    await page.goto('/');
+    const title = page.locator('.task-body strong').filter({ hasText: 'Send the final version' }).first();
+    const [titleBox, cardBox] = await Promise.all([title.boundingBox(), title.locator('xpath=ancestor::article[1]').boundingBox()]);
+    expect(titleBox!.x + titleBox!.width, `task title inside its card at ${width}px`).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
+    // The task drawer shows the whole title.
+    await title.click();
+    const input = page.getByRole('dialog', { name: 'Task details' }).getByLabel('Task title');
+    expect(await input.evaluate((el) => el.scrollHeight <= el.clientHeight + 1), `whole title visible at ${width}px`).toBe(true);
+    await page.keyboard.press('Escape');
+  }
+  noErrors();
 });

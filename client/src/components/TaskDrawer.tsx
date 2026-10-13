@@ -42,6 +42,13 @@ export function TaskDrawer({ taskId, onClose }: { taskId: string | null; onClose
   );
 }
 
+/** Sizes a one-row text area to its content. */
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 interface TaskFull extends Task {
   checklist_items?: never;
   checklist: any;
@@ -119,14 +126,26 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
           </span>
         )}
       </div>
-      <input
+      {/* A text area that grows with the title, so long titles are readable on a phone. */}
+      <textarea
         className="title-input"
+        rows={1}
         defaultValue={task.title}
         key={task.title}
         disabled={disabled}
         aria-label="Task title"
-        onBlur={(e) => e.target.value.trim() && e.target.value !== task.title && update({ title: e.target.value.trim() })}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        ref={autoGrow}
+        onInput={(e) => autoGrow(e.currentTarget)}
+        onBlur={(e) => {
+          const value = e.target.value.replace(/\s+/g, ' ').trim();
+          if (value && value !== task.title) update({ title: value });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
       />
 
       <div className="status-steps" role="group" aria-label="Status">
@@ -580,7 +599,7 @@ export function TaskRow({
       <button className="task-body" onClick={onOpen}>
         <strong>{task.title}</strong>
         <small>
-          {showProject && (task.project ? <><span className={`project-dot bg-${task.project.color}`} />{task.project.name}</> : 'Personal')}
+          {showProject && (task.project ? <span className="task-project"><span className={`project-dot bg-${task.project.color}`} /><span className="task-project-name">{task.project.name}</span></span> : 'Personal')}
           {task.status !== 'todo' && task.status !== 'done' && <StatusPill status={task.status} />}
           <LabelChips labels={task.labels} />
           {task.priority === 'urgent' || task.priority === 'high' ? <span className={`pill prio-${task.priority}`}>{task.priority}</span> : null}
