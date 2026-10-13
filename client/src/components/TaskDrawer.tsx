@@ -49,6 +49,21 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
+/** Ref for a growing text area: sizes it now and again whenever its width changes (rotation, split screen). */
+function autoGrowRef(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  autoGrow(el);
+  if (typeof ResizeObserver === 'undefined') return;
+  let width = el.clientWidth;
+  const observer = new ResizeObserver(() => {
+    if (el.clientWidth === width) return; // our own height change also triggers this
+    width = el.clientWidth;
+    autoGrow(el);
+  });
+  observer.observe(el);
+  return () => observer.disconnect();
+}
+
 interface TaskFull extends Task {
   checklist_items?: never;
   checklist: any;
@@ -134,7 +149,7 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
         key={task.title}
         disabled={disabled}
         aria-label="Task title"
-        ref={autoGrow}
+        ref={autoGrowRef}
         onInput={(e) => autoGrow(e.currentTarget)}
         onBlur={(e) => {
           const value = e.target.value.replace(/\s+/g, ' ').trim();

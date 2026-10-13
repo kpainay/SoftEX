@@ -104,6 +104,10 @@ test('long titles, names and links fit on an iPhone-sized screen', async ({ page
     await title.click();
     const input = page.getByRole('dialog', { name: 'Task details' }).getByLabel('Task title');
     expect(await input.evaluate((el) => el.scrollHeight <= el.clientHeight + 1), `whole title visible at ${width}px`).toBe(true);
+    // Still in full after the screen gets narrower with the drawer open (rotation, split screen).
+    await page.setViewportSize({ width: Math.round(width * 0.65), height: 844 });
+    await expect.poll(() => input.evaluate((el) => el.scrollHeight <= el.clientHeight + 1), { message: `whole title visible after narrowing from ${width}px` }).toBe(true);
+    await page.setViewportSize({ width, height: 844 });
     await page.keyboard.press('Escape');
   }
   noErrors();
