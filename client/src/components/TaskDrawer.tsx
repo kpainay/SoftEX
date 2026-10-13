@@ -49,19 +49,32 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-/** Ref for a growing text area: sizes it now and again whenever its width changes (rotation, split screen). */
+/**
+ * Ref for a growing text area: sizes it now, and again whenever its width changes (rotation,
+ * split screen) or a web font finishes loading (text measured in the fallback font can wrap
+ * differently once the real font arrives).
+ */
 function autoGrowRef(el: HTMLTextAreaElement | null) {
   if (!el) return;
   autoGrow(el);
-  if (typeof ResizeObserver === 'undefined') return;
-  let width = el.clientWidth;
-  const observer = new ResizeObserver(() => {
-    if (el.clientWidth === width) return; // our own height change also triggers this
-    width = el.clientWidth;
-    autoGrow(el);
-  });
-  observer.observe(el);
-  return () => observer.disconnect();
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  const onFonts = () => el.isConnected && autoGrow(el);
+  fonts?.addEventListener('loadingdone', onFonts);
+  fonts?.ready.then(onFonts);
+  let observer: ResizeObserver | undefined;
+  if (typeof ResizeObserver !== 'undefined') {
+    let width = el.clientWidth;
+    observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return; // our own height change also triggers this
+      width = el.clientWidth;
+      autoGrow(el);
+    });
+    observer.observe(el);
+  }
+  return () => {
+    observer?.disconnect();
+    fonts?.removeEventListener('loadingdone', onFonts);
+  };
 }
 
 interface TaskFull extends Task {
