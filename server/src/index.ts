@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { restoreOnStartup } from './backup.js';
+import { ephemeralStorageProblem } from './persistence.js';
 import { LocalFileStore, S3FileStore, type S3Settings } from './storage.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -84,6 +85,13 @@ const s3: S3Settings | undefined = process.env.SOFTEX_S3_BUCKET
 const dbPath = process.env.SOFTEX_DB ?? join(dataDir, 'softex.db');
 const databaseUrl = process.env.SOFTEX_DATABASE_URL || undefined;
 const backupDir = process.env.SOFTEX_BACKUP_DIR || join(dataDir, 'backups');
+
+// Never start somewhere the data would silently vanish on the next deploy.
+const storageProblem = ephemeralStorageProblem(process.env, { dataDir, dbPath, uploadsOnS3: !!s3, usingPostgres: !!databaseUrl });
+if (storageProblem) {
+  console.error(storageProblem);
+  process.exit(1);
+}
 
 // Restoring a backup (SOFTEX_RESTORE_BACKUP=<file name>) happens before the database is opened.
 if (process.env.SOFTEX_RESTORE_BACKUP) {
