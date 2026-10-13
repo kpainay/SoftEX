@@ -23,12 +23,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [people, setPeople] = useState<Person[]>([]);
 
   const retryTimer = useRef<number | undefined>(undefined);
+  // Bumped when the session ends, so a /me request already in flight (a slow retry) cannot put a
+  // signed-out person back into the app when its answer finally arrives.
+  const generation = useRef(0);
+  const invalidateRefreshes = useCallback(() => {
+    generation.current += 1;
+    window.clearTimeout(retryTimer.current);
+  }, []);
   const refresh = useCallback(async (attempt = 0): Promise<void> => {
     window.clearTimeout(retryTimer.current);
+    const started = generation.current;
     try {
-      setMe(await api.get<Me>('/me'));
+      const fresh = await api.get<Me>('/me');
+      if (started !== generation.current) return;
+      setMe(fresh);
       setLoading(false);
     } catch (error) {
+      if (started !== generation.current) return;
       // Only the server saying "not signed in" means signed out. A dropped connection, a busy
       // server (429) or a proxy error must not throw people out to the website or sign-in page:
       // keep what is on screen and try again shortly.
@@ -53,13 +64,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
     const onUnauthorized = () => {
-      window.clearTimeout(retryTimer.current);
+      invalidateRefreshes();
       clearOfflineData();
       setMe(null);
+      setLoading(false);
     };
     window.addEventListener('softex:unauthorized', onUnauthorized);
     return () => window.removeEventListener('softex:unauthorized', onUnauthorized);
-  }, [refresh]);
+  }, [refresh, invalidateRefreshes]);
 
   const workspaceId = me?.workspace.id;
   useEffect(() => {
@@ -81,14 +93,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [workspaceId, reloadPeople]);
 
   const logout = useCallback(async () => {
+    invalidateRefreshes();
     // Stop push notifications on this device before the session ends.
     const endpoint = await disablePush().catch(() => null);
     if (endpoint) await api.del('/me/push', { endpoint }).catch(() => {});
     await api.post('/auth/logout');
     await clearOfflineData();
-    window.clearTimeout(retryTimer.current);
     setMe(null);
-  }, []);
+  }, [invalidateRefreshes]);
 
   const can = useCallback((role: 'lead' | 'admin' | 'owner') => !!me && RANK[me.role] >= RANK[role], [me]);
 

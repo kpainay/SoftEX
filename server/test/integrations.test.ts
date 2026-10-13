@@ -422,4 +422,14 @@ describe('abuse protection', () => {
     for (let i = 0; i < 3; i++) expect((await forged(i)).status).toBe(401);
     expect((await forged(99)).status).toBe(429);
   });
+
+  it('counts every spelling of one session token as the same session', async () => {
+    env = setup({ rateLimitPerMinute: 3, rateLimitPerAddressPerMinute: 100 });
+    const res = await env.agent().post('/api/auth/register').send({ name: 'Owner', email: 'encoded@example.com', password: 'password123', workspaceName: 'Encoded Co', acceptTerms: true });
+    const token = /softex_session=([^;]+)/.exec(String(res.headers['set-cookie']))![1];
+    // Percent-encode a different character each time: authentication decodes them all to the same token.
+    const spelled = (i: number) => token.slice(0, i) + `%${token.charCodeAt(i).toString(16).toUpperCase()}` + token.slice(i + 1);
+    for (let i = 0; i < 3; i++) expect((await env.agent().get('/api/me').set('Cookie', `softex_session=${spelled(i)}`)).status).toBe(200);
+    expect((await env.agent().get('/api/me').set('Cookie', `softex_session=${spelled(3)}`)).status).toBe(429);
+  });
 });

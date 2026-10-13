@@ -32,7 +32,7 @@ import { canViewDoc } from './collab.js';
 import { createWhisperClient, type SpeechToText } from './stt.js';
 import { recordingsRouter } from './routes/recordings.js';
 import { boardsRouter } from './routes/boards.js';
-import { authRouter, authenticate, meRouter, requireAuth } from './routes/auth.js';
+import { authRouter, authenticate, meRouter, requireAuth, tokenFrom } from './routes/auth.js';
 import { channelsRouter } from './routes/channels.js';
 import { homeRouter } from './routes/home.js';
 import { knowledgeRouter } from './routes/knowledge.js';
@@ -183,9 +183,13 @@ export function createApp(options: AppOptions = {}): SoftexApp {
   const limited = { error: 'Too many requests. Please slow down and try again shortly.' };
   const addressKey = (req: express.Request) => ipKeyGenerator(req.ip ?? '');
   const sessionKey = (req: express.Request) => {
-    const bearer = /^Bearer\s+(\S+)/i.exec(req.headers.authorization ?? '')?.[1];
-    const cookie = /(?:^|;\s*)softex_session=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
-    const token = bearer ?? cookie;
+    // Same parsing as authentication, so every spelling of one token shares one allowance.
+    let token: string | undefined;
+    try {
+      token = tokenFrom(req);
+    } catch {
+      token = undefined; // a malformed cookie is not a session; it counts against the address
+    }
     return token ? `s:${createHash('sha256').update(token).digest('base64url')}` : `a:${addressKey(req)}`;
   };
   app.use(
