@@ -30,7 +30,7 @@ export async function offscreen(page: Page) {
     const insideScroller = (el: Element) => {
       for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
         // Only a box that itself fits on screen counts; a page-wide wrapper that clips doesn't excuse its contents.
-        if (/(auto|scroll|hidden)/.test(getComputedStyle(p).overflowX) && p.getBoundingClientRect().right <= vw + 1) return true;
+        if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(p).overflowX) && p.getBoundingClientRect().right <= vw + 1) return true;
       }
       return false;
     };

@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { createHash } from 'node:crypto';
 import compression from 'compression';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
@@ -55,8 +56,10 @@ export interface AppOptions extends Partial<Omit<Config, 'billing' | 'backups'>>
   s3?: S3Settings;
   files?: FileStore;
   staticDir?: string;
-  /** Requests per minute per client address across the API (default 1200). */
+  /** Requests per minute per signed-in session (or per address when signed out) across the API (default 1200). */
   rateLimitPerMinute?: number;
+  /** Requests per minute per client address across all its sessions (default five times the per-session limit). */
+  rateLimitPerAddressPerMinute?: number;
   /** Start the in-process email/webhook/digest scheduler (default true; tests drive jobs manually). */
   startJobs?: boolean;
   anthropicApiKey?: string;
@@ -173,15 +176,22 @@ export function createApp(options: AppOptions = {}): SoftexApp {
   // (which polls and reacts to live events), strict enough to blunt floods and scraping.
   // Smaller responses for low-bandwidth connections (§2 goal 6).
   app.use(compression());
+  // Counted per signed-in session, not per address: a whole office, or a mobile network that puts
+  // many phones behind one public address, would otherwise share one allowance. A higher ceiling
+  // per address still caps floods, including clients that invent session cookies to dodge the limit.
+  const perSession = options.rateLimitPerMinute ?? 1200;
+  const limited = { error: 'Too many requests. Please slow down and try again shortly.' };
+  const addressKey = (req: express.Request) => ipKeyGenerator(req.ip ?? '');
+  const sessionKey = (req: express.Request) => {
+    const bearer = /^Bearer\s+(\S+)/i.exec(req.headers.authorization ?? '')?.[1];
+    const cookie = /(?:^|;\s*)softex_session=([^;]+)/.exec(req.headers.cookie ?? '')?.[1];
+    const token = bearer ?? cookie;
+    return token ? `s:${createHash('sha256').update(token).digest('base64url')}` : `a:${addressKey(req)}`;
+  };
   app.use(
     ['/api', '/scim'],
-    rateLimit({
-      windowMs: 60_000,
-      limit: options.rateLimitPerMinute ?? 1200,
-      standardHeaders: 'draft-8',
-      legacyHeaders: false,
-      message: { error: 'Too many requests. Please slow down and try again shortly.' },
-    }),
+    rateLimit({ windowMs: 60_000, limit: options.rateLimitPerAddressPerMinute ?? perSession * 5, keyGenerator: addressKey, standardHeaders: false, legacyHeaders: false, message: limited }),
+    rateLimit({ windowMs: 60_000, limit: perSession, keyGenerator: sessionKey, standardHeaders: 'draft-8', legacyHeaders: false, message: limited }),
   );
   app.use(express.json({ limit: '1mb' }));
 

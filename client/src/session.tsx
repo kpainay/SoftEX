@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api, type Me, type Person } from './api';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { api, ApiError, type Me, type Person } from './api';
 import { clearOfflineData, disablePush } from './pwa';
 import { realtime } from './realtime';
 
@@ -22,15 +22,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [people, setPeople] = useState<Person[]>([]);
 
-  const refresh = useCallback(async () => {
+  const retryTimer = useRef<number | undefined>(undefined);
+  const refresh = useCallback(async (attempt = 0): Promise<void> => {
+    window.clearTimeout(retryTimer.current);
     try {
       setMe(await api.get<Me>('/me'));
-    } catch {
-      setMe(null);
-    } finally {
       setLoading(false);
+    } catch (error) {
+      // Only the server saying "not signed in" means signed out. A dropped connection, a busy
+      // server (429) or a proxy error must not throw people out to the website or sign-in page:
+      // keep what is on screen and try again shortly.
+      if (error instanceof ApiError && error.status === 401) {
+        setMe(null);
+        setLoading(false);
+        return;
+      }
+      retryTimer.current = window.setTimeout(() => void refresh(attempt + 1), Math.min(30_000, 1000 * 2 ** attempt));
     }
   }, []);
+  useEffect(() => () => window.clearTimeout(retryTimer.current), []);
 
   const reloadPeople = useCallback(async () => {
     try {
@@ -43,6 +53,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
     const onUnauthorized = () => {
+      window.clearTimeout(retryTimer.current);
       clearOfflineData();
       setMe(null);
     };
@@ -75,6 +86,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (endpoint) await api.del('/me/push', { endpoint }).catch(() => {});
     await api.post('/auth/logout');
     await clearOfflineData();
+    window.clearTimeout(retryTimer.current);
     setMe(null);
   }, []);
 
