@@ -104,7 +104,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback((role: 'lead' | 'admin' | 'owner') => !!me && RANK[me.role] >= RANK[role], [me]);
 
-  return <SessionContext.Provider value={{ me, loading, setMe, refresh, logout, people, reloadPeople, can }}>{children}</SessionContext.Provider>;
+  // Everything outside this provider that sets the session (sign-in, workspace switch, profile
+  // and status changes) is answering with newer data than any /me refresh still in flight, so it
+  // invalidates those refreshes first.
+  const replaceMe = useCallback(
+    (next: Me | null) => {
+      invalidateRefreshes();
+      setMe(next);
+      setLoading(false);
+    },
+    [invalidateRefreshes],
+  );
+
+  return <SessionContext.Provider value={{ me, loading, setMe: replaceMe, refresh, logout, people, reloadPeople, can }}>{children}</SessionContext.Provider>;
 }
 
 export const useSession = () => useContext(SessionContext);
