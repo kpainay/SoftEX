@@ -95,6 +95,7 @@ Every push to `main` publishes an image to `ghcr.io/zlanquapea/softex` (see *CI/
 | `SOFTEX_S3_BUCKET` | *(unset)* | Store uploaded files in S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2, MinIO) instead of `SOFTEX_DATA_DIR`. Also set `SOFTEX_S3_ENDPOINT`, `SOFTEX_S3_REGION`, `SOFTEX_S3_ACCESS_KEY_ID`, `SOFTEX_S3_SECRET_ACCESS_KEY`, and optionally `SOFTEX_S3_FORCE_PATH_STYLE` and `SOFTEX_S3_PREFIX` |
 | `SOFTEX_COMPANY_NAME` / `SOFTEX_COMPANY_ADDRESS` / `SOFTEX_LEGAL_EMAIL` | *(unset)* | Business details shown on the website and in the Terms of Service and Privacy Policy (SaaS mode) |
 | `SOFTEX_DATA_DIR` | `server/data` | Database and uploaded files |
+| `SOFTEX_ALLOW_EPHEMERAL_STORAGE` | `false` | On Railway, Küü refuses to start when the SQLite database or uploads are not on a volume (they would be erased on the next deploy). Set to `true` only for a throwaway demo |
 | `SOFTEX_MEETING_BASE_URL` | `https://meet.jit.si` | Base URL for generated video meeting links |
 | `SOFTEX_MAX_UPLOAD_MB` | `100` | Upload size limit (phone videos are often 30–100 MB) |
 | `SOFTEX_SECURE_COOKIES` | `false` | Set to `true` behind HTTPS |

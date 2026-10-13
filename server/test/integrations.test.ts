@@ -404,12 +404,32 @@ describe('governed AI assistance', () => {
 });
 
 describe('abuse protection', () => {
-  it('rate limits the API per client', async () => {
-    env = setup({ rateLimitPerMinute: 5 });
-    const { agent } = await registerOwner(env); // 1 request
-    for (let i = 0; i < 4; i++) expect((await agent.get('/api/me')).status).toBe(200);
-    const limited = await agent.get('/api/me');
+  it('rate limits the API per signed-in session, with a higher ceiling per address', async () => {
+    env = setup({ rateLimitPerMinute: 5, rateLimitPerAddressPerMinute: 12 });
+    const owner = await registerOwner(env); // signed out, so counted against the address
+    for (let i = 0; i < 5; i++) expect((await owner.agent.get('/api/me')).status).toBe(200);
+    const limited = await owner.agent.get('/api/me');
     expect(limited.status).toBe(429);
     expect(limited.body.error).toContain('Too many requests');
+
+    // Someone else signed in from the same address (an office, a mobile network) is not held back by it.
+    const other = await registerOwner(env, 'Second');
+    expect((await other.agent.get('/api/me')).status).toBe(200);
+
+    // But one address cannot exceed its own ceiling, even by inventing new sessions. 9 requests
+    // have come from this address so far; the ceiling is 12.
+    const forged = (n: number) => env.agent().get('/api/me').set('Cookie', `softex_session=made-up-${n}`);
+    for (let i = 0; i < 3; i++) expect((await forged(i)).status).toBe(401);
+    expect((await forged(99)).status).toBe(429);
+  });
+
+  it('counts every spelling of one session token as the same session', async () => {
+    env = setup({ rateLimitPerMinute: 3, rateLimitPerAddressPerMinute: 100 });
+    const res = await env.agent().post('/api/auth/register').send({ name: 'Owner', email: 'encoded@example.com', password: 'password123', workspaceName: 'Encoded Co', acceptTerms: true });
+    const token = /softex_session=([^;]+)/.exec(String(res.headers['set-cookie']))![1];
+    // Percent-encode a different character each time: authentication decodes them all to the same token.
+    const spelled = (i: number) => token.slice(0, i) + `%${token.charCodeAt(i).toString(16).toUpperCase()}` + token.slice(i + 1);
+    for (let i = 0; i < 3; i++) expect((await env.agent().get('/api/me').set('Cookie', `softex_session=${spelled(i)}`)).status).toBe(200);
+    expect((await env.agent().get('/api/me').set('Cookie', `softex_session=${spelled(3)}`)).status).toBe(429);
   });
 });

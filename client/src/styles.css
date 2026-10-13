@@ -7052,3 +7052,146 @@ audio.recording-player {
     min-width: 0;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Responsive foundations: keep every screen inside the viewport on every
+   browser, not just the ones the layout was tested in.
+   ------------------------------------------------------------------------- */
+
+/* Safari's built-in stylesheet gives buttons `align-items: flex-start`; Chrome
+   and Firefox use `normal` (stretch). Inside a flex button that is laid out as
+   a column (task rows, the workspace switcher, the profile pill), flex-start
+   sizes a one-line title to its full length, so on iPhone it ran past the
+   card and the whole page zoomed out. Match the other browsers; components
+   that want another alignment still set it on their own class. */
+button {
+  align-items: normal;
+}
+/* Long words, links and IDs in anything people type break instead of
+   widening the page. */
+body {
+  overflow-wrap: break-word;
+}
+img,
+video,
+iframe,
+canvas {
+  max-width: 100%;
+}
+/* Safety net only: if a component still overflows, it is clipped at the
+   screen edge instead of letting the browser widen and zoom out the page.
+   `clip` (unlike `hidden`) keeps the sticky top bar working. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Text that people write: wrap anywhere rather than overflow its box. */
+.timeline li,
+.dash-list li,
+.goal-title,
+.props dd,
+.profile-card .grow,
+.task-body strong,
+.chat-title p {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.task-body strong {
+  display: block;
+  max-width: 100%;
+}
+.dash-list .link-btn,
+.dash-list-link {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Chat header: a long channel name truncates instead of running under the
+   header buttons; the buttons never shrink. */
+.chat-head {
+  min-width: 0;
+}
+.chat-title,
+.chat-title > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.chat-title h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-actions {
+  flex-shrink: 0;
+}
+
+/* Profile header: the name block takes the remaining width (or its own line)
+   instead of being squeezed to a few pixels next to the avatar. */
+.profile-card .grow {
+  flex: 1 1 180px;
+}
+
+@media (max-width: 720px) {
+  /* On phones, task titles wrap onto up to two lines instead of being cut to
+     a single line that hides most of the title. */
+  .task-body strong {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .chat-head {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  /* Goals: the progress bar moves under the title instead of leaving the
+     title a sliver of space. */
+  .goal-row {
+    flex-wrap: wrap;
+  }
+  .goal-title {
+    flex-basis: calc(100% - 40px);
+  }
+  .goal-progress {
+    width: 100%;
+  }
+}
+/* The project label in a task row keeps its colour dot beside the name and
+   truncates a long name rather than wrapping it away from the dot. */
+.task-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.task-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Task titles are a growing text area: full width, no resize handle. */
+textarea.title-input {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.25;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+/* iPhone/iPad Safari zooms the whole page in when a form field with text
+   smaller than 16px gets focus, and leaves it zoomed. Give text fields 16px on
+   iOS only (other browsers keep the compact size); the large title fields
+   keep their own size. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(.title-input),
+  select,
+  textarea:not(.title-input),
+  [contenteditable='true'] {
+    font-size: 16px !important;
+  }
+}

@@ -34,7 +34,8 @@ function readCookie(header: string | undefined, name: string) {
   return undefined;
 }
 
-function tokenFrom(req: IncomingMessage) {
+/** The session token a request carries (phone app bearer token or browser cookie), exactly as authentication reads it. */
+export function tokenFrom(req: IncomingMessage) {
   const bearer = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   return bearer ?? readCookie(req.headers.cookie, COOKIE);
 }
