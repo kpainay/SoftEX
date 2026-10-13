@@ -85,9 +85,10 @@ const s3: S3Settings | undefined = process.env.SOFTEX_S3_BUCKET
 const dbPath = process.env.SOFTEX_DB ?? join(dataDir, 'softex.db');
 const databaseUrl = process.env.SOFTEX_DATABASE_URL || undefined;
 const backupDir = process.env.SOFTEX_BACKUP_DIR || join(dataDir, 'backups');
+const uploadDir = join(dataDir, 'uploads');
 
 // Never start somewhere the data would silently vanish on the next deploy.
-const storageProblem = ephemeralStorageProblem(process.env, { dataDir, dbPath, uploadsOnS3: !!s3, usingPostgres: !!databaseUrl });
+const storageProblem = ephemeralStorageProblem(process.env, { dataDir, dbPath, uploadDir, uploadsOnS3: !!s3, usingPostgres: !!databaseUrl });
 if (storageProblem) {
   console.error(storageProblem);
   process.exit(1);
@@ -100,7 +101,7 @@ if (process.env.SOFTEX_RESTORE_BACKUP) {
     process.exit(1);
   }
   try {
-    await restoreOnStartup({ dbPath, backupName: process.env.SOFTEX_RESTORE_BACKUP, files: s3 ? new S3FileStore(s3) : new LocalFileStore(join(dataDir, 'uploads')), backupDir });
+    await restoreOnStartup({ dbPath, backupName: process.env.SOFTEX_RESTORE_BACKUP, files: s3 ? new S3FileStore(s3) : new LocalFileStore(uploadDir), backupDir });
   } catch (error) {
     console.error(`Küü could not restore the backup: ${(error as Error).message}`);
     process.exit(1);
@@ -111,7 +112,7 @@ const { server, ready } = createApp({
   dbPath,
   databaseUrl,
   s3,
-  uploadDir: join(dataDir, 'uploads'),
+  uploadDir,
   backups: {
     enabled: process.env.SOFTEX_BACKUPS !== 'off',
     dir: backupDir,

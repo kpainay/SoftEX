@@ -11,7 +11,7 @@ import { relative, resolve, isAbsolute } from 'node:path';
  */
 export function ephemeralStorageProblem(
   env: NodeJS.ProcessEnv,
-  paths: { dataDir: string; dbPath: string; uploadsOnS3: boolean; usingPostgres: boolean },
+  paths: { dataDir: string; dbPath: string; uploadDir: string; uploadsOnS3: boolean; usingPostgres: boolean },
 ): string | null {
   const onRailway = Boolean(env.RAILWAY_ENVIRONMENT || env.RAILWAY_ENVIRONMENT_NAME || env.RAILWAY_PROJECT_ID || env.RAILWAY_SERVICE_ID);
   if (!onRailway || env.SOFTEX_ALLOW_EPHEMERAL_STORAGE === 'true') return null;
@@ -25,7 +25,7 @@ export function ephemeralStorageProblem(
 
   const lost: string[] = [];
   if (!paths.usingPostgres && !onVolume(paths.dbPath)) lost.push(`the database (${paths.dbPath})`);
-  if (!paths.uploadsOnS3 && !onVolume(paths.dataDir)) lost.push(`uploaded files (${paths.dataDir}/uploads)`);
+  if (!paths.uploadsOnS3 && !onVolume(paths.uploadDir)) lost.push(`uploaded files (${paths.uploadDir})`);
   if (!lost.length) return null;
 
   return [

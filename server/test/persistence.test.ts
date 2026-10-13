@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ephemeralStorageProblem } from '../src/persistence.js';
 
-const paths = { dataDir: '/app/server/data', dbPath: '/app/server/data/softex.db', uploadsOnS3: false, usingPostgres: false };
+const paths = { dataDir: '/app/server/data', dbPath: '/app/server/data/softex.db', uploadDir: '/app/server/data/uploads', uploadsOnS3: false, usingPostgres: false };
 const railway = { RAILWAY_ENVIRONMENT: 'production', RAILWAY_PROJECT_ID: 'p1' };
 
 describe('refusing to start where data would be erased on the next deploy', () => {
@@ -32,6 +32,10 @@ describe('refusing to start where data would be erased on the next deploy', () =
     expect(ephemeralStorageProblem(railway, { ...paths, usingPostgres: true, uploadsOnS3: true })).toBeNull();
     // PostgreSQL alone still loses uploaded files.
     expect(ephemeralStorageProblem(railway, { ...paths, usingPostgres: true })).toMatch(/uploaded files/);
+    // PostgreSQL with the volume mounted on the uploads folder itself keeps everything.
+    expect(ephemeralStorageProblem({ ...railway, RAILWAY_VOLUME_MOUNT_PATH: '/app/server/data/uploads' }, { ...paths, usingPostgres: true })).toBeNull();
+    // But with SQLite that volume misses the database.
+    expect(ephemeralStorageProblem({ ...railway, RAILWAY_VOLUME_MOUNT_PATH: '/app/server/data/uploads' }, paths)).toMatch(/the database/);
   });
 
   it('can be overridden for a throwaway demo', () => {
