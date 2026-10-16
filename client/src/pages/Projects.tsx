@@ -686,7 +686,8 @@ function ProjectTasks({ project }: { project: ProjectFull }) {
   const move = async (taskId: string, status: TaskStatus) => {
     setData(tasks?.map((t) => (t.id === taskId ? { ...t, status } : t)));
     await act(() => api.patch(`/tasks/${taskId}`, { status }));
-    reload();
+    // Waited for, so the ticked box doesn't flick back before the fresh list arrives.
+    await reload();
   };
 
   const replace = (task: Task) => setData(tasks?.map((t) => (t.id === task.id ? task : t)));
@@ -961,7 +962,7 @@ function Risks({ project }: { project: ProjectFull }) {
         <h2>Risk register</h2>
         {!data && <Loading />}
         {data && !data.length && <p className="muted">No risks recorded.</p>}
-        <table className="table">
+        <div className="scroll-x"><table className="table">
           <thead>
             <tr>
               <th>Risk</th>
@@ -999,7 +1000,7 @@ function Risks({ project }: { project: ProjectFull }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </div>
       {project.can_contribute && (
         <form

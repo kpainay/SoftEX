@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api, type Channel } from '../api';
 import { useApi, useRealtime } from '../hooks';
@@ -8,13 +8,15 @@ import { Icon } from './Icon';
 import { SearchDialog } from './SearchDialog';
 import { QuickCreate } from './QuickCreate';
 import { TaskDrawer } from './TaskDrawer';
-import { useToast } from './ui';
+import { ErrorBoundary, useToast } from './ui';
 import { AccountBanners } from './Plan';
-import { ROLE_LABEL, dateLabel } from '../format';
+import { ROLE_LABEL, dateLabel, plainMentions } from '../format';
 import { clearOfflineData } from '../pwa';
-import { Logo } from './Logo';
+import { Logo, LogoMark } from './Logo';
 import { setTheme, useTheme } from '../theme';
 import { NotificationsMenu } from './NotificationsMenu';
+import { PushPrompt } from './PushPrompt';
+import { SaveBar } from './SaveBar';
 import { FavoritesNav } from './Favorites';
 
 interface Shell {
@@ -24,6 +26,31 @@ interface Shell {
 }
 const ShellContext = createContext<Shell>({ openTask: () => {}, openCreate: () => {}, openSearch: () => {} });
 export const useShell = () => useContext(ShellContext);
+
+/** A true/false preference kept in this browser. */
+function useStoredFlag(key: string) {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const set = useCallback(
+    (next: boolean) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, next ? '1' : '0');
+      } catch {
+        /* private mode: only for this visit */
+      }
+    },
+    [key],
+  );
+  return [value, set] as const;
+}
+
+const READS_NOTIFICATIONS = /^\/(tasks|meetings|knowledge|projects|goals|files|boards|dashboards|forms)\/[^/]+$/;
 
 export function Layout({ children }: { children: ReactNode }) {
   const { me, logout, setMe, can } = useSession();
@@ -46,6 +73,9 @@ export function Layout({ children }: { children: ReactNode }) {
     };
   }, []);
   const [menu, setMenu] = useState<'profile' | 'workspace' | null>(null);
+  // The sidebar can fold into a narrow dock of icons, and the channel list can fold away; both are remembered on this device.
+  const [docked, setDocked] = useStoredFlag('kuu:nav-docked');
+  const [channelsFolded, setChannelsFolded] = useStoredFlag('kuu:nav-channels-folded');
   const theme = useTheme();
   const { data: counts, reload: reloadCounts } = useApi<{ unread: number }>('/notifications?filter=unread&limit=1');
   const { data: channels, reload: reloadChannels } = useApi<Channel[]>('/channels');
@@ -56,14 +86,28 @@ export function Layout({ children }: { children: ReactNode }) {
     setMenu(null);
   }, [location.pathname]);
 
+  // Moving between pages fades the new one in, which also smooths over the moment its data loads.
+  const content = useRef<HTMLDivElement>(null);
+  const firstPage = useRef(true);
+  useEffect(() => {
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    content.current?.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  }, [location.pathname]);
+
   useRealtime((e) => {
     if (e.type === 'notification') {
       reloadCounts();
       if (!e.silent && document.visibilityState === 'visible') toast(e.notification.title);
       if (!e.silent && document.visibilityState !== 'visible' && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification(e.notification.title, { body: e.notification.body });
+        // Same tag as the push for this notification, so the browser shows it once.
+        new Notification(e.notification.title, { body: plainMentions(e.notification.body ?? ''), tag: e.notification.id, icon: '/favicon.svg' });
       }
     }
+    if (e.type === 'notifications.read') reloadCounts();
     if (e.type === 'message.created' || e.type === 'channel.updated' || e.type === 'reconnected') reloadChannels();
     if (e.type === 'task.updated' || e.type === 'reconnected') reloadWork();
   });
@@ -78,6 +122,13 @@ export function Layout({ children }: { children: ReactNode }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Opening a meeting, page, project, goal or file reads what you were notified about it (chats do this as they are read).
+  // Not gated on the unread count: on a direct load (or a push notification tap) the count hasn't arrived yet.
+  useEffect(() => {
+    if (!READS_NOTIFICATIONS.test(location.pathname)) return;
+    void api.post('/notifications/read-group', { group: location.pathname }).catch(() => {});
+  }, [location.pathname]);
 
   // Keep unread counts fresh when a channel is read.
   useEffect(() => {
@@ -129,19 +180,36 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={shell}>
+      <SaveBar />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <div className="app-shell">
-        <aside className={`sidebar ${navOpen ? 'open' : ''}`} aria-label="Workspace navigation">
+      <div className={`app-shell ${docked ? 'nav-docked' : ''}`}>
+        <aside className={`sidebar ${navOpen ? 'open' : ''} ${docked ? 'docked' : ''}`} aria-label="Workspace navigation">
           <div className="brand">
-            <Logo height={26} onDark />
+            <Link to="/" className="brand-link" aria-label="Küü home">
+              {docked ? <LogoMark size={30} /> : <Logo height={26} onDark />}
+            </Link>
+            <button
+              className="icon-btn dock-toggle"
+              onClick={() => setDocked(!docked)}
+              aria-pressed={docked}
+              aria-label={docked ? 'Expand the sidebar' : 'Collapse the sidebar into a dock'}
+              title={docked ? 'Expand the sidebar' : 'Collapse to icons'}
+            >
+              <Icon name={docked ? 'chevronRight' : 'chevronLeft'} size={16} />
+            </button>
             <button className="icon-btn sidebar-close" onClick={() => setNavOpen(false)} aria-label="Close navigation">
               <Icon name="x" />
             </button>
           </div>
           <div className="menu-anchor">
-            <button className="workspace-switcher" onClick={() => setMenu(menu === 'workspace' ? null : 'workspace')} aria-expanded={menu === 'workspace'}>
+            <button
+              className="workspace-switcher"
+              onClick={() => setMenu(menu === 'workspace' ? null : 'workspace')}
+              aria-expanded={menu === 'workspace'}
+              title={docked ? me.workspace.name : undefined}
+            >
               <span className="workspace-logo">{me.workspace.name[0]?.toUpperCase()}</span>
               <span>
                 <strong>{me.workspace.name}</strong>
@@ -178,13 +246,15 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             )}
           </div>
-          <nav>
+          <nav className="nav-scroll">
             <p className="nav-label">Workspace</p>
             {nav.map((n) => (
               <div key={n.to} className="nav-group">
                 <NavLink
                   to={n.to}
                   end={n.end}
+                  title={docked ? n.label : undefined}
+                  aria-label={docked ? `${n.label}${n.badge ? `, ${n.badge}` : ''}` : undefined}
                   className={({ isActive }) => {
                     // A direct message lives under /channels/…, but belongs with Chats.
                     const active = n.to === '/chats' ? isActive || dmOpen : n.to === '/channels' ? isActive && !dmOpen : isActive;
@@ -195,8 +265,20 @@ export function Layout({ children }: { children: ReactNode }) {
                   <span>{n.label}</span>
                   {n.badge ? n.soft ? <em>{n.badge}</em> : <b>{n.badge}</b> : null}
                 </NavLink>
-                {n.to === '/channels' && joinedChannels.length > 0 && (
-                  <div className="nav-channels" aria-label="Your channels">
+                {n.to === '/channels' && joinedChannels.length > 0 && !docked && (
+                  <button
+                    className="nav-fold"
+                    onClick={() => setChannelsFolded(!channelsFolded)}
+                    aria-expanded={!channelsFolded}
+                    aria-controls="nav-channels"
+                    aria-label={channelsFolded ? 'Show your channels' : 'Hide your channels'}
+                    title={channelsFolded ? 'Show your channels' : 'Hide your channels'}
+                  >
+                    <Icon name={channelsFolded ? 'chevronRight' : 'chevronDown'} size={14} />
+                  </button>
+                )}
+                {n.to === '/channels' && joinedChannels.length > 0 && !docked && !channelsFolded && (
+                  <div className="nav-channels" id="nav-channels" aria-label="Your channels">
                     {joinedChannels.slice(0, 8).map((c) => (
                       <NavLink key={c.id} to={`/channels/${c.id}`} className={({ isActive }) => `nav-channel ${isActive ? 'active' : ''} ${c.unread ? 'unread' : ''}`}>
                         <Icon name={c.kind === 'private' ? 'lock' : c.kind === 'announcement' ? 'megaphone' : 'hash'} size={14} />
@@ -217,7 +299,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="nav-separator" />
             <p className="nav-label">Explore</p>
             {explore.map((n) => (
-              <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink key={n.to} to={n.to} title={docked ? n.label : undefined} aria-label={docked ? n.label : undefined} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                 <Icon name={n.icon} />
                 <span>{n.label}</span>
               </NavLink>
@@ -225,12 +307,17 @@ export function Layout({ children }: { children: ReactNode }) {
           </nav>
           <div className="sidebar-bottom">
             {can('lead') && (
-              <Link className="invite-btn" to="/admin?tab=invitations">
-                <Icon name="plus" size={15} /> Invite people
+              <Link className="invite-btn" to="/admin?tab=invitations" title={docked ? 'Invite people' : undefined} aria-label={docked ? 'Invite people' : undefined}>
+                <Icon name="plus" size={15} /> <span>Invite people</span>
               </Link>
             )}
             <div className="menu-anchor">
-              <button className="profile" onClick={() => setMenu(menu === 'profile' ? null : 'profile')} aria-expanded={menu === 'profile'}>
+              <button
+                className="profile"
+                onClick={() => setMenu(menu === 'profile' ? null : 'profile')}
+                aria-expanded={menu === 'profile'}
+                title={docked ? `${me.user.name} · ${me.user.status_text || statusLabel(me.user.status)}` : undefined}
+              >
                 <Avatar user={me.user} size="md" />
                 <span>
                   <strong>{me.user.name}</strong>
@@ -306,7 +393,9 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
           )}
           <AccountBanners />
-          <div className="content">{children}</div>
+          <div className="content" ref={content}>
+            <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>
+          </div>
         </main>
 
         <nav className="mobile-nav" aria-label="Primary">
@@ -337,6 +426,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <SearchDialog open={search.open} initial={search.q} onClose={() => setSearch({ open: false, q: '' })} />
       <QuickCreate open={create.open} kind={create.kind} onClose={() => setCreate({ open: false })} />
       <TaskDrawer taskId={taskId} onClose={() => setTaskId(null)} />
+      <PushPrompt />
       {!online && (
         <div className="offline-banner" role="status">
           <Icon name="alert" size={15} /> You are offline. Showing what was last loaded; changes will not be saved until you reconnect.

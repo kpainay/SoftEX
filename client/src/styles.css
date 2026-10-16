@@ -434,20 +434,23 @@ hr {
 
 /* ---------- Shell ---------- */
 .app-shell {
+  /* Sidebar width; the docked sidebar is a narrow strip of icons. */
+  --nav-w: 248px;
   display: flex;
   min-height: 100vh;
 }
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 248px;
+  width: var(--nav-w);
   background: var(--nav);
   color: var(--nav-text);
   padding: 20px 14px 16px;
   display: flex;
   flex-direction: column;
   z-index: 30;
-  overflow-y: auto;
+  /* The logo, workspace switcher and profile stay put; only the sections between them scroll. */
+  overflow: hidden;
 }
 .brand {
   height: 40px;
@@ -755,9 +758,9 @@ hr {
   letter-spacing: 0.8px;
 }
 main {
-  margin-left: 248px;
+  margin-left: var(--nav-w);
   min-width: 0;
-  width: calc(100% - 248px);
+  width: calc(100% - var(--nav-w));
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -860,13 +863,16 @@ main {
   min-width: 0;
 }
 .page-head > :last-child:not(:first-child) {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 .welcome h1 {
   font-size: 30px;
 }
 .welcome-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .eyebrow {
@@ -2591,11 +2597,20 @@ a.activity:hover {
 }
 .composer-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
   padding: 4px 8px 8px;
 }
+.composer-tools {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
 .composer-bar .send {
+  flex: none;
   margin-left: auto;
 }
 .composer-disabled {
@@ -6543,4 +6558,640 @@ audio.recording-player {
 }
 .check-inline.consent input {
   margin-top: 3px;
+}
+
+/* Several unread updates about one chat, task or meeting, shown as one row. */
+.group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/*
+ * Home on wide screens: the greeting stays put and the two columns scroll on their own,
+ * so a long list on one side never pushes the other out of view.
+ */
+@media (min-width: 1181px) {
+  main:has(.home-page) {
+    height: 100vh;
+    height: 100dvh;
+  }
+  .content:has(> .home-page),
+  .content:has(> * > .home-page) {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .home-page {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+    /* If the top area is very tall the page itself still scrolls, rather than squeezing the columns. */
+    overflow-y: auto;
+  }
+  .home-page > .dashboard-grid {
+    flex: 1 0 420px;
+    min-height: 420px;
+    align-items: stretch;
+  }
+  .home-page .main-column,
+  .home-page .right-column {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 6px 32px 2px;
+    scrollbar-gutter: stable;
+  }
+}
+
+/* Asks to turn on notifications for this device (after signing in, or when they've been off a while). */
+.push-prompt {
+  position: fixed;
+  right: 20px;
+  /* Under the top bar, clear of message composers and other bottom-anchored controls. */
+  top: 78px;
+  z-index: 60;
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  box-shadow: 0 18px 50px rgba(43, 29, 22, 0.18);
+  animation: push-prompt-in 0.25s ease-out;
+}
+.push-prompt-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent-ink, var(--accent));
+}
+.push-prompt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.push-prompt-body p {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.push-prompt-close {
+  margin: -6px -8px 0 0;
+}
+@keyframes push-prompt-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@media (max-width: 760px) {
+  .push-prompt {
+    right: 16px;
+    left: 16px;
+    width: auto;
+    top: 68px;
+  }
+}
+
+/* ---------- Sidebar: pinned top and bottom, scrolling middle, foldable channels, dock ---------- */
+.brand-link {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+}
+.dock-toggle {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  color: var(--nav-muted);
+}
+.dock-toggle:hover {
+  color: #fff;
+  background: var(--nav-2);
+}
+.sidebar > .menu-anchor,
+.sidebar > .brand,
+.sidebar-bottom {
+  flex: none;
+}
+.nav-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -8px;
+  padding: 0 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--nav-line) transparent;
+}
+.nav-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.nav-scroll::-webkit-scrollbar-thumb {
+  background: var(--nav-line);
+  border-radius: 4px;
+}
+.nav-group {
+  position: relative;
+}
+.nav-group:has(> .nav-fold) > .nav-item {
+  padding-right: 38px;
+}
+.nav-fold {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--nav-muted);
+}
+.nav-fold:hover {
+  background: var(--nav-line);
+  color: #fff;
+}
+.nav-group:has(> .nav-fold) > .nav-item b {
+  margin-right: 2px;
+}
+
+@media (min-width: 761px) {
+  .app-shell.nav-docked {
+    --nav-w: 72px;
+  }
+  .sidebar.docked {
+    padding: 16px 10px 14px;
+    align-items: stretch;
+  }
+  .sidebar.docked .brand {
+    flex-direction: column;
+    height: auto;
+    gap: 10px;
+    padding: 0;
+  }
+  .sidebar.docked .dock-toggle {
+    margin: 0;
+  }
+  .sidebar.docked .workspace-switcher {
+    justify-content: center;
+    padding: 6px;
+    margin: 12px 0 14px;
+  }
+  .sidebar.docked .workspace-switcher > span:nth-child(2),
+  .sidebar.docked .workspace-switcher > .icon {
+    display: none;
+  }
+  .sidebar.docked .nav-label {
+    height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+  .sidebar.docked .nav-label + * {
+    margin-top: 0;
+  }
+  .sidebar.docked .nav-scroll .nav-channels {
+    display: none;
+  }
+  .sidebar.docked .nav-item {
+    position: relative;
+    justify-content: center;
+    padding: 0;
+    height: 42px;
+  }
+  .sidebar.docked .nav-item > span {
+    display: none;
+  }
+  .sidebar.docked .nav-item.active {
+    box-shadow: inset 3px 0 var(--nav-accent);
+  }
+  .sidebar.docked .nav-item b,
+  .sidebar.docked .nav-item em {
+    position: absolute;
+    top: 3px;
+    right: 5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+  .sidebar.docked .nav-separator {
+    margin: 10px 6px;
+  }
+  .sidebar.docked .invite-btn {
+    padding: 0;
+  }
+  .sidebar.docked .invite-btn span {
+    display: none;
+  }
+  .sidebar.docked .profile {
+    justify-content: center;
+    padding: 12px 0 0;
+  }
+  .sidebar.docked .profile > span:nth-child(2),
+  .sidebar.docked .profile > .icon {
+    display: none;
+  }
+  /* Menus open beside the dock instead of being squeezed into it. */
+  .sidebar.docked .popover {
+    left: calc(100% + 10px);
+    right: auto;
+    top: 0;
+    width: 240px;
+  }
+  .sidebar.docked .popover.up {
+    top: auto;
+    bottom: 0;
+  }
+  .sidebar.docked {
+    overflow: visible;
+  }
+  .sidebar.docked .nav-scroll {
+    overflow-x: hidden;
+  }
+}
+@media (max-width: 760px) {
+  .dock-toggle {
+    display: none;
+  }
+}
+
+/* Messages: a blank line between paragraphs shows as a gap (compact markdown otherwise has none). */
+.markdown.compact p + p,
+.markdown.compact p + ul,
+.markdown.compact p + ol,
+.markdown.compact ul + p,
+.markdown.compact ol + p {
+  margin-top: 0.6em;
+}
+.enter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.enter-toggle input {
+  margin: 0;
+}
+
+/* ---------- Motion: short transitions that make actions feel immediate ---------- */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* Messages: new ones glide in; your own show at once, faded until the server has them. */
+.message.enter {
+  animation: msg-in 0.22s var(--ease-out) both;
+}
+.message.outgoing .msg-body {
+  transition: opacity 0.2s ease;
+}
+.message.outgoing.sending .msg-body {
+  opacity: 0.6;
+}
+.outgoing-status {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.message.outgoing.failed .outgoing-status {
+  color: var(--red);
+}
+.message.outgoing.failed .outgoing-status .link-btn {
+  font-size: 12px;
+}
+.reaction {
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+}
+.reaction:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+/* Dialogs, menus and side panels open smoothly. */
+.modal[open] {
+  animation: modal-in 0.2s var(--ease-out);
+}
+.modal[open]::backdrop,
+.search-dialog[open]::backdrop,
+.scrim,
+.drawer-scrim {
+  animation: fade-in 0.18s ease-out;
+}
+.popover,
+.notif-panel {
+  animation: pop-in 0.14s var(--ease-out);
+}
+.popover.up {
+  animation-name: pop-up;
+}
+.side-panel {
+  animation: slide 0.18s var(--ease-out);
+}
+
+/* Buttons respond to a press; rows ease their highlight. */
+.btn,
+.icon-btn {
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, transform 0.1s;
+}
+.btn:active:not(:disabled),
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.task,
+.inbox-item,
+.notif-item,
+.nav-item,
+.nav-channel {
+  transition: background 0.15s, opacity 0.2s, color 0.15s;
+}
+.task-body strong {
+  transition: color 0.2s;
+}
+.task-check {
+  transition: transform 0.12s;
+}
+.task-check:active:not(:disabled) {
+  transform: scale(0.85);
+}
+.inbox-item,
+.notif-item {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* A thin bar along the top while a slower save is in progress. */
+.save-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 100;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.save-bar.on {
+  opacity: 1;
+}
+.save-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--accent);
+  animation: save-bar 1.1s ease-in-out infinite;
+}
+@keyframes save-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+.search-dialog[open] {
+  animation: modal-in 0.18s var(--ease-out);
+}
+
+/* ---------- Fit every screen: nothing may push the page wider than the window ---------- */
+/* Wide tables scroll sideways inside their own box. */
+.scroll-x {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* Rows of buttons and controls wrap rather than run off the edge. */
+.row-gap {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 720px) {
+  /* Long button labels wrap onto two lines on small screens instead of overflowing. */
+  .btn {
+    white-space: normal;
+    height: auto;
+    min-height: 38px;
+    max-width: 100%;
+    text-align: center;
+    line-height: 1.25;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .btn.sm {
+    min-height: 30px;
+  }
+  .page-head,
+  .welcome {
+    flex-wrap: wrap;
+  }
+  .page-head > *,
+  .welcome > * {
+    min-width: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive foundations: keep every screen inside the viewport on every
+   browser, not just the ones the layout was tested in.
+   ------------------------------------------------------------------------- */
+
+/* Safari's built-in stylesheet gives buttons `align-items: flex-start`; Chrome
+   and Firefox use `normal` (stretch). Inside a flex button that is laid out as
+   a column (task rows, the workspace switcher, the profile pill), flex-start
+   sizes a one-line title to its full length, so on iPhone it ran past the
+   card and the whole page zoomed out. Match the other browsers; components
+   that want another alignment still set it on their own class. */
+button {
+  align-items: normal;
+}
+/* Long words, links and IDs in anything people type break instead of
+   widening the page. */
+body {
+  overflow-wrap: break-word;
+}
+img,
+video,
+iframe,
+canvas {
+  max-width: 100%;
+}
+/* Safety net only: if a component still overflows, it is clipped at the
+   screen edge instead of letting the browser widen and zoom out the page.
+   `clip` (unlike `hidden`) keeps the sticky top bar working. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Text that people write: wrap anywhere rather than overflow its box. */
+.timeline li,
+.dash-list li,
+.goal-title,
+.props dd,
+.profile-card .grow,
+.task-body strong,
+.chat-title p {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.task-body strong {
+  display: block;
+  max-width: 100%;
+}
+.dash-list .link-btn,
+.dash-list-link {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Chat header: a long channel name truncates instead of running under the
+   header buttons; the buttons never shrink. */
+.chat-head {
+  min-width: 0;
+}
+.chat-title,
+.chat-title > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.chat-title h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-actions {
+  flex-shrink: 0;
+}
+
+/* Profile header: the name block takes the remaining width (or its own line)
+   instead of being squeezed to a few pixels next to the avatar. */
+.profile-card .grow {
+  flex: 1 1 180px;
+}
+
+@media (max-width: 720px) {
+  /* On phones, task titles wrap onto up to two lines instead of being cut to
+     a single line that hides most of the title. */
+  .task-body strong {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .chat-head {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  /* Goals: the progress bar moves under the title instead of leaving the
+     title a sliver of space. */
+  .goal-row {
+    flex-wrap: wrap;
+  }
+  .goal-title {
+    flex-basis: calc(100% - 40px);
+  }
+  .goal-progress {
+    width: 100%;
+  }
+}
+/* The project label in a task row keeps its colour dot beside the name and
+   truncates a long name rather than wrapping it away from the dot. */
+.task-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.task-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Task titles are a growing text area: full width, no resize handle. */
+textarea.title-input {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.25;
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+/* iPhone/iPad Safari zooms the whole page in when a form field with text
+   smaller than 16px gets focus, and leaves it zoomed. Give text fields 16px on
+   iOS only (other browsers keep the compact size); the large title fields
+   keep their own size. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(.title-input),
+  select,
+  textarea:not(.title-input),
+  [contenteditable='true'] {
+    font-size: 16px !important;
+  }
 }

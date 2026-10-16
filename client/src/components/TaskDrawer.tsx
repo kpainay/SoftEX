@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs, type Task } from '../api';
 import { bytes, dueLabel, plainMentions, STATUS_LABEL, timeAgo } from '../format';
-import { useApi, useRealtime } from '../hooks';
+import { useApi, useRealtime, useViewing } from '../hooks';
 import { useSession } from '../session';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { RemindButton } from './Later';
 import { Markdown } from './Markdown';
 import { NewTaskForm } from './QuickCreate';
-import { ErrorState, Loading, StatusPill, useAction } from './ui';
+import { ErrorBoundary, ErrorState, Loading, StatusPill, useAction } from './ui';
 import { LabelChips, LabelPicker, TaskFieldRows, TimeTracker } from './Work';
 import { usePlan } from './Plan';
 
@@ -34,10 +34,47 @@ export function TaskDrawer({ taskId, onClose }: { taskId: string | null; onClose
             <Icon name="x" />
           </button>
         </div>
-        <TaskDetail taskId={taskId} onDeleted={onClose} />
+        <ErrorBoundary resetKey={taskId}>
+          <TaskDetail taskId={taskId} onDeleted={onClose} />
+        </ErrorBoundary>
       </aside>
     </>
   );
+}
+
+/** Sizes a one-row text area to its content. */
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+/**
+ * Ref for a growing text area: sizes it now, and again whenever its width changes (rotation,
+ * split screen) or a web font finishes loading (text measured in the fallback font can wrap
+ * differently once the real font arrives).
+ */
+function autoGrowRef(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  autoGrow(el);
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  const onFonts = () => el.isConnected && autoGrow(el);
+  fonts?.addEventListener('loadingdone', onFonts);
+  fonts?.ready.then(onFonts);
+  let observer: ResizeObserver | undefined;
+  if (typeof ResizeObserver !== 'undefined') {
+    let width = el.clientWidth;
+    observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return; // our own height change also triggers this
+      width = el.clientWidth;
+      autoGrow(el);
+    });
+    observer.observe(el);
+  }
+  return () => {
+    observer?.disconnect();
+    fonts?.removeEventListener('loadingdone', onFonts);
+  };
 }
 
 interface TaskFull extends Task {
@@ -74,6 +111,11 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
   useRealtime((e) => {
     if (e.type === 'task.updated' && e.taskId === taskId && !e.deleted) reload();
   });
+  // Seeing the task (in the drawer or on its page) reads its notifications, and comments on it don't notify while it is open.
+  useViewing([`/tasks/${taskId}`]);
+  useEffect(() => {
+    void api.post('/notifications/read-group', { group: `/tasks/${taskId}` }).catch(() => {});
+  }, [taskId]);
 
   useEffect(() => {
     if (depQuery.length < 2) return setDepOptions([]);
@@ -86,7 +128,11 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
 
   const update = async (patch: Record<string, unknown>) => {
     const updated = await act(() => api.patch<Task>(`/tasks/${task.id}`, patch));
-    if (updated) setData({ ...task, ...updated });
+    if (!updated) return;
+    // The response is the list shape, where checklist and subtasks are counts; keep the detail's lists, then refetch them.
+    const { checklist: _checklist, subtasks: _subtasks, ...fields } = updated;
+    setData({ ...task, ...fields });
+    reload();
   };
   const disabled = !task.can_edit;
   // Start dates feed the timeline, a planning feature; existing ones stay visible.
@@ -108,14 +154,26 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
           </span>
         )}
       </div>
-      <input
+      {/* A text area that grows with the title, so long titles are readable on a phone. */}
+      <textarea
         className="title-input"
+        rows={1}
         defaultValue={task.title}
         key={task.title}
         disabled={disabled}
         aria-label="Task title"
-        onBlur={(e) => e.target.value.trim() && e.target.value !== task.title && update({ title: e.target.value.trim() })}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        ref={autoGrowRef}
+        onInput={(e) => autoGrow(e.currentTarget)}
+        onBlur={(e) => {
+          const value = e.target.value.replace(/\s+/g, ' ').trim();
+          if (value && value !== task.title) update({ title: value });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
       />
 
       <div className="status-steps" role="group" aria-label="Status">
@@ -535,21 +593,41 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
 }
 
 /** Compact task row used in lists across the app. */
-export function TaskRow({ task, onOpen, onToggle, showProject = true }: { task: Task; onOpen: () => void; onToggle?: (done: boolean) => void; showProject?: boolean }) {
+export function TaskRow({
+  task,
+  onOpen,
+  onToggle,
+  showProject = true,
+}: {
+  task: Task;
+  onOpen: () => void;
+  onToggle?: (done: boolean) => void | Promise<unknown>;
+  showProject?: boolean;
+}) {
+  // Ticked at once; the list's own data takes over again when the server has answered.
+  const [pending, setPending] = useState<boolean | null>(null);
+  const done = pending ?? task.status === 'done';
   return (
-    <div className={`task ${task.status === 'done' ? 'is-done' : ''}`}>
+    <div className={`task ${done ? 'is-done' : ''}`}>
       <input
         type="checkbox"
         className="task-check"
-        checked={task.status === 'done'}
-        onChange={(e) => onToggle?.(e.target.checked)}
-        aria-label={`Mark ${task.title} ${task.status === 'done' ? 'not done' : 'done'}`}
+        checked={done}
+        onChange={async (e) => {
+          setPending(e.target.checked);
+          try {
+            await onToggle?.(e.target.checked);
+          } finally {
+            setPending(null);
+          }
+        }}
+        aria-label={`Mark ${task.title} ${done ? 'not done' : 'done'}`}
         disabled={!onToggle}
       />
       <button className="task-body" onClick={onOpen}>
         <strong>{task.title}</strong>
         <small>
-          {showProject && (task.project ? <><span className={`project-dot bg-${task.project.color}`} />{task.project.name}</> : 'Personal')}
+          {showProject && (task.project ? <span className="task-project"><span className={`project-dot bg-${task.project.color}`} /><span className="task-project-name">{task.project.name}</span></span> : 'Personal')}
           {task.status !== 'todo' && task.status !== 'done' && <StatusPill status={task.status} />}
           <LabelChips labels={task.labels} />
           {task.priority === 'urgent' || task.priority === 'high' ? <span className={`pill prio-${task.priority}`}>{task.priority}</span> : null}

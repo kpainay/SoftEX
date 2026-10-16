@@ -27,6 +27,8 @@ Küü keeps its SQLite database and uploads in `/app/server/data`. Without a vol
 1. Open the service, then **right-click the canvas → Volume** (or press `⌘K` / `Ctrl+K` and choose *Volume*).
 2. Attach it to the Küü service with the mount path **`/app/server/data`**.
 
+Küü checks this when it starts: on Railway, with the built-in database and no volume at `/app/server/data`, it **refuses to start** and the deploy logs say *Refusing to start: … would be erased on the next deploy*. Railway keeps the previous deployment running, so nothing is lost; add the volume and redeploy. (For a throwaway demo you can set `SOFTEX_ALLOW_EPHEMERAL_STORAGE=true` to start anyway.)
+
 ## 3. Generate a public address
 
 In the service, go to **Settings → Networking → Generate Domain**. When Railway asks for the port, enter **`4000`** (the `PORT` variable in step 4 pins it). Railway gives you an address like `softex-production.up.railway.app`.
@@ -240,7 +242,8 @@ Railway deploys new versions without downtime once the service has no volume.
 | --- | --- |
 | Build fails mentioning `VOLUME` | You are on an old commit; the Dockerfile no longer declares one. Pull the latest `main`. |
 | Logs: *Küü cannot write to its data directory* | Set `RAILWAY_RUN_UID=0`, and check that the volume's mount path is `/app/server/data`. |
-| Everything disappears after a deploy | The volume is missing or mounted at the wrong path. |
+| Logs: *Refusing to start: … would be erased on the next deploy* | No volume is attached, or it is mounted somewhere other than `/app/server/data`. Attach one at that path (step 2) and redeploy. |
+| Everything disappears after a deploy | The volume is missing or mounted at the wrong path. Current versions refuse to start in that case instead; update to the latest `main`. |
 | Signed out immediately after signing in | `SOFTEX_SECURE_COOKIES=true` while opening the site over `http://`. Use the `https://` address. |
 | Email links point to `localhost` | Set `SOFTEX_PUBLIC_URL`. |
 | *Cross-origin request rejected* | You're opening the app on a different address than it's being served from. Use the address in `SOFTEX_PUBLIC_URL`. |

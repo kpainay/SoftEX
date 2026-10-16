@@ -1,8 +1,9 @@
-import { createHmac, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, createHmac, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { createServer as createHttpServer, type IncomingMessage, type Server } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { deflateRawSync } from 'node:zlib';
+import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { queueDigests } from '../src/mailer.js';
 import { flushJobs, invite, registerOwner, setup, type TestEnv } from './helpers.js';
@@ -310,6 +311,48 @@ describe('single sign-on (OIDC)', () => {
     // Owners keep a password fallback so a broken IdP cannot lock the workspace out.
     expect((await env.agent().post('/api/auth/login').send({ email: owner.email, password: 'password123' })).status).toBe(200);
   });
+
+  it('hands sign-in back to the phone app with a one-time code bound to its PKCE verifier', async () => {
+    env = setup();
+    const idp = await fakeIdp({ email: 'sam@acme.example' });
+    const owner = await registerOwner(env);
+    await owner.agent.put('/api/admin/sso').send({ enabled: true, issuer: idp.issuer, clientId: 'softex', clientSecret: 's3cret', domain: 'acme.example' });
+    const verifier = randomBytes(32).toString('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const browser = env.agent();
+    expect((await browser.get('/api/auth/sso/start').query({ email: 'sam@acme.example', client: 'mobile' })).status).toBe(400);
+    const start = await browser.get('/api/auth/sso/start').query({ email: 'sam@acme.example', client: 'mobile', challenge });
+    const authorize = new URL(start.headers.location);
+    idp.rememberNonce('the-code', authorize.searchParams.get('nonce')!);
+    const cb = await browser.get('/api/auth/sso/callback').query({ code: 'the-code', state: authorize.searchParams.get('state') });
+    const back = new URL(cb.headers.location);
+    expect(`${back.protocol}//${back.host}`).toBe('kuu://sso');
+    const code = back.searchParams.get('code')!;
+    // The browser itself is not signed in; only the app can finish.
+    expect((await browser.get('/api/me')).status).toBe(401);
+
+    const app = () => request(env.softex.app).post('/api/auth/mobile/exchange').set('x-kuu-client', 'mobile');
+    expect((await app().send({ code, verifier: randomBytes(32).toString('base64url') })).status).toBe(400);
+    // A wrong verifier burns the code, so an intercepted code is useless.
+    expect((await app().send({ code, verifier })).status).toBe(400);
+
+    const again = await browser.get('/api/auth/sso/start').query({ email: 'sam@acme.example', client: 'mobile', challenge });
+    const auth2 = new URL(again.headers.location);
+    idp.rememberNonce('code-2', auth2.searchParams.get('nonce')!);
+    const cb2 = await browser.get('/api/auth/sso/callback').query({ code: 'code-2', state: auth2.searchParams.get('state') });
+    const code2 = new URL(cb2.headers.location).searchParams.get('code')!;
+    const ok = await app().send({ code: code2, verifier });
+    expect(ok.status).toBe(200);
+    expect(ok.body.token).toBe(ok.headers['x-kuu-session']);
+    const me = await request(env.softex.app).get('/api/me').set('Authorization', `Bearer ${ok.body.token}`);
+    expect(me.body.user.email).toBe('sam@acme.example');
+    expect((await app().send({ code: code2, verifier })).status).toBe(400);
+
+    // Failures go back to the app too.
+    const bad = await browser.get('/api/auth/sso/start').query({ email: 'sam@acme.example', client: 'mobile', challenge });
+    const cb3 = await browser.get('/api/auth/sso/callback').query({ error: 'access_denied', state: new URL(bad.headers.location).searchParams.get('state') });
+    expect(cb3.headers.location).toMatch(/^kuu:\/\/sso\?error=access_denied/);
+  });
 });
 
 describe('governed AI assistance', () => {
@@ -361,12 +404,32 @@ describe('governed AI assistance', () => {
 });
 
 describe('abuse protection', () => {
-  it('rate limits the API per client', async () => {
-    env = setup({ rateLimitPerMinute: 5 });
-    const { agent } = await registerOwner(env); // 1 request
-    for (let i = 0; i < 4; i++) expect((await agent.get('/api/me')).status).toBe(200);
-    const limited = await agent.get('/api/me');
+  it('rate limits the API per signed-in session, with a higher ceiling per address', async () => {
+    env = setup({ rateLimitPerMinute: 5, rateLimitPerAddressPerMinute: 12 });
+    const owner = await registerOwner(env); // signed out, so counted against the address
+    for (let i = 0; i < 5; i++) expect((await owner.agent.get('/api/me')).status).toBe(200);
+    const limited = await owner.agent.get('/api/me');
     expect(limited.status).toBe(429);
     expect(limited.body.error).toContain('Too many requests');
+
+    // Someone else signed in from the same address (an office, a mobile network) is not held back by it.
+    const other = await registerOwner(env, 'Second');
+    expect((await other.agent.get('/api/me')).status).toBe(200);
+
+    // But one address cannot exceed its own ceiling, even by inventing new sessions. 9 requests
+    // have come from this address so far; the ceiling is 12.
+    const forged = (n: number) => env.agent().get('/api/me').set('Cookie', `softex_session=made-up-${n}`);
+    for (let i = 0; i < 3; i++) expect((await forged(i)).status).toBe(401);
+    expect((await forged(99)).status).toBe(429);
+  });
+
+  it('counts every spelling of one session token as the same session', async () => {
+    env = setup({ rateLimitPerMinute: 3, rateLimitPerAddressPerMinute: 100 });
+    const res = await env.agent().post('/api/auth/register').send({ name: 'Owner', email: 'encoded@example.com', password: 'password123', workspaceName: 'Encoded Co', acceptTerms: true });
+    const token = /softex_session=([^;]+)/.exec(String(res.headers['set-cookie']))![1];
+    // Percent-encode a different character each time: authentication decodes them all to the same token.
+    const spelled = (i: number) => token.slice(0, i) + `%${token.charCodeAt(i).toString(16).toUpperCase()}` + token.slice(i + 1);
+    for (let i = 0; i < 3; i++) expect((await env.agent().get('/api/me').set('Cookie', `softex_session=${spelled(i)}`)).status).toBe(200);
+    expect((await env.agent().get('/api/me').set('Cookie', `softex_session=${spelled(3)}`)).status).toBe(429);
   });
 });

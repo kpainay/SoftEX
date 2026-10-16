@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { createHash } from 'node:crypto';
 import compression from 'compression';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
@@ -18,7 +19,7 @@ import { productivityRouter } from './routes/productivity.js';
 import { scimAdminRouter, scimRouter } from './routes/scim.js';
 import { billingRouter, operatorRouter, publicBillingRouter } from './routes/billing.js';
 import { RealtimeHub } from './realtime.js';
-import { webPushTransport, type PushTransport } from './push.js';
+import { expoPushTransport, webPushTransport, type MobilePushTransport, type PushTransport } from './push.js';
 import type { BackupConfig } from './backup.js';
 import { pushRouter } from './routes/push.js';
 import { embedsRouter } from './routes/embeds.js';
@@ -31,7 +32,7 @@ import { canViewDoc } from './collab.js';
 import { createWhisperClient, type SpeechToText } from './stt.js';
 import { recordingsRouter } from './routes/recordings.js';
 import { boardsRouter } from './routes/boards.js';
-import { authRouter, authenticate, meRouter, requireAuth } from './routes/auth.js';
+import { authRouter, authenticate, meRouter, requireAuth, tokenFrom } from './routes/auth.js';
 import { channelsRouter } from './routes/channels.js';
 import { homeRouter } from './routes/home.js';
 import { knowledgeRouter } from './routes/knowledge.js';
@@ -55,8 +56,10 @@ export interface AppOptions extends Partial<Omit<Config, 'billing' | 'backups'>>
   s3?: S3Settings;
   files?: FileStore;
   staticDir?: string;
-  /** Requests per minute per client address across the API (default 1200). */
+  /** Requests per minute per signed-in session (or per address when signed out) across the API (default 1200). */
   rateLimitPerMinute?: number;
+  /** Requests per minute per client address across all its sessions (default five times the per-session limit). */
+  rateLimitPerAddressPerMinute?: number;
   /** Start the in-process email/webhook/digest scheduler (default true; tests drive jobs manually). */
   startJobs?: boolean;
   anthropicApiKey?: string;
@@ -71,6 +74,10 @@ export interface AppOptions extends Partial<Omit<Config, 'billing' | 'backups'>>
   sttLanguage?: string;
   /** Web Push sender (default: the real push services); false turns push off. */
   push?: PushTransport | false;
+  /** Phone-app push sender (default: the Expo push service); false turns it off. */
+  mobilePush?: MobilePushTransport | false;
+  /** Optional Expo access token for Expo's enhanced push security. */
+  expoAccessToken?: string;
 }
 
 export interface SoftexApp {
@@ -129,6 +136,7 @@ export function createApp(options: AppOptions = {}): SoftexApp {
     config,
     mail: options.mail,
     push: options.push === false ? undefined : (options.push ?? webPushTransport),
+    mobilePush: options.mobilePush === false ? undefined : (options.mobilePush ?? expoPushTransport(options.expoAccessToken)),
     ai: options.ai ?? (options.anthropicApiKey ? createClaudeClient(options.anthropicApiKey, config.aiModel) : undefined),
     stt: options.stt ?? (options.sttUrl ? createWhisperClient({ url: options.sttUrl, apiKey: options.sttApiKey, model: options.sttModel, language: options.sttLanguage }) : undefined),
   };
@@ -172,15 +180,26 @@ export function createApp(options: AppOptions = {}): SoftexApp {
   // (which polls and reacts to live events), strict enough to blunt floods and scraping.
   // Smaller responses for low-bandwidth connections (§2 goal 6).
   app.use(compression());
+  // Counted per signed-in session, not per address: a whole office, or a mobile network that puts
+  // many phones behind one public address, would otherwise share one allowance. A higher ceiling
+  // per address still caps floods, including clients that invent session cookies to dodge the limit.
+  const perSession = options.rateLimitPerMinute ?? 1200;
+  const limited = { error: 'Too many requests. Please slow down and try again shortly.' };
+  const addressKey = (req: express.Request) => ipKeyGenerator(req.ip ?? '');
+  const sessionKey = (req: express.Request) => {
+    // Same parsing as authentication, so every spelling of one token shares one allowance.
+    let token: string | undefined;
+    try {
+      token = tokenFrom(req);
+    } catch {
+      token = undefined; // a malformed cookie is not a session; it counts against the address
+    }
+    return token ? `s:${createHash('sha256').update(token).digest('base64url')}` : `a:${addressKey(req)}`;
+  };
   app.use(
     ['/api', '/scim'],
-    rateLimit({
-      windowMs: 60_000,
-      limit: options.rateLimitPerMinute ?? 1200,
-      standardHeaders: 'draft-8',
-      legacyHeaders: false,
-      message: { error: 'Too many requests. Please slow down and try again shortly.' },
-    }),
+    rateLimit({ windowMs: 60_000, limit: options.rateLimitPerAddressPerMinute ?? perSession * 5, keyGenerator: addressKey, standardHeaders: false, legacyHeaders: false, message: limited }),
+    rateLimit({ windowMs: 60_000, limit: perSession, keyGenerator: sessionKey, standardHeaders: 'draft-8', legacyHeaders: false, message: limited }),
   );
   app.use(express.json({ limit: '1mb' }));
 

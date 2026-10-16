@@ -167,7 +167,7 @@ export function Knowledge() {
           {!files.data && !files.error && <Loading />}
           {files.data && !fileList.length && <Empty icon="file" title="No files here" />}
           {fileList.length > 0 && (
-            <table className="table card">
+            <div className="scroll-x"><table className="table card">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -191,7 +191,7 @@ export function Knowledge() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </>
       )}

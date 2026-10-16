@@ -6,7 +6,35 @@ export class ApiError extends Error {
   }
 }
 
+// ---------- Saves in flight (drives the thin progress bar at the top of the app) ----------
+
+/** Writes that happen in the background, or that show their own progress (a message's "Sending…"). */
+const QUIET_WRITE = /\/(read|read-group|presence|update|sync|typing)$|^\/channels\/[^/]+\/messages$|^\/collab\//;
+let saving = 0;
+const savingListeners = new Set<() => void>();
+const setSaving = (delta: number) => {
+  saving += delta;
+  savingListeners.forEach((l) => l());
+};
+export const savingNow = {
+  get: () => saving,
+  subscribe: (fn: () => void) => {
+    savingListeners.add(fn);
+    return () => void savingListeners.delete(fn);
+  },
+};
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const tracked = method !== 'GET' && !QUIET_WRITE.test(path.split('?')[0]);
+  if (tracked) setSaving(1);
+  try {
+    return await send<T>(method, path, body);
+  } finally {
+    if (tracked) setSaving(-1);
+  }
+}
+
+async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, credentials: 'same-origin', headers: {} };
   if (body instanceof FormData) {
     init.body = body;
@@ -310,6 +338,10 @@ export interface Notification {
   urgent: number;
   read_at: string | null;
   created_at: string;
+  /** What it is about ("/channels/<id>", "/tasks/<id>"); unread updates about one thing come as a single row. */
+  group_key?: string;
+  /** How many unread updates this row stands for (1 when it isn't grouped). */
+  group_count?: number;
 }
 
 export interface Meeting {

@@ -3,12 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { restoreOnStartup } from './backup.js';
-import { useJsonLogs } from './logging.js';
-import { GcsFileStore, LocalFileStore, S3FileStore, type FileStore, type S3Settings } from './storage.js';
-
-// Cloud Run sets K_SERVICE. There, structured logs are the default so Cloud Logging shows real severities.
-const onCloudRun = !!process.env.K_SERVICE;
-if ((process.env.SOFTEX_LOG_FORMAT ?? (onCloudRun ? 'json' : 'text')) === 'json') useJsonLogs();
+import { ephemeralStorageProblem } from './persistence.js';
+import { LocalFileStore, S3FileStore, type S3Settings } from './storage.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -96,6 +92,14 @@ const files: FileStore = gcsBucket
 const dbPath = process.env.SOFTEX_DB ?? join(dataDir, 'softex.db');
 const databaseUrl = process.env.SOFTEX_DATABASE_URL || undefined;
 const backupDir = process.env.SOFTEX_BACKUP_DIR || join(dataDir, 'backups');
+const uploadDir = join(dataDir, 'uploads');
+
+// Never start somewhere the data would silently vanish on the next deploy.
+const storageProblem = ephemeralStorageProblem(process.env, { dataDir, dbPath, uploadDir, uploadsOnS3: !!s3, usingPostgres: !!databaseUrl });
+if (storageProblem) {
+  console.error(storageProblem);
+  process.exit(1);
+}
 
 // Restoring a backup (SOFTEX_RESTORE_BACKUP=<file name>) happens before the database is opened.
 if (process.env.SOFTEX_RESTORE_BACKUP) {
@@ -104,7 +108,7 @@ if (process.env.SOFTEX_RESTORE_BACKUP) {
     process.exit(1);
   }
   try {
-    await restoreOnStartup({ dbPath, backupName: process.env.SOFTEX_RESTORE_BACKUP, files, backupDir });
+    await restoreOnStartup({ dbPath, backupName: process.env.SOFTEX_RESTORE_BACKUP, files: s3 ? new S3FileStore(s3) : new LocalFileStore(uploadDir), backupDir });
   } catch (error) {
     console.error(`Küü could not restore the backup: ${(error as Error).message}`);
     process.exit(1);
@@ -129,8 +133,8 @@ if (onCloudRun) {
 const { server, ready, close } = createApp({
   dbPath,
   databaseUrl,
-  files,
-  uploadDir: join(dataDir, 'uploads'),
+  s3,
+  uploadDir,
   backups: {
     enabled: process.env.SOFTEX_BACKUPS !== 'off',
     dir: backupDir,
@@ -138,6 +142,8 @@ const { server, ready, close } = createApp({
     everyHours: num('SOFTEX_BACKUP_HOURS'),
   },
   push: process.env.SOFTEX_PUSH === 'off' ? false : undefined,
+  mobilePush: process.env.SOFTEX_MOBILE_PUSH === 'off' ? false : undefined,
+  expoAccessToken: process.env.EXPO_ACCESS_TOKEN || undefined,
   vapid: {
     publicKey: process.env.SOFTEX_VAPID_PUBLIC_KEY || undefined,
     privateKey: process.env.SOFTEX_VAPID_PRIVATE_KEY || undefined,
