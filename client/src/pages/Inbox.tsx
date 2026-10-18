@@ -3,9 +3,13 @@ import { Link } from 'react-router-dom';
 import { api, qs, type Notification } from '../api';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { Empty, ErrorState, Loading, Tabs, useAction } from '../components/ui';
+import { EmptyState, ErrorState, IconButton, LoadingRows, Page, PageHeader, TabBar, useAction } from '@/components/kit';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { plainMentions, timeAgo } from '../format';
 import { useApi, useRealtime } from '../hooks';
+import { Button } from '@/components/ui/button';
 
 type Filter = 'all' | 'unread' | 'mentions' | 'assigned' | 'meetings';
 export const KIND_ICON: Record<string, string> = {
@@ -64,9 +68,9 @@ export function GroupCount({ n }: { n: Notification }) {
   const count = n.group_count ?? 1;
   if (count < 2 || n.read_at) return null;
   return (
-    <b className="group-count" aria-label={`${count} unread updates`} title={`${count} unread updates`}>
+    <Badge className="group-count ml-1.5 h-4 min-w-4 px-1 align-middle text-[10px] tabular-nums" aria-label={`${count} unread updates`} title={`${count} unread updates`}>
       {count > 99 ? '99+' : count}
-    </b>
+    </Badge>
   );
 }
 
@@ -89,51 +93,56 @@ export function Inbox() {
   };
 
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>Inbox</h1>
-          <p className="muted">Mentions, assignments, reviews, meeting updates and approvals in one place.</p>
-        </div>
-        <button
-          className="btn"
-          onClick={async () => {
-            await act(() => api.post('/notifications/read-all'), 'All caught up');
-            reload();
-          }}
-        >
-          <Icon name="check" size={16} /> Mark all read
-        </button>
-      </div>
+    <Page width="narrow">
+      <PageHeader
+        title="Inbox"
+        description="Mentions, assignments, reviews, meeting updates and approvals in one place."
+        actions={
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await act(() => api.post('/notifications/read-all'), 'All caught up');
+              reload();
+            }}
+          >
+            <Icon name="check" data-icon="inline-start" /> Mark all read
+          </Button>
+        }
+      />
       {digest && digest.length > 0 && (
-        <div className="digest" aria-label="Last 24 hours">
-          <span className="muted small">Last 24 hours:</span>
+        <div className="digest flex flex-wrap items-center gap-1.5" aria-label="Last 24 hours" role="group">
+          <span className="mr-1 text-xs text-muted-foreground">Last 24 hours:</span>
           {digest.map((d) => (
-            <button
+            <Badge
               key={d.kind}
-              type="button"
-              className={`pill pill-button ${kind === d.kind ? 'active' : ''}`}
-              aria-pressed={kind === d.kind}
-              onClick={() => {
-                setKind(kind === d.kind ? null : d.kind);
-                setFilter('all');
-              }}
+              variant={kind === d.kind ? 'default' : 'outline'}
+              className="pill-button h-6 cursor-pointer gap-1 px-2.5"
+              render={
+                <button
+                  type="button"
+                  aria-pressed={kind === d.kind}
+                  onClick={() => {
+                    setKind(kind === d.kind ? null : d.kind);
+                    setFilter('all');
+                  }}
+                />
+              }
             >
-              <Icon name={KIND_ICON[d.kind] ?? 'bell'} size={12} /> {kindLabel(d.kind, d.count)}
+              <Icon name={KIND_ICON[d.kind] ?? 'bell'} /> {kindLabel(d.kind, d.count)}
               {d.unread ? ` · ${d.unread} new` : ''}
-            </button>
+            </Badge>
           ))}
         </div>
       )}
       {kind && (
-        <p className="filter-note">
+        <p className="text-sm text-muted-foreground">
           Showing {KIND_LABEL[kind]?.[1] ?? kind} only.{' '}
-          <button type="button" className="link-btn" onClick={() => setKind(null)}>
+          <Button variant="link" size="inline" type="button" onClick={() => setKind(null)}>
             Show everything
-          </button>
+          </Button>
         </p>
       )}
-      <Tabs
+      <TabBar
         value={filter}
         onChange={(f) => {
           setFilter(f);
@@ -148,36 +157,51 @@ export function Inbox() {
         ]}
       />
       {error && <ErrorState error={error} retry={reload} />}
-      {!data && !error && <Loading />}
+      {!data && !error && <LoadingRows rows={6} />}
       {data && !data.notifications.length && (
-        <Empty icon="inbox" title="Nothing here">
+        <EmptyState icon="inbox" title="Nothing here">
           You are all caught up.
-        </Empty>
+        </EmptyState>
       )}
-      <ul className="inbox-list">
-        {data?.notifications.map((n) => (
-          <li key={n.id} className={`inbox-item ${n.read_at ? '' : 'unread'} ${n.urgent ? 'urgent' : ''}`}>
-            {n.actor_name ? (
-              <Avatar user={{ id: n.actor_id ?? undefined, name: n.actor_name, color: n.actor_color }} size="md" />
-            ) : (
-              <span className="activity-icon">
-                <Icon name={KIND_ICON[n.kind] ?? 'bell'} size={16} />
-              </span>
-            )}
-            <Link to={n.link || '/inbox'} onClick={() => !n.read_at && markRead(n)} className="inbox-body">
-              <span className="inbox-title">
-                <Icon name={KIND_ICON[n.kind] ?? 'bell'} size={14} /> {n.title}
-                <GroupCount n={n} />
-              </span>
-              {n.body && <span className="muted">{plainMentions(n.body)}</span>}
-              <time>{timeAgo(n.created_at)}</time>
-            </Link>
-            <button className="icon-btn" onClick={() => markRead(n, !n.read_at)} aria-label={n.read_at ? 'Mark as unread' : 'Mark as read'} title={n.read_at ? 'Mark as unread' : 'Mark as read'}>
-              <Icon name={n.read_at ? 'bell' : 'check'} size={16} />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+      {!!data?.notifications.length && (
+        <Card className="gap-0 py-1.5">
+          <ul className="flex flex-col">
+            {data.notifications.map((n) => (
+              <li
+                key={n.id}
+                className={cn(
+                  'inbox-item group/row mx-1.5 flex items-start gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/60',
+                  !n.read_at && 'unread bg-accent/40',
+                  n.urgent && 'border-l-2 border-destructive',
+                )}
+              >
+                {n.actor_name ? (
+                  <Avatar user={{ id: n.actor_id ?? undefined, name: n.actor_name, color: n.actor_color }} size="md" />
+                ) : (
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <Icon name={KIND_ICON[n.kind] ?? 'bell'} size={16} />
+                  </span>
+                )}
+                <Link to={n.link || '/inbox'} onClick={() => !n.read_at && markRead(n)} className="flex min-w-0 flex-1 flex-col gap-0.5 outline-none focus-visible:underline">
+                  <span className={cn('flex items-center gap-1.5 text-sm', !n.read_at && 'font-semibold')}>
+                    <Icon name={KIND_ICON[n.kind] ?? 'bell'} size={14} className="shrink-0 text-muted-foreground" />
+                    <span className="min-w-0">
+                      {n.title}
+                      <GroupCount n={n} />
+                    </span>
+                  </span>
+                  {n.body && <span className="line-clamp-2 text-sm text-muted-foreground">{plainMentions(n.body)}</span>}
+                  <time className="text-xs text-muted-foreground">{timeAgo(n.created_at)}</time>
+                </Link>
+                {!n.read_at && <i className="mt-2 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />}
+                <IconButton label={n.read_at ? 'Mark as unread' : 'Mark as read'} size="icon-sm" onClick={() => markRead(n, !n.read_at)}>
+                  <Icon name={n.read_at ? 'bell' : 'check'} />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </Page>
   );
 }

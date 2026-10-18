@@ -6,10 +6,41 @@ import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { WhenModal } from '../components/Later';
 import { UpgradeNotice, usePlan } from '../components/Plan';
-import { Empty, ErrorState, Field, Loading, Modal, Tabs, useAction } from '../components/ui';
+import { Bar, BarChart, XAxis } from 'recharts';
+import {
+  EmptyState,
+  ErrorState,
+  FilterBar,
+  FormField,
+  IconButton,
+  Loading,
+  LoadingRows,
+  Modal,
+  Page,
+  PageHeader,
+  Pill,
+  StatCard,
+  StatGrid,
+  SwitchField,
+  TabBar,
+  toneFor,
+  useAction,
+  useConfirm,
+} from '@/components/kit';
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { FieldLegend, FieldSet } from '@/components/ui/field';
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item';
+import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { dateTime, plainMentions, STATUS_LABEL, timeAgo } from '../format';
 import { useApi, useRealtime } from '../hooks';
 import { useSession } from '../session';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 const DAY = 86_400_000;
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -38,15 +69,10 @@ export function Workload() {
   const { has } = usePlan();
   if (!has('planning')) {
     return (
-      <div className="page">
-        <div className="page-head">
-          <div>
-            <p className="eyebrow">PLANNING</p>
-            <h1>Workload</h1>
-          </div>
-        </div>
+      <Page>
+        <PageHeader eyebrow="Planning" title="Workload" />
         <UpgradeNotice feature="planning" />
-      </div>
+      </Page>
     );
   }
   return <WorkloadView />;
@@ -68,120 +94,138 @@ function WorkloadView() {
   // Without estimates, assume a task is about a day's work so the heat map still says something useful.
   const load = (b: { tasks: number; hours: number }) => (b.hours || b.tasks * 6) / (data?.capacity_hours_per_week ?? 32);
 
+  const levelClass = ['bg-success-soft text-success', 'bg-success/25 text-success', 'bg-warning-soft text-warning', 'bg-destructive/15 text-destructive'];
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <p className="eyebrow">PLANNING</p>
-          <h1>Workload</h1>
-          <p className="muted">Open tasks per person by due week. Use it to spot overload before it becomes a missed deadline.</p>
-        </div>
-      </div>
-      <div className="row-gap wrap toolbar">
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Project">
-          <option value="">All projects</option>
+    <Page width="full" className="max-w-7xl">
+      <PageHeader eyebrow="Planning" title="Workload" description="Open tasks per person by due week. Use it to spot overload before it becomes a missed deadline." />
+      <FilterBar>
+        <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Project">
+          <NativeSelectOption value="">All projects</NativeSelectOption>
           {(projects ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
+            <NativeSelectOption key={p.id} value={p.id}>
               {p.name}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-        <select value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Team">
-          <option value="">Everyone</option>
+        </NativeSelect>
+        <NativeSelect value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Team">
+          <NativeSelectOption value="">Everyone</NativeSelectOption>
           {(teams ?? []).map((t) => (
-            <option key={t.id} value={t.id}>
+            <NativeSelectOption key={t.id} value={t.id}>
               {t.name}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-        <select value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} aria-label="Weeks shown">
+        </NativeSelect>
+        <NativeSelect value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} aria-label="Weeks shown">
           {[2, 4, 6, 8, 12].map((n) => (
-            <option key={n} value={n}>
+            <NativeSelectOption key={n} value={n}>
               {n} weeks
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-        <span className="grow" />
-        <span className="legend">
-          <i className="load-0" /> Light <i className="load-2" /> Full <i className="load-3" /> Over capacity
+        </NativeSelect>
+        <span className="flex-1" />
+        <span className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <i className="size-3 rounded bg-success-soft ring-1 ring-success/30" /> Light
+          </span>
+          <span className="flex items-center gap-1.5">
+            <i className="size-3 rounded bg-warning-soft ring-1 ring-warning/30" /> Full
+          </span>
+          <span className="flex items-center gap-1.5">
+            <i className="size-3 rounded bg-destructive/15 ring-1 ring-destructive/30" /> Over capacity
+          </span>
         </span>
-      </div>
+      </FilterBar>
       {error && <ErrorState error={error} retry={reload} />}
       {!data && !error && <Loading />}
-      {data && !data.rows.length && <Empty icon="users" title="No one has open work here" />}
+      {data && !data.rows.length && <EmptyState icon="users" title="No one has open work here" />}
       {data && data.rows.length > 0 && (
-        <div className="table-scroll">
-          <table className="workload">
-            <thead>
-              <tr>
-                <th scope="col">Person</th>
+        <Card className="py-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col" className="sticky left-0 z-10 bg-card">
+                  Person
+                </TableHead>
                 {keys.map((k) => (
-                  <th scope="col" key={k}>
+                  <TableHead scope="col" key={k} className={cn('text-center', k === 'overdue' && 'text-destructive')}>
                     {label(k)}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.rows.map((row) => (
-                <tr key={row.person.id}>
-                  <th scope="row">
-                    <Link to={`/people/${row.person.id}`} className="row-gap">
+                <TableRow key={row.person.id} className="hover:bg-transparent">
+                  <TableHead scope="row" className="sticky left-0 z-10 h-auto bg-card py-2">
+                    <Link to={`/people/${row.person.id}`} className="flex items-center gap-2 font-normal">
                       <Avatar user={row.person} size="sm" />
-                      <span>
-                        <strong>{row.person.name}</strong>
-                        <small className="muted">{row.total} open</small>
+                      <span className="flex flex-col">
+                        <strong className="font-medium text-foreground">{row.person.name}</strong>
+                        <span className="text-xs text-muted-foreground">{row.total} open</span>
                       </span>
                     </Link>
-                  </th>
+                  </TableHead>
                   {keys.map((k) => {
                     const b = row.buckets[k];
                     const level = k === 'unscheduled' ? 0 : Math.min(3, Math.floor(load(b) * 2.2));
                     return (
-                      <td key={k}>
+                      <TableCell key={k} className="p-1 text-center">
                         {b.tasks > 0 ? (
                           <button
-                            className={`load-cell load-${k === 'overdue' ? 'late' : level}`}
+                            className={cn(
+                              'flex h-11 w-full min-w-16 flex-col items-center justify-center rounded-lg text-sm transition-transform hover:scale-[1.03] focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none',
+                              k === 'overdue' ? 'bg-destructive text-white' : k === 'unscheduled' ? 'bg-muted text-muted-foreground' : levelClass[level],
+                            )}
                             onClick={() => setCell({ person: row.person.name, key: k, items: b.items })}
                             aria-label={`${row.person.name}, ${label(k)}: ${b.tasks} tasks`}
                           >
-                            <strong>{b.tasks}</strong>
-                            {b.hours > 0 && <small>{b.hours}h</small>}
+                            <strong className="font-semibold tabular-nums">{b.tasks}</strong>
+                            {b.hours > 0 && <span className="text-[10px] opacity-80">{b.hours}h</span>}
                           </button>
                         ) : (
-                          <span className="load-cell none">·</span>
+                          <span className="text-muted-foreground/50">·</span>
                         )}
-                      </td>
+                      </TableCell>
                     );
                   })}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       )}
       <Modal open={!!cell} onClose={() => setCell(null)} title={cell ? `${cell.person} · ${label(cell.key)}` : ''}>
-        {cell?.items.map((t) => (
-          <button
-            key={t.id}
-            className="search-result"
-            onClick={() => {
-              setCell(null);
-              openTask(t.id);
-            }}
-          >
-            <span className={`dot bg-${t.color}`} />
-            <span>
-              <strong>{t.title}</strong>
-              <small>
-                {t.project} · {t.due_date ? `due ${shortDate(t.due_date)}` : 'no due date'}
-                {t.estimate_hours ? ` · ${t.estimate_hours}h` : ''}
-              </small>
-            </span>
-          </button>
-        ))}
+        <ItemGroup className="gap-1">
+          {cell?.items.map((t) => (
+            <Item
+              key={t.id}
+              size="sm"
+              className="hover:bg-muted"
+              render={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCell(null);
+                    openTask(t.id);
+                  }}
+                />
+              }
+            >
+              <ItemMedia>
+                <span className="size-2.5 rounded-full" style={{ background: `var(--c-${t.color})` }} />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{t.title}</ItemTitle>
+                <ItemDescription>
+                  {t.project} · {t.due_date ? `due ${shortDate(t.due_date)}` : 'no due date'}
+                  {t.estimate_hours ? ` · ${t.estimate_hours}h` : ''}
+                </ItemDescription>
+              </ItemContent>
+            </Item>
+          ))}
+        </ItemGroup>
       </Modal>
-    </div>
+    </Page>
   );
 }
 
@@ -222,19 +266,20 @@ export function Later() {
     }
   });
 
+  const itemClass = 'flex items-start gap-3 rounded-xl border bg-card p-3 shadow-sm';
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <p className="eyebrow">LATER</p>
-          <h1>Reminders and scheduled messages</h1>
-          <p className="muted">Nudges for your future self, and messages that go out at a better time for the people receiving them.</p>
-        </div>
-        <button className="btn primary" onClick={() => setAdding(true)}>
-          <Icon name="plus" size={16} /> Reminder
-        </button>
-      </div>
-      <Tabs
+    <Page width="narrow">
+      <PageHeader
+        eyebrow="Later"
+        title="Reminders and scheduled messages"
+        description="Nudges for your future self, and messages that go out at a better time for the people receiving them."
+        actions={
+          <Button onClick={() => setAdding(true)}>
+            <Icon name="plus" data-icon="inline-start" /> Reminder
+          </Button>
+        }
+      />
+      <TabBar
         value={tab}
         onChange={setTab}
         tabs={[
@@ -245,31 +290,37 @@ export function Later() {
       {tab === 'reminders' && (
         <>
           {reminders.error && <ErrorState error={reminders.error} retry={reminders.reload} />}
-          {!reminders.data && !reminders.error && <Loading />}
+          {!reminders.data && !reminders.error && <LoadingRows rows={3} />}
           {reminders.data && !reminders.data.length && (
-            <Empty icon="clock" title="No reminders">
+            <EmptyState icon="clock" title="No reminders">
               Use “Remind me” on a message or task, or add a note here.
-            </Empty>
+            </EmptyState>
           )}
-          <ul className="later-list">
+          <ul className="later-list flex flex-col gap-2">
             {reminders.data?.map((r) => (
-              <li key={r.id} className="card later-item">
-                <Icon name="clock" />
-                <div className="grow">
-                  <strong>{dateTime(r.remind_at)}</strong>
-                  <p>
-                    {r.note && <span>{r.note} </span>}
-                    {r.task_id && <Link to={`/tasks/${r.task_id}`}>Task: {r.task_title}</Link>}
-                    {r.message_id && r.channel_id && <Link to={`/channels/${r.channel_id}?message=${r.message_id}`}>“{plainMentions(r.message_body ?? '').slice(0, 120)}”</Link>}
+              <li key={r.id} className={itemClass}>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                  <Icon name="clock" size={16} />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
+                  <strong className="font-semibold">{dateTime(r.remind_at)}</strong>
+                  <p className="text-muted-foreground">
+                    {r.note && <span className="text-foreground">{r.note} </span>}
+                    {r.task_id && (
+                      <Link className="text-primary hover:underline" to={`/tasks/${r.task_id}`}>
+                        Task: {r.task_title}
+                      </Link>
+                    )}
+                    {r.message_id && r.channel_id && (
+                      <Link className="text-primary hover:underline" to={`/channels/${r.channel_id}?message=${r.message_id}`}>
+                        “{plainMentions(r.message_body ?? '').slice(0, 120)}”
+                      </Link>
+                    )}
                   </p>
                 </div>
-                <button
-                  className="icon-btn"
-                  aria-label="Delete reminder"
-                  onClick={async () => (await act(() => api.del(`/reminders/${r.id}`), 'Reminder removed')) && reminders.reload()}
-                >
-                  <Icon name="trash" size={16} />
-                </button>
+                <IconButton label="Delete reminder" size="icon-sm" onClick={async () => (await act(() => api.del(`/reminders/${r.id}`), 'Reminder removed')) && reminders.reload()}>
+                  <Icon name="trash" />
+                </IconButton>
               </li>
             ))}
           </ul>
@@ -278,34 +329,39 @@ export function Later() {
       {tab === 'scheduled' && (
         <>
           {scheduled.error && <ErrorState error={scheduled.error} retry={scheduled.reload} />}
-          {!scheduled.data && !scheduled.error && <Loading />}
+          {!scheduled.data && !scheduled.error && <LoadingRows rows={3} />}
           {scheduled.data && !scheduled.data.length && (
-            <Empty icon="send" title="Nothing scheduled">
+            <EmptyState icon="send" title="Nothing scheduled">
               Write a message, then choose the clock next to Send.
-            </Empty>
+            </EmptyState>
           )}
-          <ul className="later-list">
+          <ul className="later-list flex flex-col gap-2">
             {scheduled.data?.map((s) => (
-              <li key={s.id} className={`card later-item ${s.failed_reason ? 'failed' : ''}`}>
-                <Icon name="send" />
-                <div className="grow">
-                  <strong>
-                    {dateTime(s.send_at)} · <Link to={`/channels/${s.channel_id}`}>{s.channel_kind === 'dm' ? 'Direct message' : `#${s.channel_name}`}</Link>
-                    {s.parent_id && <small className="muted"> (thread reply)</small>}
+              <li key={s.id} className={cn(itemClass, s.failed_reason && 'border-destructive/40')}>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                  <Icon name="send" size={16} />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
+                  <strong className="font-semibold">
+                    {dateTime(s.send_at)} ·{' '}
+                    <Link className="text-primary hover:underline" to={`/channels/${s.channel_id}`}>
+                      {s.channel_kind === 'dm' ? 'Direct message' : `#${s.channel_name}`}
+                    </Link>
+                    {s.parent_id && <span className="font-normal text-muted-foreground"> (thread reply)</span>}
                   </strong>
-                  <p>{plainMentions(s.body).slice(0, 280)}</p>
-                  {s.failed_reason && <p className="danger-text small">Not sent: {s.failed_reason}</p>}
+                  <p className="text-muted-foreground">{plainMentions(s.body).slice(0, 280)}</p>
+                  {s.failed_reason && <p className="text-xs text-destructive">Not sent: {s.failed_reason}</p>}
                 </div>
-                <button className="btn sm" onClick={() => setMoving(s)}>
+                <Button variant="outline" size="sm" onClick={() => setMoving(s)}>
                   Reschedule
-                </button>
-                <button
-                  className="icon-btn"
-                  aria-label="Cancel scheduled message"
+                </Button>
+                <IconButton
+                  label="Cancel scheduled message"
+                  size="icon-sm"
                   onClick={async () => (await act(() => api.del(`/scheduled-messages/${s.id}`), 'Scheduled message cancelled')) && scheduled.reload()}
                 >
-                  <Icon name="trash" size={16} />
-                </button>
+                  <Icon name="trash" />
+                </IconButton>
               </li>
             ))}
           </ul>
@@ -314,7 +370,7 @@ export function Later() {
       <WhenModal
         open={adding}
         onClose={() => setAdding(false)}
-        eyebrow="REMINDER"
+        eyebrow="Reminder"
         title="New reminder"
         confirmLabel="Set reminder"
         withNote
@@ -327,7 +383,7 @@ export function Later() {
       <WhenModal
         open={!!moving}
         onClose={() => setMoving(null)}
-        eyebrow="SEND LATER"
+        eyebrow="Send later"
         title="Reschedule message"
         confirmLabel="Reschedule"
         onPick={async (iso) => {
@@ -336,7 +392,7 @@ export function Later() {
           return ok;
         }}
       />
-    </div>
+    </Page>
   );
 }
 
@@ -422,28 +478,28 @@ export function ProjectTimeline({ projectId, milestones, canEdit }: { projectId:
   if (!tasks) return <Loading />;
 
   return (
-    <div className="timeline-wrap">
-      <div className="row-gap wrap toolbar">
-        <span className="muted small">
-          {canEdit ? 'Drag a bar to move it, or its right edge to change the due date. Click to open.' : 'Click a bar to open the task.'}
-        </span>
-        <span className="grow" />
-        <label className="check-inline">
-          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Show done
-        </label>
-      </div>
+    <div className="flex flex-col gap-3">
+      <FilterBar>
+        <span className="text-xs text-muted-foreground">{canEdit ? 'Drag a bar to move it, or its right edge to change the due date. Click to open.' : 'Click a bar to open the task.'}</span>
+        <span className="flex-1" />
+        <SwitchField label="Show done" checked={showDone} onCheckedChange={setShowDone} className="w-auto" />
+      </FilterBar>
       {!visible.length && !milestones.some((m) => m.due_date) ? (
-        <Empty icon="calendar" title="Nothing on the timeline yet">
+        <EmptyState icon="calendar" title="Nothing on the timeline yet">
           Give tasks a due date (and optionally a start date) to see them here.
-        </Empty>
+        </EmptyState>
       ) : (
         <div className="gantt" role="figure" aria-label="Project timeline">
           <div className="tl-labels">
             <div className="tl-head" />
-            {milestones.some((m) => m.due_date) && <div className="tl-row tl-label muted">Milestones</div>}
+            {milestones.some((m) => m.due_date) && <div className="tl-row tl-label text-muted-foreground">Milestones</div>}
             {visible.map((t) => (
               <button key={t.id} className="tl-row tl-label" onClick={() => openTask(t.id)} title={t.title}>
-                <span className={`dot status-${t.status}`} aria-label={STATUS_LABEL[t.status]} />
+                <span
+                  className={cn('size-2 shrink-0 rounded-full', t.status === 'done' ? 'bg-success' : t.status === 'blocked' ? 'bg-destructive' : t.status === 'in_progress' ? 'bg-info' : t.status === 'review' ? 'bg-warning' : 'bg-muted-foreground/50')}
+                  aria-label={STATUS_LABEL[t.status]}
+                  role="img"
+                />
                 <span className="ellipsis">{t.title}</span>
               </button>
             ))}
@@ -506,7 +562,7 @@ export function ProjectTimeline({ projectId, milestones, canEdit }: { projectId:
         </div>
       )}
       {undated.length > 0 && (
-        <p className="muted small pad">
+        <p className="text-xs text-muted-foreground">
           {undated.length} open task{undated.length === 1 ? ' has' : 's have'} no due date and {undated.length === 1 ? 'is' : 'are'} not shown.
         </p>
       )}
@@ -632,6 +688,7 @@ function describe(r: Rule, people: { id: string; name: string }[], channels: Cha
 
 export function ProjectAutomations({ projectId }: { projectId: string }) {
   const act = useAction();
+  const confirm = useConfirm();
   const { people } = useSession();
   const { data, error, reload } = useApi<{ can_manage: boolean; automations: Rule[] }>(`/projects/${projectId}/automations`);
   const { data: channels } = useApi<Channel[]>('/channels');
@@ -675,205 +732,216 @@ export function ProjectAutomations({ projectId }: { projectId: string }) {
   const d = editing?.draft;
 
   return (
-    <div className="automations">
-      <div className="row-gap wrap toolbar">
-        <p className="muted grow">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="min-w-0 flex-1 text-sm text-muted-foreground">
           Automations run “when this happens, do that” for tasks in this project. They act with their creator’s access, never trigger each other, and every run is logged.
         </p>
         {data.can_manage && (
-          <button className="btn primary" onClick={() => setEditing({ draft: { ...EMPTY } })}>
-            <Icon name="plus" size={16} /> New automation
-          </button>
+          <Button onClick={() => setEditing({ draft: { ...EMPTY } })}>
+            <Icon name="plus" data-icon="inline-start" /> New automation
+          </Button>
         )}
       </div>
       {!data.automations.length && (
         <>
-          <Empty icon="refresh" title="No automations yet">
+          <EmptyState icon="refresh" title="No automations yet">
             {data.can_manage ? 'Start from a template or build your own.' : 'Project managers can add automations.'}
-          </Empty>
+          </EmptyState>
           {data.can_manage && (
-            <div className="template-grid">
+            <ItemGroup className="grid gap-3 sm:grid-cols-2">
               {TEMPLATES.map((t) => (
-                <button key={t.name} className="card template" onClick={() => setEditing({ draft: { ...EMPTY, ...t.rule } })}>
-                  <strong>{t.name}</strong>
-                  <small className="muted">{t.description}</small>
-                </button>
+                <Item key={t.name} variant="outline" className="items-start hover:bg-muted" render={<button type="button" onClick={() => setEditing({ draft: { ...EMPTY, ...t.rule } })} />}>
+                  <ItemMedia variant="icon" className="size-8 rounded-lg bg-accent text-accent-foreground">
+                    <Icon name="refresh" />
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>{t.name}</ItemTitle>
+                    <ItemDescription>{t.description}</ItemDescription>
+                  </ItemContent>
+                </Item>
               ))}
-            </div>
+            </ItemGroup>
           )}
         </>
       )}
-      <ul className="rule-list">
+      <div className="flex flex-col gap-3">
         {data.automations.map((r) => (
-          <li key={r.id} className={`card rule ${r.enabled ? '' : 'disabled'}`}>
-            <div className="grow">
-              <strong>{r.name}</strong>
-              <p>{describe(r, people, channels ?? [])}</p>
-              <small className="muted">
-                Ran {r.run_count} time{r.run_count === 1 ? '' : 's'}
-                {r.last_run_at && `, last ${timeAgo(r.last_run_at)}`} · by {r.created_by?.name ?? 'a former member'}
-              </small>
-            </div>
-            <button className="btn sm" onClick={() => setRunsFor(r)}>
-              Run log
-            </button>
-            {data.can_manage && (
-              <>
-                <label className="switch" title={r.enabled ? 'Turn off' : 'Turn on'}>
-                  <input
-                    type="checkbox"
+          <Card key={r.id} size="sm" className={cn(!r.enabled && 'opacity-70')}>
+            <CardHeader>
+              <CardTitle>{r.name}</CardTitle>
+              <CardDescription className="text-foreground/80">{describe(r, people, channels ?? [])}</CardDescription>
+              {data.can_manage && (
+                <CardAction>
+                  <Switch
                     checked={r.enabled}
                     aria-label={`${r.name} enabled`}
-                    onChange={async (e) => (await act(() => api.patch(`/automations/${r.id}`, { enabled: e.target.checked }))) && reload()}
+                    onCheckedChange={async (checked) => (await act(() => api.patch(`/automations/${r.id}`, { enabled: checked }))) && reload()}
                   />
-                  <span />
-                </label>
-                <button className="icon-btn" aria-label={`Edit ${r.name}`} onClick={() => setEditing({ id: r.id, draft: toDraft(r) })}>
-                  <Icon name="edit" size={16} />
-                </button>
-                <button
-                  className="icon-btn"
-                  aria-label={`Delete ${r.name}`}
-                  onClick={async () => confirm(`Delete “${r.name}”?`) && (await act(() => api.del(`/automations/${r.id}`), 'Automation deleted')) && reload()}
-                >
-                  <Icon name="trash" size={16} />
-                </button>
-              </>
-            )}
-          </li>
+                </CardAction>
+              )}
+            </CardHeader>
+            <CardFooter className="flex-wrap gap-2">
+              <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+                Ran {r.run_count} time{r.run_count === 1 ? '' : 's'}
+                {r.last_run_at && `, last ${timeAgo(r.last_run_at)}`} · by {r.created_by?.name ?? 'a former member'}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setRunsFor(r)}>
+                Run log
+              </Button>
+              {data.can_manage && (
+                <>
+                  <IconButton label={`Edit ${r.name}`} size="icon-sm" onClick={() => setEditing({ id: r.id, draft: toDraft(r) })}>
+                    <Icon name="edit" />
+                  </IconButton>
+                  <IconButton
+                    label={`Delete ${r.name}`}
+                    size="icon-sm"
+                    onClick={async () =>
+                      (await confirm({ title: `Delete “${r.name}”?`, confirmLabel: 'Delete', destructive: true })) &&
+                      (await act(() => api.del(`/automations/${r.id}`), 'Automation deleted')) &&
+                      reload()
+                    }
+                  >
+                    <Icon name="trash" />
+                  </IconButton>
+                </>
+              )}
+            </CardFooter>
+          </Card>
         ))}
-      </ul>
+      </div>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? 'Edit automation' : 'New automation'} eyebrow="AUTOMATION" wide>
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? 'Edit automation' : 'New automation'} eyebrow="Automation" wide>
         {d && (
           <form
-            className="stack"
+            className="flex flex-col gap-3"
             onSubmit={(e) => {
               e.preventDefault();
               save();
             }}
           >
-            <Field label="Name">
-              <input value={d.name} onChange={(e) => set({ name: e.target.value })} maxLength={100} placeholder="e.g. Hand off to reviewer" />
-            </Field>
-            <fieldset className="rule-step">
-              <legend>When</legend>
-              <select value={d.triggerType} onChange={(e) => set({ triggerType: e.target.value })} aria-label="Trigger">
+            <FormField label="Name">
+              <Input value={d.name} onChange={(e) => set({ name: e.target.value })} maxLength={100} placeholder="e.g. Hand off to reviewer" />
+            </FormField>
+            <FieldSet className="gap-3 rounded-xl border p-4">
+              <FieldLegend className="mb-0 px-1">When</FieldLegend>
+              <NativeSelect value={d.triggerType} onChange={(e) => set({ triggerType: e.target.value })} aria-label="Trigger">
                 {Object.entries(TRIGGER_LABEL).map(([id, label]) => (
-                  <option key={id} value={id}>
+                  <NativeSelectOption key={id} value={id}>
                     {label}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
               {d.triggerType === 'task.status_changed' && (
-                <div className="row-gap wrap">
-                  <Field label="From">
-                    <select value={d.fromStatus} onChange={(e) => set({ fromStatus: e.target.value })}>
-                      <option value="">Any status</option>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField label="From">
+                    <NativeSelect value={d.fromStatus} onChange={(e) => set({ fromStatus: e.target.value })}>
+                      <NativeSelectOption value="">Any status</NativeSelectOption>
                       {Object.entries(STATUS_LABEL).map(([id, l]) => (
-                        <option key={id} value={id}>
+                        <NativeSelectOption key={id} value={id}>
                           {l}
-                        </option>
+                        </NativeSelectOption>
                       ))}
-                    </select>
-                  </Field>
-                  <Field label="To">
-                    <select value={d.toStatus} onChange={(e) => set({ toStatus: e.target.value })}>
-                      <option value="">Any status</option>
+                    </NativeSelect>
+                  </FormField>
+                  <FormField label="To">
+                    <NativeSelect value={d.toStatus} onChange={(e) => set({ toStatus: e.target.value })}>
+                      <NativeSelectOption value="">Any status</NativeSelectOption>
                       {Object.entries(STATUS_LABEL).map(([id, l]) => (
-                        <option key={id} value={id}>
+                        <NativeSelectOption key={id} value={id}>
                           {l}
-                        </option>
+                        </NativeSelectOption>
                       ))}
-                    </select>
-                  </Field>
+                    </NativeSelect>
+                  </FormField>
                 </div>
               )}
-              <Field label="Only for priority">
-                <select value={d.priorityFilter} onChange={(e) => set({ priorityFilter: e.target.value })}>
-                  <option value="">Any priority</option>
+              <FormField label="Only for priority">
+                <NativeSelect value={d.priorityFilter} onChange={(e) => set({ priorityFilter: e.target.value })}>
+                  <NativeSelectOption value="">Any priority</NativeSelectOption>
                   {['low', 'medium', 'high', 'urgent'].map((p) => (
-                    <option key={p} value={p}>
+                    <NativeSelectOption key={p} value={p}>
                       {p}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
-              </Field>
-            </fieldset>
-            <fieldset className="rule-step">
-              <legend>Then</legend>
-              <select value={d.actionType} onChange={(e) => set({ actionType: e.target.value })} aria-label="Action">
+                </NativeSelect>
+              </FormField>
+            </FieldSet>
+            <FieldSet className="gap-3 rounded-xl border p-4">
+              <FieldLegend className="mb-0 px-1">Then</FieldLegend>
+              <NativeSelect value={d.actionType} onChange={(e) => set({ actionType: e.target.value })} aria-label="Action">
                 {Object.entries(ACTION_LABEL).map(([id, label]) => (
-                  <option key={id} value={id}>
+                  <NativeSelectOption key={id} value={id}>
                     {label}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
               {(d.actionType === 'assign' || d.actionType === 'notify') && (
-                <div className="row-gap wrap">
-                  <Field label={d.actionType === 'assign' ? 'Assign to' : 'Who'}>
-                    <select value={d.target} onChange={(e) => set({ target: e.target.value })}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField label={d.actionType === 'assign' ? 'Assign to' : 'Who'}>
+                    <NativeSelect value={d.target} onChange={(e) => set({ target: e.target.value })}>
                       {(d.actionType === 'assign' ? ['project_owner', 'user'] : ['owner', 'reviewer', 'project_owner', 'user']).map((t) => (
-                        <option key={t} value={t}>
+                        <NativeSelectOption key={t} value={t}>
                           {TARGET_LABEL[t]}
-                        </option>
+                        </NativeSelectOption>
                       ))}
-                    </select>
-                  </Field>
+                    </NativeSelect>
+                  </FormField>
                   {(d.target === 'user' || (d.actionType === 'assign' && d.target !== 'project_owner')) && (
-                    <Field label="Person">
-                      <select value={d.userId} onChange={(e) => set({ userId: e.target.value })} required>
-                        <option value="">Choose…</option>
+                    <FormField label="Person">
+                      <NativeSelect value={d.userId} onChange={(e) => set({ userId: e.target.value })} required>
+                        <NativeSelectOption value="">Choose…</NativeSelectOption>
                         {people.map((p) => (
-                          <option key={p.id} value={p.id}>
+                          <NativeSelectOption key={p.id} value={p.id}>
                             {p.name}
-                          </option>
+                          </NativeSelectOption>
                         ))}
-                      </select>
-                    </Field>
+                      </NativeSelect>
+                    </FormField>
                   )}
                 </div>
               )}
               {d.actionType === 'set_priority' && (
-                <Field label="Priority">
-                  <select value={d.priority} onChange={(e) => set({ priority: e.target.value })}>
+                <FormField label="Priority">
+                  <NativeSelect value={d.priority} onChange={(e) => set({ priority: e.target.value })}>
                     {['low', 'medium', 'high', 'urgent'].map((p) => (
-                      <option key={p} value={p}>
+                      <NativeSelectOption key={p} value={p}>
                         {p}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
-                </Field>
+                  </NativeSelect>
+                </FormField>
               )}
               {d.actionType === 'post_message' && (
-                <Field label="Channel" hint="Public channels, or private channels that belong to this project.">
-                  <select value={d.channelId} onChange={(e) => set({ channelId: e.target.value })} required>
-                    <option value="">Choose…</option>
+                <FormField label="Channel" hint="Public channels, or private channels that belong to this project.">
+                  <NativeSelect value={d.channelId} onChange={(e) => set({ channelId: e.target.value })} required>
+                    <NativeSelectOption value="">Choose…</NativeSelectOption>
                     {postable.map((c) => (
-                      <option key={c.id} value={c.id}>
+                      <NativeSelectOption key={c.id} value={c.id}>
                         #{c.name}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
-                </Field>
+                  </NativeSelect>
+                </FormField>
               )}
               {(d.actionType === 'notify' || d.actionType === 'post_message') && (
-                <Field label="Message" hint="Placeholders: {{task}}, {{project}}, {{status}}, {{due}}, {{link}}">
-                  <textarea rows={2} value={d.text} onChange={(e) => set({ text: e.target.value })} maxLength={1000} />
-                </Field>
+                <FormField label="Message" hint="Placeholders: {{task}}, {{project}}, {{status}}, {{due}}, {{link}}">
+                  <Textarea rows={2} value={d.text} onChange={(e) => set({ text: e.target.value })} maxLength={1000} />
+                </FormField>
               )}
               {d.actionType === 'add_checklist' && (
-                <Field label="Checklist items" hint="One per line, up to 20.">
-                  <textarea rows={4} value={d.items} onChange={(e) => set({ items: e.target.value })} required />
-                </Field>
+                <FormField label="Checklist items" hint="One per line, up to 20.">
+                  <Textarea rows={4} value={d.items} onChange={(e) => set({ items: e.target.value })} required />
+                </FormField>
               )}
-            </fieldset>
-            <div className="row-gap">
-              <span className="grow" />
-              <button type="button" className="btn" onClick={() => setEditing(null)}>
+            </FieldSet>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1" />
+              <Button variant="outline" type="button" onClick={() => setEditing(null)}>
                 Cancel
-              </button>
-              <button className="btn primary">{editing?.id ? 'Save' : 'Create automation'}</button>
+              </Button>
+              <Button type="submit">{editing?.id ? 'Save' : 'Create automation'}</Button>
             </div>
           </form>
         )}
@@ -889,17 +957,25 @@ function RunLog({ ruleId }: { ruleId: string }) {
   const { data, error } = useApi<{ id: string; outcome: string; detail: string; created_at: string; task: { id: string; title: string } | null }[]>(`/automations/${ruleId}/runs`);
   if (error) return <ErrorState error={error} />;
   if (!data) return <Loading />;
-  if (!data.length) return <p className="muted">This automation has not run yet.</p>;
+  if (!data.length) return <p className="text-muted-foreground">This automation has not run yet.</p>;
   return (
-    <ul className="run-log">
+    <ul className="flex flex-col divide-y text-sm">
       {data.map((r) => (
-        <li key={r.id}>
-          <span className={`pill run-${r.outcome}`}>{r.outcome}</span>
-          <span className="grow">
-            {r.task ? <Link to={`/tasks/${r.task.id}`}>{r.task.title}</Link> : <span className="muted">Deleted task</span>}
-            {r.detail && <small className="muted"> — {r.detail}</small>}
+        <li key={r.id} className="flex flex-wrap items-center gap-2 py-2">
+          <Pill tone={toneFor(r.outcome)} className="capitalize">
+            {r.outcome}
+          </Pill>
+          <span className="min-w-0 flex-1">
+            {r.task ? (
+              <Link className="text-primary hover:underline" to={`/tasks/${r.task.id}`}>
+                {r.task.title}
+              </Link>
+            ) : (
+              <span className="text-muted-foreground">Deleted task</span>
+            )}
+            {r.detail && <span className="text-xs text-muted-foreground"> — {r.detail}</span>}
           </span>
-          <small className="muted">{timeAgo(r.created_at)}</small>
+          <span className="text-xs text-muted-foreground">{timeAgo(r.created_at)}</span>
         </li>
       ))}
     </ul>
@@ -927,50 +1003,62 @@ export function WorkspaceInsights() {
     { key: 'decisions', label: 'Decisions recorded' },
   ];
   return (
-    <div className="stack">
-      <p className="muted">
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
         How well Küü is working for the team, measured against the product’s success targets. Aggregated counts only; no individual is ranked. Updated {timeAgo(data.generated_at)}.
       </p>
-      <div className="measure-grid">
+      <StatGrid>
         {data.measures.map((m) => {
           const ok = good(m);
           return (
-            <div key={m.id} className={`card measure ${ok === true ? 'good' : ok === false ? 'bad' : ''}`}>
-              <small className="muted">{m.label}</small>
-              <strong className="measure-value">
-                {m.value == null ? '—' : m.value}
-                {m.value != null && m.unit && <span>{m.unit === '%' ? '%' : ` ${m.unit}`}</span>}
-              </strong>
-              {m.target != null && (
-                <small>
-                  Target {m.lower_is_better ? '≤' : '≥'} {m.target}
-                  {m.unit === '%' ? '%' : ''}
-                </small>
-              )}
-              {m.detail && <small className="muted">{m.detail}</small>}
-            </div>
+            <StatCard
+              key={m.id}
+              label={m.label}
+              tone={ok === true ? 'success' : ok === false ? 'danger' : undefined}
+              value={
+                <>
+                  {m.value == null ? '—' : m.value}
+                  {m.value != null && m.unit && <span className="text-base font-normal text-muted-foreground">{m.unit === '%' ? '%' : ` ${m.unit}`}</span>}
+                </>
+              }
+              hint={
+                <>
+                  {m.target != null && (
+                    <span className="block">
+                      Target {m.lower_is_better ? '≤' : '≥'} {m.target}
+                      {m.unit === '%' ? '%' : ''}
+                    </span>
+                  )}
+                  {m.detail && <span className="block">{m.detail}</span>}
+                </>
+              }
+            />
           );
         })}
-      </div>
-      <div className="spark-grid">
-        {series.map((s) => {
+      </StatGrid>
+      <div className="grid gap-4 md:grid-cols-2">
+        {series.map((s, si) => {
           const values = data.weekly.map((w) => Number(w[s.key]));
-          const max = Math.max(1, ...values);
+          const chart = data.weekly.map((w, i) => ({ week: shortDate(w.week_of), value: values[i] }));
+          const config = { value: { label: s.label, color: `var(--chart-${(si % 5) + 1})` } } satisfies ChartConfig;
           return (
-            <div key={s.key} className="card spark-card">
-              <div className="row-gap">
-                <strong className="grow">{s.label}</strong>
-                <span className="muted small">last 8 weeks</span>
-              </div>
-              <div className="bars" role="img" aria-label={`${s.label}: ${values.join(', ')}`}>
-                {data.weekly.map((w, i) => (
-                  <span key={w.week_of} title={`Week of ${shortDate(w.week_of)}: ${values[i]}`}>
-                    <i style={{ height: `${Math.max(4, (values[i] / max) * 100)}%` }} />
-                  </span>
-                ))}
-              </div>
-              <small className="muted">This week: {values[values.length - 1]}</small>
-            </div>
+            <Card key={s.key} size="sm">
+              <CardHeader>
+                <CardTitle>{s.label}</CardTitle>
+                <CardDescription>
+                  This week: <strong className="text-foreground tabular-nums">{values[values.length - 1]}</strong> · last 8 weeks
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={config} className="aspect-auto h-28 w-full" role="img" aria-label={`${s.label}: ${values.join(', ')}`}>
+                  <BarChart data={chart} margin={{ top: 4, left: 0, right: 0, bottom: 0 }}>
+                    <XAxis dataKey="week" tickLine={false} axisLine={false} tickMargin={6} minTickGap={16} />
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel={false} />} />
+                    <Bar dataKey="value" fill="var(--color-value)" radius={4} maxBarSize={28} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
           );
         })}
       </div>

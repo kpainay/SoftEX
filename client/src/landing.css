@@ -44,7 +44,7 @@
 .hero-badge span {
   padding: 2px 9px;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--k-accent);
   color: #fff;
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -94,7 +94,7 @@
 .rotator-word {
   display: inline-block;
   position: relative;
-  background: linear-gradient(100deg, var(--accent), var(--accent-2) 60%, var(--c-gold));
+  background: linear-gradient(100deg, var(--k-accent), var(--accent-2) 60%, var(--c-gold));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -180,14 +180,14 @@
 }
 
 /* Buttons with a light sweep on hover. */
-.btn.shine {
+.shine {
   position: relative;
   overflow: hidden;
   gap: 8px;
-  box-shadow: 0 10px 30px -10px var(--accent);
+  box-shadow: 0 10px 30px -10px var(--k-accent);
   transition: transform 0.2s, box-shadow 0.2s;
 }
-.btn.shine::after {
+.shine::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -195,15 +195,11 @@
   transform: translateX(-120%);
   transition: transform 0.7s;
 }
-.btn.shine:hover {
+.shine:hover {
   transform: translateY(-2px);
 }
-.btn.shine:hover::after {
+.shine:hover::after {
   transform: translateX(120%);
-}
-.btn.ghost-lg {
-  gap: 8px;
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
 /* ---------- Product tour ---------- */
@@ -255,7 +251,7 @@
   color: var(--accent-ink);
 }
 .demo-tab.active {
-  background: var(--accent);
+  background: var(--k-accent);
   color: #fff;
 }
 .demo-progress {
@@ -287,7 +283,7 @@
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow:
-    0 40px 90px -30px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 40px 90px -30px color-mix(in srgb, var(--k-accent) 45%, transparent),
     var(--shadow-lg);
   overflow: hidden;
   transform: rotateX(var(--rx)) rotateY(var(--ry));
@@ -326,7 +322,7 @@
   text-align: center;
   margin-right: 40px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .demo-app {
   display: grid;
@@ -515,7 +511,7 @@
   gap: 10px;
 }
 .dm-msg small {
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-msg p {
   margin: 2px 0 5px;
@@ -542,7 +538,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--muted);
+  color: var(--k-muted);
   font-size: 12px;
 }
 .dm-dots {
@@ -553,7 +549,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--k-muted);
   animation: bounce 1s infinite;
 }
 .dm-dots i:nth-child(2) {
@@ -612,7 +608,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-meter {
   flex: 1;
@@ -626,7 +622,7 @@
   width: 68%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: linear-gradient(90deg, var(--k-accent), var(--accent-2));
 }
 .dm-grow-x {
   transform-origin: left;
@@ -656,7 +652,7 @@
   font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-card {
   position: relative;
@@ -691,7 +687,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 /* The card travels from To do, through In progress, to Done. */
 .dm-mover {
@@ -733,7 +729,7 @@
   grid-template-columns: 56px 1fr;
   align-items: center;
   gap: 8px;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-tl-track {
   position: relative;
@@ -774,7 +770,7 @@
 }
 .dm-owner {
   margin: 0 0 12px;
-  color: var(--muted);
+  color: var(--k-muted);
   font-size: 12px;
 }
 .dm-doc p,
@@ -854,7 +850,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-rec {
   display: inline-flex;
@@ -926,7 +922,7 @@
   font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-agenda {
   display: flex;
@@ -1051,7 +1047,7 @@
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--k-accent);
   color: #fff;
   font-size: 9.5px;
 }
@@ -1077,7 +1073,7 @@
   background: var(--surface);
 }
 .dm-kpi small {
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-kpi b {
   font-size: 24px;
@@ -1107,7 +1103,7 @@
   min-height: 0;
 }
 .dm-chart small {
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-bars {
   flex: 1;
@@ -1119,7 +1115,7 @@
 .dm-bars i {
   flex: 1;
   border-radius: 6px 6px 3px 3px;
-  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  background: linear-gradient(180deg, var(--accent-2), var(--k-accent));
 }
 .dm-grow-y {
   transform-origin: bottom;
@@ -1152,7 +1148,7 @@
   animation: ring 1.4s 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .dm-ring.a {
-  stroke: var(--accent);
+  stroke: var(--k-accent);
 }
 .dm-ring.b {
   stroke: var(--c-gold);
@@ -1168,13 +1164,13 @@
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--k-muted);
 }
 .dm-legend i {
   width: 8px;
   height: 8px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--k-accent);
 }
 .dm-legend i.b {
   margin-left: 6px;
@@ -1209,7 +1205,7 @@
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--muted);
+  color: var(--k-muted);
   font-size: 14px;
   text-decoration: line-through;
   white-space: nowrap;
@@ -1255,13 +1251,13 @@
   font-size: 42px;
   line-height: 1;
   letter-spacing: -0.03em;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  background: linear-gradient(120deg, var(--k-accent), var(--accent-2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .stats > div > span {
-  color: var(--muted);
+  color: var(--k-muted);
   font-size: 13.5px;
 }
 
@@ -1290,12 +1286,6 @@
 }
 .spot:hover::before {
   opacity: 1;
-}
-.feature-card .feature-icon {
-  transition: transform 0.4s cubic-bezier(0.3, 1.6, 0.5, 1);
-}
-.feature-card:hover .feature-icon {
-  transform: rotate(-8deg) scale(1.12);
 }
 
 .reveal-on [data-reveal] {
@@ -1330,7 +1320,7 @@
   gap: 12px;
 }
 .why-grid .card > .icon {
-  color: var(--accent);
+  color: var(--k-accent);
 }
 .why-grid h3 {
   font-size: 15px;
@@ -1352,7 +1342,7 @@
   right: 8%;
   top: 36px;
   height: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--c-gold));
+  background: linear-gradient(90deg, var(--k-accent), var(--accent-2), var(--c-gold));
   transform-origin: left;
   transform: scaleX(1);
   transition: transform 1.4s 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -1374,34 +1364,13 @@
 }
 
 /* ---------- FAQ that opens smoothly ---------- */
-.faq-anim summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  list-style: none;
-}
-.faq-anim summary::-webkit-details-marker {
-  display: none;
-}
-.faq-anim summary .icon {
-  flex: none;
-  color: var(--accent);
-  transition: transform 0.3s;
-}
-.faq-anim details[open] summary .icon {
-  transform: rotate(45deg);
-}
-.faq-anim details[open] p {
-  animation: dm-in 0.4s both;
-}
 
 /* ---------- Closing call to action ---------- */
 .final-anim {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background: linear-gradient(120deg, var(--accent), var(--accent-2), var(--brand-deep), var(--accent));
+  background: linear-gradient(120deg, var(--k-accent), var(--accent-2), var(--brand-deep), var(--k-accent));
   background-size: 300% 300%;
   animation: gradient 14s ease infinite;
 }
@@ -1410,7 +1379,7 @@
     background-position: 100% 50%;
   }
 }
-.final-anim .btn {
+.final-anim .shine {
   background: #fff;
   color: var(--brand-deep);
   border-color: #fff;

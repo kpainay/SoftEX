@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import { useApi } from '../hooks';
 import { Icon } from './Icon';
+import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 /** Uploaded video or audio, played in place. `#t=0.1` makes browsers (notably Safari) show the first frame as a preview. */
 export function MediaAttachment({ file }: { file: { id: string; name: string; mime?: string | null } }) {
   const src = `/api/files/${file.id}/download?inline=1`;
   if (file.mime?.startsWith('audio/')) {
     return (
-      <figure className="audio-attachment">
-        <audio controls preload="metadata" src={src} aria-label={file.name} />
-        <figcaption className="muted small">{file.name}</figcaption>
+      <figure className="flex max-w-sm flex-col gap-1">
+        <audio controls preload="metadata" src={src} aria-label={file.name} className="w-full" />
+        <figcaption className="truncate text-xs text-muted-foreground">{file.name}</figcaption>
       </figure>
     );
   }
   return (
-    <figure className="video-attachment">
-      <video controls playsInline preload="metadata" src={`${src}#t=0.1`} aria-label={file.name} />
-      <figcaption className="muted small">{file.name}</figcaption>
+    <figure className="video-attachment flex max-w-md flex-col gap-1">
+      <video controls playsInline preload="metadata" src={`${src}#t=0.1`} aria-label={file.name} className="max-h-80 w-full rounded-xl bg-black" />
+      <figcaption className="truncate text-xs text-muted-foreground">{file.name}</figcaption>
     </figure>
   );
 }
@@ -80,8 +82,9 @@ function VideoLinkCard({ link }: { link: Extract<VideoLink, { provider: Provider
   const title = data?.title ?? `${PROVIDER_NAME[link.provider]} video`;
   if (playing && data?.embedUrl) {
     return (
-      <div className={`video-embed ${vertical ? 'vertical' : ''}`}>
+      <div className={cn('overflow-hidden rounded-xl bg-black', vertical ? 'aspect-[9/16] max-w-xs' : 'aspect-video max-w-md')}>
         <iframe
+          className="size-full"
           src={data.embedUrl}
           title={title}
           allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
@@ -93,22 +96,28 @@ function VideoLinkCard({ link }: { link: Extract<VideoLink, { provider: Provider
     );
   }
   return (
-    <div className="video-card">
-      <button type="button" className={`video-thumb ${vertical ? 'vertical' : ''}`} onClick={() => setPlaying(true)} disabled={!data?.embedUrl} aria-label={`Play ${title}`}>
+    <Card size="sm" className={cn('video-card gap-0 py-0', vertical ? 'max-w-[14rem]' : 'max-w-sm')}>
+      <button
+        type="button"
+        className={cn('video-thumb group/thumb relative block w-full overflow-hidden bg-muted', vertical ? 'aspect-[9/16]' : 'aspect-video')}
+        onClick={() => setPlaying(true)}
+        disabled={!data?.embedUrl}
+        aria-label={`Play ${title}`}
+      >
         {thumbnail && !thumbFailed ? (
-          <img src={thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbFailed(true)} />
+          <img src={thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setThumbFailed(true)} className="size-full object-cover" />
         ) : (
-          <span className={`video-thumb-blank ${link.provider}`} />
+          <span className="block size-full bg-gradient-to-br from-muted to-secondary" />
         )}
-        <span className="play-badge" aria-hidden="true">
-          <Icon name="play" size={22} />
+        <span className="absolute inset-0 m-auto flex size-12 items-center justify-center rounded-full bg-black/60 text-white transition-transform group-hover/thumb:scale-110" aria-hidden="true">
+          <Icon name="play" size={22} className="translate-x-px fill-current" />
         </span>
       </button>
-      <a className="video-meta" href={link.url} target="_blank" rel="noopener noreferrer">
-        <strong>{title}</strong>
-        <small className="muted">{PROVIDER_NAME[link.provider]}</small>
+      <a className="flex flex-col gap-0.5 px-3 py-2 hover:bg-muted/50" href={link.url} target="_blank" rel="noopener noreferrer">
+        <strong className="truncate text-sm font-medium">{title}</strong>
+        <span className="text-xs text-muted-foreground">{PROVIDER_NAME[link.provider]}</span>
       </a>
-    </div>
+    </Card>
   );
 }
 
@@ -117,11 +126,11 @@ export function VideoLinks({ text }: { text: string }) {
   const links = videoLinks(text);
   if (!links.length) return null;
   return (
-    <div className="video-links">
+    <div className="mt-2 flex flex-wrap gap-2">
       {links.map((link) =>
         link.provider === 'file' ? (
-          <figure key={link.url} className="video-attachment">
-            <video controls playsInline preload="metadata" src={`${link.url}#t=0.1`} />
+          <figure key={link.url} className="video-attachment max-w-md">
+            <video controls playsInline preload="metadata" src={`${link.url}#t=0.1`} className="max-h-80 w-full rounded-xl bg-black" />
           </figure>
         ) : (
           <VideoLinkCard key={link.url} link={link} />

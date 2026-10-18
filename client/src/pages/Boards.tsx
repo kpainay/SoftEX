@@ -6,10 +6,15 @@ import { FavoriteButton } from '../components/Favorites';
 import { Icon } from '../components/Icon';
 import { PeerList } from '../components/LiveEditor';
 import { Whiteboard } from '../components/Whiteboard';
-import { Empty, ErrorState, Field, Loading, Modal, useAction } from '../components/ui';
+import { EmptyState, ErrorState, FilterBar, FormField, IconButton, Loading, Modal, Page, PageHeader, Pill, SwitchField, useAction } from '@/components/kit';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { timeAgo } from '../format';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Button, buttonVariants } from '@/components/ui/button';
 
 interface Board {
   id: string;
@@ -22,7 +27,7 @@ interface Board {
   archived_at: string | null;
 }
 
-export function NewBoardButton({ projectId, className = 'btn primary' }: { projectId?: string; className?: string }) {
+export function NewBoardButton({ projectId, size = 'default' }: { projectId?: string; size?: 'default' | 'sm' }) {
   const act = useAction();
   const navigate = useNavigate();
   const { data: projects } = useApi<Project[]>(projectId ? null : '/projects');
@@ -31,42 +36,42 @@ export function NewBoardButton({ projectId, className = 'btn primary' }: { proje
   const [project, setProject] = useState(projectId ?? '');
   return (
     <>
-      <button className={className} onClick={() => setOpen(true)}>
-        <Icon name="plus" size={16} /> New whiteboard
-      </button>
+      <Button size={size} onClick={() => setOpen(true)}>
+        <Icon name="plus" data-icon="inline-start" /> New whiteboard
+      </Button>
       <Modal open={open} onClose={() => setOpen(false)} title="New whiteboard">
         <form
-          className="stack"
+          className="flex flex-col gap-3"
           onSubmit={async (e) => {
             e.preventDefault();
             const b = await act(() => api.post<Board>('/boards', { title, projectId: project || null }));
             if (b) navigate(`/boards/${b.id}`);
           }}
         >
-          <Field label="Name">
-            <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={120} placeholder="Q4 planning workshop" autoFocus />
-          </Field>
+          <FormField label="Name">
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={120} placeholder="Q4 planning workshop" autoFocus />
+          </FormField>
           {!projectId && (
-            <Field label="Project" hint="Project whiteboards are shared with the project; others with everyone in the workspace.">
-              <select value={project} onChange={(e) => setProject(e.target.value)}>
-                <option value="">No project (whole workspace)</option>
+            <FormField label="Project" hint="Project whiteboards are shared with the project; others with everyone in the workspace.">
+              <NativeSelect value={project} onChange={(e) => setProject(e.target.value)}>
+                <NativeSelectOption value="">No project (whole workspace)</NativeSelectOption>
                 {(projects ?? [])
                   .filter((p) => !p.archived_at)
                   .map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                       {p.name}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-              </select>
-            </Field>
+              </NativeSelect>
+            </FormField>
           )}
-          <div className="form-actions">
-            <button type="button" className="btn" onClick={() => setOpen(false)}>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" type="button" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button className="btn primary" disabled={!title.trim()}>
+            </Button>
+            <Button disabled={!title.trim()} type="submit">
               Create
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>
@@ -84,56 +89,58 @@ export function Boards({ projectId }: { projectId?: string }) {
   ) : !data ? (
     <Loading />
   ) : !data.length ? (
-    <Empty icon="whiteboard" title={archived ? 'No archived whiteboards' : 'No whiteboards yet'}>
+    <EmptyState icon="whiteboard" title={archived ? 'No archived whiteboards' : 'No whiteboards yet'}>
       {!archived && 'Brainstorm with sticky notes, sketch a process, or plan a workshop together — everyone edits at once.'}
-    </Empty>
+    </EmptyState>
   ) : (
-    <div className="card-list">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {data.map((b) => (
-        <Link key={b.id} to={`/boards/${b.id}`} className="card pad dash-card">
-          <div className="row-gap">
-            <Icon name="whiteboard" size={18} />
-            <strong className="grow">{b.title}</strong>
-          </div>
-          <small className="muted">
-            {b.project ? (
-              <>
-                <span className={`project-dot bg-${b.project.color}`} /> {b.project.name} ·{' '}
-              </>
-            ) : null}
-            {b.owner?.name} · updated {timeAgo(b.updated_at)}
-          </small>
+        <Link key={b.id} to={`/boards/${b.id}`} className="group/board rounded-[min(var(--radius-4xl),24px)] outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+          <Card size="sm" className="h-full transition-shadow group-hover/board:shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                  <Icon name="whiteboard" size={16} />
+                </span>
+                <span className="truncate">{b.title}</span>
+              </CardTitle>
+              <CardDescription className="flex flex-wrap items-center gap-1 text-xs">
+                {b.project ? (
+                  <>
+                    <span className="size-2 rounded-full" style={{ background: `var(--c-${b.project.color})` }} /> {b.project.name} ·{' '}
+                  </>
+                ) : null}
+                {b.owner?.name} · updated {timeAgo(b.updated_at)}
+              </CardDescription>
+            </CardHeader>
+          </Card>
         </Link>
       ))}
     </div>
   );
   if (projectId) {
     return (
-      <div>
-        <div className="toolbar">
-          <p className="muted grow">Whiteboards shared with this project.</p>
-          <NewBoardButton projectId={projectId} className="btn primary sm" />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 text-sm text-muted-foreground">Whiteboards shared with this project.</p>
+          <NewBoardButton projectId={projectId} size="sm" />
         </div>
         {body}
       </div>
     );
   }
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Whiteboards</h1>
-          <p className="muted">Sticky notes, shapes, arrows and sketches on an endless canvas that your team edits together, live.</p>
-        </div>
-        {me!.role !== 'guest' && <NewBoardButton />}
-      </div>
-      <div className="toolbar">
-        <label className="check-inline">
-          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Archived
-        </label>
-      </div>
+    <Page>
+      <PageHeader
+        title="Whiteboards"
+        description="Sticky notes, shapes, arrows and sketches on an endless canvas that your team edits together, live."
+        actions={me!.role !== 'guest' && <NewBoardButton />}
+      />
+      <FilterBar>
+        <SwitchField label="Show archived" checked={archived} onCheckedChange={setArchived} className="w-auto" />
+      </FilterBar>
       {body}
-    </div>
+    </Page>
   );
 }
 
@@ -146,14 +153,20 @@ export function BoardView() {
   if (error) return <ErrorState error={error} retry={reload} />;
   if (!board) return <Loading />;
   return (
-    <div className="board-page">
-      <div className="board-head">
-        <Link to={board.project ? `/projects/${board.project.id}?tab=boards` : '/boards'} className="icon-btn" aria-label="Back to whiteboards">
+    <div className="flex h-[calc(100dvh-3.5rem-4rem)] min-h-[26rem] flex-col md:h-[calc(100dvh-3.5rem)]">
+      <div className="flex flex-wrap items-center gap-2 border-b bg-card px-3 py-2">
+        <Link
+          to={board.project ? `/projects/${board.project.id}?tab=boards` : '/boards'}
+          aria-label="Back to whiteboards"
+          className={buttonVariants({
+            variant: "ghost",
+            size: "icon"
+          })}>
           <Icon name="chevronLeft" />
         </Link>
         {board.can_edit ? (
-          <input
-            className="board-title"
+          <Input
+            className="h-9 w-auto max-w-sm min-w-0 flex-1 border-transparent bg-transparent font-heading text-base font-semibold shadow-none hover:border-input"
             defaultValue={board.title}
             key={board.title}
             aria-label="Whiteboard name"
@@ -167,31 +180,28 @@ export function BoardView() {
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           />
         ) : (
-          <h1 className="board-title">{board.title}</h1>
+          <h1 className="min-w-0 truncate font-heading text-base font-semibold">{board.title}</h1>
         )}
         <FavoriteButton kind="board" id={board.id} />
         {board.project && (
-          <Link to={`/projects/${board.project.id}`} className="pill hide-mobile">
-            <span className={`project-dot bg-${board.project.color}`} /> {board.project.name}
-          </Link>
+          <Badge variant="outline" className="max-md:hidden" render={<Link to={`/projects/${board.project.id}`} />}>
+            <span className="size-2 rounded-full" style={{ background: `var(--c-${board.project.color})` }} /> {board.project.name}
+          </Badge>
         )}
-        {!board.can_edit && <span className="pill">View only</span>}
-        <span className="grow" />
+        {!board.can_edit && <Pill>View only</Pill>}
+        <span className="min-w-0 flex-1" />
         {live && <PeerList peers={[...live.peers.values()]} label="Here now" />}
-        {live && live.status === 'offline' && <span className="pill status-blocked">Offline</span>}
+        {live && live.status === 'offline' && <Pill tone="danger">Offline</Pill>}
         {board.can_delete && (
-          <button
-            className="icon-btn"
-            aria-label={board.archived_at ? 'Restore whiteboard' : 'Archive whiteboard'}
-            title={board.archived_at ? 'Restore' : 'Archive'}
+          <IconButton
+            label={board.archived_at ? 'Restore whiteboard' : 'Archive whiteboard'}
             onClick={async () => {
               const b = await act(() => api.patch<Board>(`/boards/${board.id}`, { archived: !board.archived_at }), board.archived_at ? 'Whiteboard restored' : 'Whiteboard archived');
               if (b && !board.archived_at) navigate('/boards');
               else if (b) setData(b);
-            }}
-          >
-            <Icon name="flag" size={16} />
-          </button>
+            }}>
+            <Icon name="flag" />
+          </IconButton>
         )}
       </div>
       {!live || !live.ready ? <Loading label="Opening the whiteboard" /> : <Whiteboard live={live} title={board.title} />}

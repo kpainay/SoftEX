@@ -132,7 +132,7 @@ test('messages can have several paragraphs: Enter to send can be turned off, and
   expect(gap).toBeGreaterThan(0);
 
   // With "Enter to send" off, Enter starts a new line and Ctrl+Enter sends.
-  await page.getByLabel('Enter to send').uncheck();
+  await page.getByRole('checkbox', { name: 'Enter to send' }).uncheck();
   await composer.pressSequentially(`Third ${run}`);
   await composer.press('Enter');
   await composer.press('Enter');
@@ -142,7 +142,35 @@ test('messages can have several paragraphs: Enter to send can be turned off, and
   await expect(page.locator('.message').filter({ hasText: `Third ${run}` }).locator('.markdown p')).toHaveCount(2);
   // Remembered on this device.
   await page.reload();
-  await expect(page.getByLabel('Enter to send')).not.toBeChecked();
-  await page.getByLabel('Enter to send').check();
+  await expect(page.getByRole('checkbox', { name: 'Enter to send' })).not.toBeChecked();
+  await page.getByRole('checkbox', { name: 'Enter to send' }).check();
   noErrors();
+});
+
+test('the notifications menu stays inside its panel and scrolls when there are many', async ({ page, browser }) => {
+  const ninaContext = await browser.newContext();
+  const nina = await ninaContext.newPage();
+  await signIn(nina, 'nina@acme.test');
+  await signIn(page, 'leo@acme.test');
+  // Enough long, separate notifications to overflow any panel (one per chat, so they aren't grouped).
+  const leoId = (await call(page, 'GET', '/me')).user.id;
+  const dm = await call(nina, 'POST', '/dms', { userIds: [leoId] });
+  for (let n = 0; n < 15; n++) await call(nina, 'POST', `/channels/${dm.id}/messages`, { body: `Long update ${n} `.repeat(20) });
+  await call(page, 'GET', '/notifications');
+  await page.reload();
+
+  const vh = page.viewportSize()!.height;
+  await page.getByRole('button', { name: /^Notifications/ }).click();
+  const panel = page.locator('[data-slot="popover-content"]');
+  await expect(panel.locator('.notif-item').first()).toBeVisible();
+  const box = (await panel.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(vh);
+  // The list scrolls inside the panel instead of spilling out of it.
+  const list = panel.locator('.notif-item').first().locator('xpath=../..');
+  const scrolls = await list.evaluate((el) => el.scrollHeight > el.clientHeight);
+  const lastBottom = await panel.locator('.notif-item').last().evaluate((el) => el.getBoundingClientRect().bottom);
+  expect(scrolls || lastBottom <= box.y + box.height).toBe(true);
+  expect(lastBottom <= box.y + box.height || scrolls).toBe(true);
+  const listBox = (await list.boundingBox())!;
+  expect(listBox.y + listBox.height).toBeLessThanOrEqual(box.y + box.height + 1);
 });

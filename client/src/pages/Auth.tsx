@@ -1,25 +1,34 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError, type Me } from '../api';
-import { Field, Loading, PasswordInput } from '../components/ui';
+import { Callout, FormError, FormField, Loading, PasswordInput } from '@/components/kit';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
 import { ROLE_LABEL } from '../format';
 import { usePublicPricing } from './Pricing';
 import { Logo, TAGLINE } from '../components/Logo';
+import { Input } from '@/components/ui/input';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+
+const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
 function AuthFrame({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
   return (
-    <div className="auth">
-      <div className="auth-card">
-        <Link to="/" className="brand dark" aria-label="Küü home">
-          <Logo height={34} />
-        </Link>
-        <h1>{title}</h1>
-        {subtitle && <p className="muted">{subtitle}</p>}
-        {children}
-      </div>
-      <p className="auth-foot muted">{TAGLINE}</p>
+    <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="gap-3">
+          <Link to="/" aria-label="Küü home" className="mb-2 w-fit">
+            <Logo height={34} />
+          </Link>
+          <CardTitle aria-level={1} className="font-heading text-2xl font-semibold tracking-tight">{title}</CardTitle>
+          {subtitle && <CardDescription className="[&_a]:text-primary [&_a]:underline-offset-4 [&_a:hover]:underline">{subtitle}</CardDescription>}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">{children}</CardContent>
+      </Card>
+      <p className="text-sm text-muted-foreground">{TAGLINE}</p>
     </div>
   );
 }
@@ -62,43 +71,54 @@ export function Login() {
   };
   return (
     <AuthFrame title="Welcome back" subtitle="Sign in to your workspace.">
-      <form className="form" onSubmit={submit}>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <Field label="Work email">
-          <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-        </Field>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <FormError>{error}</FormError>
+        <FormField label="Work email">
+          <Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+        </FormField>
         {!ssoMode && (
-          <Field label="Password">
+          <FormField label="Password">
             <PasswordInput autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          </Field>
+          </FormField>
         )}
         {needCode && (
-          <Field label="Authenticator code" hint="Open your authenticator app and enter the 6-digit code.">
-            <input inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" required value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
-          </Field>
+          <FormField label="Authenticator code" hint="Open your authenticator app and enter the 6-digit code.">
+            <Input inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" required value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+          </FormField>
         )}
         {ssoMode ? (
-          <button type="button" className="btn primary block" onClick={startSso}>
+          <Button className="w-full" type="button" onClick={startSso}>
             Continue with single sign-on
-          </button>
+          </Button>
         ) : (
-          <button className="btn primary block" disabled={busy}>
+          <Button className="w-full" disabled={busy} type="submit">
             {busy ? 'Signing in…' : 'Sign in'}
-          </button>
+          </Button>
         )}
-        <div className="auth-links">
-          <button type="button" className="link-btn" onClick={() => (ssoMode ? setSsoMode(false) : (setSsoMode(true), setError('')))}>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <Button
+            variant="link"
+            size="inline"
+            type="button"
+            onClick={() => (ssoMode ? setSsoMode(false) : (setSsoMode(true), setError('')))}>
             {ssoMode ? 'Use a password instead' : 'Sign in with SSO'}
-          </button>
-          <Link to="/forgot-password">Forgot password?</Link>
+          </Button>
+          <Link to="/forgot-password" className={LINK}>
+            Forgot password?
+          </Link>
         </div>
       </form>
-      <p className="muted center">
-        New to Küü? <Link to="/register">Create a workspace</Link>
+      <p className="text-center text-sm text-muted-foreground">
+        New to Küü?{' '}
+        <Link to="/register" className={LINK}>
+          Create a workspace
+        </Link>
         {pricing?.mode === 'saas' && (
           <>
             {' · '}
-            <Link to="/pricing">Pricing</Link>
+            <Link to="/pricing" className={LINK}>
+              Pricing
+            </Link>
           </>
         )}
       </p>
@@ -109,20 +129,23 @@ export function Login() {
 /** Required on hosted servers: agree to the terms before an account is created. */
 function TermsCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="check-row terms-check">
-      <input type="checkbox" required checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <Label className="flex items-start gap-2.5 font-normal leading-snug">
+      <Checkbox
+        required
+        checked={checked}
+        onCheckedChange={(checked) => onChange(checked)} />
       <span>
         I agree to the{' '}
-        <a href="/terms" target="_blank" rel="noopener">
+        <a href="/terms" target="_blank" rel="noopener" className={LINK}>
           Terms of Service
         </a>{' '}
         and{' '}
-        <a href="/privacy" target="_blank" rel="noopener">
+        <a href="/privacy" target="_blank" rel="noopener" className={LINK}>
           Privacy Policy
         </a>
         .
       </span>
-    </label>
+    </Label>
   );
 }
 
@@ -160,27 +183,30 @@ export function Register() {
         )
       }
     >
-      <form className="form" onSubmit={submit}>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <Field label="Your name">
-          <input required autoComplete="name" value={form.name} onChange={set('name')} autoFocus />
-        </Field>
-        <Field label="Work email">
-          <input type="email" required autoComplete="email" value={form.email} onChange={set('email')} />
-        </Field>
-        <Field label="Password" hint="At least 8 characters.">
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <FormError>{error}</FormError>
+        <FormField label="Your name">
+          <Input required autoComplete="name" value={form.name} onChange={set('name')} autoFocus />
+        </FormField>
+        <FormField label="Work email">
+          <Input type="email" required autoComplete="email" value={form.email} onChange={set('email')} />
+        </FormField>
+        <FormField label="Password" hint="At least 8 characters.">
           <PasswordInput required minLength={8} autoComplete="new-password" value={form.password} onChange={set('password')} />
-        </Field>
-        <Field label="Workspace name">
-          <input required minLength={2} placeholder="e.g. Acme Studio" value={form.workspaceName} onChange={set('workspaceName')} />
-        </Field>
+        </FormField>
+        <FormField label="Workspace name">
+          <Input required minLength={2} placeholder="e.g. Acme Studio" value={form.workspaceName} onChange={set('workspaceName')} />
+        </FormField>
         {pricing?.mode === 'saas' && <TermsCheckbox checked={form.acceptTerms} onChange={(v) => setForm({ ...form, acceptTerms: v })} />}
-        <button className="btn primary block" disabled={busy}>
+        <Button className="w-full" disabled={busy} type="submit">
           {busy ? 'Creating…' : 'Create workspace'}
-        </button>
+        </Button>
       </form>
-      <p className="muted center">
-        Already have an account? <Link to="/login">Sign in</Link>
+      <p className="text-center text-sm text-muted-foreground">
+        Already have an account?{' '}
+        <Link to="/login" className={LINK}>
+          Sign in
+        </Link>
       </p>
     </AuthFrame>
   );
@@ -201,9 +227,13 @@ export function AcceptInvite() {
   if (loadError) {
     return (
       <AuthFrame title="Invitation unavailable" subtitle={loadError.message}>
-        <Link className="btn block" to="/login">
-          Go to sign in
-        </Link>
+        <Link
+          to="/login"
+          className={buttonVariants({
+            variant: "outline",
+            className: "w-full"
+          })}>Go to sign in
+                  </Link>
       </AuthFrame>
     );
   }
@@ -227,18 +257,18 @@ export function AcceptInvite() {
         </>
       }
     >
-      <form className="form" onSubmit={submit}>
-        {error && <p className="form-error" role="alert">{error}</p>}
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        <FormError>{error}</FormError>
         {!invite.existing_account && (
-          <Field label="Your name">
-            <input required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </Field>
+          <FormField label="Your name">
+            <Input required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </FormField>
         )}
-        <Field label={invite.existing_account ? 'Your Küü password' : 'Choose a password'} hint={invite.existing_account ? undefined : 'At least 8 characters.'}>
+        <FormField label={invite.existing_account ? 'Your Küü password' : 'Choose a password'} hint={invite.existing_account ? undefined : 'At least 8 characters.'}>
           <PasswordInput required minLength={invite.existing_account ? 1 : 8} value={password} onChange={(e) => setPassword(e.target.value)} />
-        </Field>
+        </FormField>
         {!invite.existing_account && pricing?.mode === 'saas' && <TermsCheckbox checked={acceptTerms} onChange={setAcceptTerms} />}
-        <button className="btn primary block">Accept invitation</button>
+        <Button className="w-full" type="submit">Accept invitation</Button>
       </form>
     </AuthFrame>
   );
@@ -267,26 +297,28 @@ export function MfaSetup({ required = false, onDone }: { required?: boolean; onD
     }
   };
   const body = (
-    <div className="form">
-      {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="flex flex-col gap-4">
+      <FormError>{error}</FormError>
       {!secret ? (
-        <button className="btn primary block" onClick={begin}>
+        <Button className="w-full" onClick={begin}>
           Set up authenticator app
-        </button>
+        </Button>
       ) : (
-        <form className="form" onSubmit={confirm}>
-          <ol className="steps">
-            <li>
+        <form className="flex flex-col gap-4" onSubmit={confirm}>
+          <ol className="ml-5 flex list-decimal flex-col gap-3 text-sm marker:text-muted-foreground">
+            <li className="flex flex-col gap-2">
               Open an authenticator app (1Password, Google Authenticator, Authy…) and add an account using this setup key:
-              <code className="secret">{secret.secret.match(/.{1,4}/g)!.join(' ')}</code>
-              <a href={secret.otpauth_url}>Or open it directly on this device</a>
+              <code className="rounded-lg border bg-muted px-3 py-2 font-mono text-sm tracking-widest select-all">{secret.secret.match(/.{1,4}/g)!.join(' ')}</code>
+              <a href={secret.otpauth_url} className={LINK}>
+                Or open it directly on this device
+              </a>
             </li>
             <li>Enter the 6-digit code it shows.</li>
           </ol>
-          <Field label="Code">
-            <input inputMode="numeric" pattern="\d{6}" required value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
-          </Field>
-          <button className="btn primary block">Turn on multifactor authentication</button>
+          <FormField label="Code">
+            <Input inputMode="numeric" pattern="\d{6}" required value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+          </FormField>
+          <Button className="w-full" type="submit">Turn on multifactor authentication</Button>
         </form>
       )}
     </div>
@@ -295,9 +327,9 @@ export function MfaSetup({ required = false, onDone }: { required?: boolean; onD
   return (
     <AuthFrame title="Secure your account" subtitle="Your workspace requires multifactor authentication before you continue.">
       {body}
-      <button className="link-btn center" onClick={logout}>
+      <Button variant="link" size="inline" className="mx-auto flex" onClick={logout}>
         Sign out
-      </button>
+      </Button>
     </AuthFrame>
   );
 }
@@ -309,15 +341,19 @@ export function ForgotPassword() {
   return (
     <AuthFrame title="Reset your password" subtitle="We will email you a link to choose a new password.">
       {sent ? (
-        <div className="form">
-          <p className="hint-box">If an account exists for {email}, a reset link is on its way. It works for one hour.</p>
-          <Link className="btn block" to="/login">
-            Back to sign in
-          </Link>
+        <div className="flex flex-col gap-4">
+          <Callout tone="info">If an account exists for {email}, a reset link is on its way. It works for one hour.</Callout>
+          <Link
+            to="/login"
+            className={buttonVariants({
+              variant: "outline",
+              className: "w-full"
+            })}>Back to sign in
+                      </Link>
         </div>
       ) : (
         <form
-          className="form"
+          className="flex flex-col gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
             try {
@@ -328,12 +364,12 @@ export function ForgotPassword() {
             }
           }}
         >
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <Field label="Work email">
-            <input type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <button className="btn primary block">Email me a reset link</button>
-          <Link className="center" to="/login">
+          <FormError>{error}</FormError>
+          <FormField label="Work email">
+            <Input type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+          </FormField>
+          <Button className="w-full" type="submit">Email me a reset link</Button>
+          <Link className={buttonVariants({ variant: 'ghost', className: 'w-full' })} to="/login">
             Back to sign in
           </Link>
         </form>
@@ -351,15 +387,18 @@ export function ResetPassword() {
   return (
     <AuthFrame title="Choose a new password">
       {done ? (
-        <div className="form">
-          <p className="hint-box">Your password was changed and you were signed out everywhere.</p>
-          <Link className="btn primary block" to="/login">
-            Sign in
-          </Link>
+        <div className="flex flex-col gap-4">
+          <Callout tone="info">Your password was changed and you were signed out everywhere.</Callout>
+          <Link
+            to="/login"
+            className={buttonVariants({
+              className: "w-full"
+            })}>Sign in
+                      </Link>
         </div>
       ) : (
         <form
-          className="form"
+          className="flex flex-col gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
             if (password !== confirm) return setError('The passwords do not match');
@@ -371,14 +410,14 @@ export function ResetPassword() {
             }
           }}
         >
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <Field label="New password" hint="At least 8 characters.">
+          <FormError>{error}</FormError>
+          <FormField label="New password" hint="At least 8 characters.">
             <PasswordInput required minLength={8} autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
-          </Field>
-          <Field label="Repeat new password">
+          </FormField>
+          <FormField label="Repeat new password">
             <PasswordInput required minLength={8} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-          </Field>
-          <button className="btn primary block">Change password</button>
+          </FormField>
+          <Button className="w-full" type="submit">Change password</Button>
         </form>
       )}
     </AuthFrame>

@@ -6,7 +6,12 @@ import { useSession } from '../session';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
-import { Modal, useAction, useToast } from './ui';
+import { IconButton, Modal, Pill, useAction, useConfirm, useToast } from '@/components/kit';
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 const EMOJI = ['📄', '📘', '📋', '📌', '✅', '💡', '🚀', '🎯', '📊', '🗂️', '🛠️', '🔒', '📣', '🤝', '🏥', '🎓', '💰', '🌍', '⚖️', '🧭', '🌱', '🏗️', '🧾', '🗓️'];
 
@@ -14,18 +19,23 @@ const EMOJI = ['📄', '📘', '📋', '📌', '✅', '💡', '🚀', '🎯', '�
 export function IconPicker({ value, onChange }: { value: string | null; onChange: (icon: string | null) => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <span className="icon-picker">
-      <button type="button" className={`page-emoji-btn ${value ? '' : 'empty'}`} onClick={() => setOpen((o) => !o)} aria-label={value ? 'Change page icon' : 'Add page icon'} aria-expanded={open}>
-        {value ?? <Icon name="smile" size={18} />}
-      </button>
-      {open && (
-        <span className="emoji-menu" role="listbox" aria-label="Page icon">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button variant="ghost" className={cn('size-12 p-0 text-3xl', !value && 'text-muted-foreground')} aria-label={value ? 'Change page icon' : 'Add page icon'} />
+        }
+      >
+        {value ?? <Icon name="smile" size={22} />}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-2">
+        <div className="grid grid-cols-6 gap-1" role="listbox" aria-label="Page icon">
           {EMOJI.map((e) => (
             <button
               key={e}
               type="button"
               role="option"
               aria-selected={e === value}
+              className={cn('flex size-9 items-center justify-center rounded-lg text-xl hover:bg-muted', e === value && 'bg-accent')}
               onClick={() => {
                 onChange(e);
                 setOpen(false);
@@ -34,21 +44,22 @@ export function IconPicker({ value, onChange }: { value: string | null; onChange
               {e}
             </button>
           ))}
-          {value && (
-            <button
-              type="button"
-              className="emoji-clear"
-              onClick={() => {
-                onChange(null);
-                setOpen(false);
-              }}
-            >
-              Remove
-            </button>
-          )}
-        </span>
-      )}
-    </span>
+        </div>
+        {value && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 w-full text-muted-foreground"
+            onClick={() => {
+              onChange(null);
+              setOpen(false);
+            }}
+          >
+            Remove icon
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -65,6 +76,7 @@ interface PageComment {
 /** Discussion under a page, with @mentions and resolve. */
 export function PageComments({ pageId, canModerate, onChange }: { pageId: string; canModerate: boolean; onChange?: () => void }) {
   const act = useAction();
+  const confirm = useConfirm();
   const { me, people } = useSession();
   const { data, reload } = useApi<PageComment[]>(`/pages/${pageId}/comments`);
   const [body, setBody] = useState('');
@@ -78,70 +90,81 @@ export function PageComments({ pageId, canModerate, onChange }: { pageId: string
   const list = showResolved ? [...open, ...resolved] : open;
 
   return (
-    <section className="card page-comments" id="comments">
-      <div className="section-title">
-        <h2>Comments</h2>
+    <Card className="page-comments" id="comments">
+      <CardHeader>
+        <CardTitle>Comments</CardTitle>
         {resolved.length > 0 && (
-          <button className="link-btn" onClick={() => setShowResolved((s) => !s)}>
-            {showResolved ? 'Hide resolved' : `Show ${resolved.length} resolved`}
-          </button>
+          <CardAction>
+            <Button variant="ghost" size="sm" onClick={() => setShowResolved((s) => !s)}>
+              {showResolved ? 'Hide resolved' : `Show ${resolved.length} resolved`}
+            </Button>
+          </CardAction>
         )}
-      </div>
-      {!list.length && <p className="muted">No comments yet. Ask a question or suggest a change.</p>}
-      {list.map((c) => (
-        <div key={c.id} className={`comment ${c.resolved_at ? 'resolved' : ''}`}>
-          <Avatar user={{ id: c.user_id, name: c.user_name, color: c.user_color }} size="sm" />
-          <div className="grow">
-            <strong>{c.user_name}</strong> <small className="muted">{timeAgo(c.created_at)}</small>
-            {c.resolved_at && <span className="pill">Resolved</span>}
-            <Markdown text={c.body} compact />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {!list.length && <p className="text-sm text-muted-foreground">No comments yet. Ask a question or suggest a change.</p>}
+        {list.map((c) => (
+          <div key={c.id} className={cn('flex gap-2.5', c.resolved_at && 'opacity-60')}>
+            <Avatar user={{ id: c.user_id, name: c.user_name, color: c.user_color }} size="sm" />
+            <div className="min-w-0 flex-1 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="font-semibold">{c.user_name}</strong> <span className="text-xs text-muted-foreground">{timeAgo(c.created_at)}</span>
+                {c.resolved_at && <Pill tone="success">Resolved</Pill>}
+              </div>
+              <Markdown text={c.body} compact />
+            </div>
+            <div className="flex shrink-0 items-start gap-1">
+              {(canModerate || c.user_id === me!.user.id) && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={async () => {
+                    await act(() => api.patch(`/page-comments/${c.id}`, { resolved: !c.resolved_at }));
+                    reload();
+                  }}
+                >
+                  {c.resolved_at ? 'Reopen' : 'Resolve'}
+                </Button>
+              )}
+              {(c.user_id === me!.user.id || me!.role === 'admin' || me!.role === 'owner') && (
+                <IconButton
+                  label="Delete comment"
+                  size="icon-xs"
+                  onClick={async () => {
+                    if (!(await confirm({ title: 'Delete this comment?', confirmLabel: 'Delete', destructive: true }))) return;
+                    await act(() => api.del(`/page-comments/${c.id}`));
+                    reload();
+                    onChange?.();
+                  }}
+                >
+                  <Icon name="x" />
+                </IconButton>
+              )}
+            </div>
           </div>
-          {(canModerate || c.user_id === me!.user.id) && (
-            <button
-              className="link-btn small"
-              onClick={async () => {
-                await act(() => api.patch(`/page-comments/${c.id}`, { resolved: !c.resolved_at }));
-                reload();
-              }}
-            >
-              {c.resolved_at ? 'Reopen' : 'Resolve'}
-            </button>
-          )}
-          {(c.user_id === me!.user.id || me!.role === 'admin' || me!.role === 'owner') && (
-            <button
-              className="icon-btn xs"
-              aria-label="Delete comment"
-              onClick={async () => {
-                if (!confirm('Delete this comment?')) return;
-                await act(() => api.del(`/page-comments/${c.id}`));
-                reload();
-                onChange?.();
-              }}
-            >
-              <Icon name="x" size={12} />
-            </button>
-          )}
-        </div>
-      ))}
-      <form
-        className="comment-form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!body.trim()) return;
-          const ok = await act(() => api.post(`/pages/${pageId}/comments`, { body: withMentions(body.trim()) }));
-          if (!ok) return;
-          setBody('');
-          reload();
-          onChange?.();
-        }}
-      >
-        <Avatar user={me!.user} size="sm" />
-        <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Comment… use @Name to mention someone" aria-label="Comment on this page" maxLength={5000} />
-        <button className="btn sm" disabled={!body.trim()}>
-          Post
-        </button>
-      </form>
-    </section>
+        ))}
+      </CardContent>
+      <CardFooter>
+        <form
+          className="flex w-full items-center gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!body.trim()) return;
+            const ok = await act(() => api.post(`/pages/${pageId}/comments`, { body: withMentions(body.trim()) }));
+            if (!ok) return;
+            setBody('');
+            reload();
+            onChange?.();
+          }}
+        >
+          <Avatar user={me!.user} size="sm" />
+          <Input className="flex-1" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Comment… use @Name to mention someone" aria-label="Comment on this page" maxLength={5000} />
+          <Button variant="outline" size="sm" disabled={!body.trim()} type="submit">
+            Post
+          </Button>
+        </form>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -155,16 +178,17 @@ export function PublishPanel({ open, onClose, pageId, isPublic, url, onChange }:
   };
   return (
     <Modal open={open} onClose={onClose} title="Publish to the web" eyebrow="Share">
-      <div className="stack">
-        <p className="muted">
+      <div className="flex flex-col gap-3">
+        <p className="text-muted-foreground">
           Anyone with the link can read this page — no Küü account needed. They can’t see comments, history or other pages. Search engines are asked not to index it.
         </p>
         {isPublic && url ? (
           <>
-            <div className="row-gap">
-              <input readOnly value={url} aria-label="Public link" onFocus={(e) => e.target.select()} className="grow" />
-              <button
-                className="btn sm"
+            <div className="flex flex-wrap items-center gap-2">
+              <Input readOnly value={url} aria-label="Public link" onFocus={(e) => e.target.select()} className="min-w-0 flex-1" />
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(url);
@@ -172,25 +196,24 @@ export function PublishPanel({ open, onClose, pageId, isPublic, url, onChange }:
                   } catch {
                     /* the field is selectable */
                   }
-                }}
-              >
+                }}>
                 Copy
-              </button>
+              </Button>
             </div>
-            <div className="form-actions">
-              <button className="btn" onClick={() => set(true, true)}>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => set(true, true)}>
                 New link
-              </button>
-              <button className="btn danger-text" onClick={() => set(false)}>
+              </Button>
+              <Button variant="ghost" className="text-destructive" onClick={() => set(false)}>
                 Unpublish
-              </button>
+              </Button>
             </div>
           </>
         ) : (
-          <div className="form-actions">
-            <button className="btn primary" onClick={() => set(true)}>
-              <Icon name="globe" size={15} /> Publish
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button onClick={() => set(true)}>
+              <Icon name="globe" data-icon="inline-start" /> Publish
+            </Button>
           </div>
         )}
       </div>

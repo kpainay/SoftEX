@@ -3,10 +3,17 @@ import { api, type Feature, type PlanId, type PublicPlan } from '../api';
 import { Icon } from '../components/Icon';
 import { Markdown } from '../components/Markdown';
 import { FEATURE_ORDER, PlanFeatures, PlanPrice, contactHref, daysUntil, lrd, usd } from '../components/Plan';
-import { ErrorState, Field, Loading, Modal, useAction } from '../components/ui';
+import { Callout, ErrorState, FormField, Loading, Meter, Modal, Pill, toneFor, useAction } from '@/components/kit';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { bytes, dateTime, dateLabel } from '../format';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
 
 interface Payment {
   id: string;
@@ -65,26 +72,6 @@ export const totalFor = (price: number, months: number, annualFactor: number) =>
 
 const hours = (seconds: number) => `${Math.round((seconds / 3600) * 10) / 10} h`;
 
-function Meter({ label, used, limit, format = String }: { label: string; used: number; limit: number | null; format?: (n: number) => string }) {
-  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  return (
-    <div className="meter">
-      <div className="row-gap">
-        <span className="grow">{label}</span>
-        <strong>
-          {format(used)}
-          {limit != null ? ` of ${format(limit)}` : ''}
-        </strong>
-      </div>
-      {limit != null && (
-        <div className={`meter-bar ${pct >= 90 ? 'danger' : pct >= 75 ? 'warn' : ''}`} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
-          <i style={{ width: `${pct}%` }} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function BillingSettings() {
   const { data, error, reload } = useApi<BillingData>('/billing');
   const act = useAction();
@@ -103,137 +90,159 @@ export function BillingSettings() {
           : 'Free forever. Upgrade any time to unlock more.';
 
   return (
-    <div className="stack">
-      <div className="card billing-current">
-        <div className="row-gap wrap">
-          <div className="grow">
-            <p className="eyebrow">CURRENT PLAN</p>
-            <h2>
-              {plan.name} <span className={`pill plan-${plan.status}`}>{plan.status === 'grace' ? 'overdue' : plan.status}</span>
-            </h2>
-            <p className="muted">{statusLine}</p>
-          </div>
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardDescription className="text-xs font-semibold tracking-wide text-primary uppercase">Current plan</CardDescription>
+          <CardTitle aria-level={2} className="font-heading text-xl flex flex-wrap items-center gap-2">
+              {plan.name}{' '}
+              <Pill tone={toneFor(plan.status)} className="capitalize">
+                {plan.status === 'grace' ? 'overdue' : plan.status}
+              </Pill>
+</CardTitle>
+          <CardDescription>{statusLine}</CardDescription>
           {plan.status !== 'free' && plan.status !== 'trial' && (
-            <button className="btn primary" onClick={() => setPaying(plan.purchased)}>
-              Renew
-            </button>
+            <CardAction>
+              <Button onClick={() => setPaying(plan.purchased)}>Renew</Button>
+            </CardAction>
           )}
-        </div>
-        <div className="meters">
-          <Meter label={usage.guests ? `Members (plus ${usage.guests} guest${usage.guests === 1 ? '' : 's'}, who don't count)` : 'Members'} used={usage.members} limit={usage.member_limit} />
-          <Meter label="File storage" used={usage.storage_bytes} limit={usage.storage_limit} format={(n) => bytes(n)} />
-          {!!usage.recording_hours && <Meter label="Meeting recording this month" used={usage.recording_seconds} limit={usage.recording_hours * 3600} format={hours} />}
-          {!!usage.ai_limit && <Meter label={plan.status === 'trial' ? 'AI requests during trial' : 'AI requests this month'} used={usage.ai_used} limit={usage.ai_limit} />}
-        </div>
-        {plan.custom && <p className="muted small">Custom terms apply to this workspace, as agreed with us.</p>}
-        {usage.blocked.length > 0 && (
-          <div className="blocked-signals">
-            <strong>Your team tried to use these in the last 30 days, and your plan stopped them:</strong>
-            <ul>
-              {usage.blocked.map((b) => (
-                <li key={b.key}>
-                  {b.label} <span className="muted">· {b.count} time{b.count === 1 ? '' : 's'}</span>
-                </li>
-              ))}
-            </ul>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Meter label={usage.guests ? `Members (plus ${usage.guests} guest${usage.guests === 1 ? '' : 's'}, who don't count)` : 'Members'} used={usage.members} limit={usage.member_limit} />
+            <Meter label="File storage" used={usage.storage_bytes} limit={usage.storage_limit} format={(n) => bytes(n)} />
+            {!!usage.recording_hours && <Meter label="Meeting recording this month" used={usage.recording_seconds} limit={usage.recording_hours * 3600} format={hours} />}
+            {!!usage.ai_limit && <Meter label={plan.status === 'trial' ? 'AI requests during trial' : 'AI requests this month'} used={usage.ai_used} limit={usage.ai_limit} />}
           </div>
-        )}
-      </div>
+          {plan.custom && <p className="text-xs text-muted-foreground">Custom terms apply to this workspace, as agreed with us.</p>}
+          {usage.blocked.length > 0 && (
+            <Callout tone="warning" title="Your team tried to use these in the last 30 days, and your plan stopped them:">
+              <ul className="ml-4 list-disc">
+                {usage.blocked.map((b) => (
+                  <li key={b.key}>
+                    {b.label}{' '}
+                    <span className="text-muted-foreground">
+                      · {b.count} time{b.count === 1 ? '' : 's'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Callout>
+          )}
+        </CardContent>
+      </Card>
 
-      <div className="plan-grid">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {data.plans.map((p) => {
           const current = plan.status !== 'trial' && plan.id === p.id;
           const tooSmall = p.member_limit != null && usage.members > p.member_limit;
           const contact = contactHref(data.support_email, p.name);
           return (
-            <div key={p.id} className={`card plan-card ${p.id === 'organization' ? 'featured' : ''} ${current ? 'current' : ''}`}>
-              {p.id === 'organization' && <span className="plan-badge">Includes AI</span>}
-              <h3>{p.name}</h3>
-              <PlanPrice plan={p} />
-              {!!p.price && <p className="muted small">{lrd(p.price, data.lrd_per_usd) || 'Paid monthly or yearly'}</p>}
-              <p className="muted">{p.tagline}</p>
-              <PlanFeatures plan={p} all={FEATURE_ORDER} />
-              {current ? (
-                <button className="btn" disabled>
-                  Current plan
-                </button>
-              ) : p.self_serve && tooSmall ? (
-                <p className="muted small">
-                  Your workspace has {usage.members} members; {p.name} allows up to {p.member_limit}.
-                </p>
-              ) : p.self_serve ? (
-                <button className={`btn ${p.id === 'organization' ? 'primary' : ''}`} onClick={() => setPaying(p.id)}>
-                  Choose {p.name}
-                </button>
-              ) : p.price == null ? (
-                contact ? (
-                  <a className="btn" href={contact}>
-                    Contact us for a quote
-                  </a>
+            <Card key={p.id} className={cn(p.id === 'organization' && 'ring-2 ring-primary', current && 'bg-accent/40')}>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-lg">{p.name}</CardTitle>
+                  {p.id === 'organization' && <Badge>Includes AI</Badge>}
+                  {current && <Badge variant="secondary">Current</Badge>}
+                </div>
+                <PlanPrice plan={p} />
+                {!!p.price && <CardDescription className="text-xs">{lrd(p.price, data.lrd_per_usd) || 'Paid monthly or yearly'}</CardDescription>}
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col gap-4">
+                <p className="text-sm text-muted-foreground">{p.tagline}</p>
+                <PlanFeatures plan={p} all={FEATURE_ORDER} />
+              </CardContent>
+              <CardFooter>
+                {current ? (
+                  <Button variant="outline" className="w-full" disabled>
+                    Current plan
+                  </Button>
+                ) : p.self_serve && tooSmall ? (
+                  <p className="text-xs text-muted-foreground">
+                    Your workspace has {usage.members} members; {p.name} allows up to {p.member_limit}.
+                  </p>
+                ) : p.self_serve ? (
+                  <Button className="w-full" variant={p.id === 'organization' ? 'default' : 'outline'} onClick={() => setPaying(p.id)}>
+                    Choose {p.name}
+                  </Button>
+                ) : p.price == null ? (
+                  contact ? (
+                    <a href={contact} className={buttonVariants({ variant: 'outline', className: 'w-full' })}>
+                      Contact us for a quote
+                    </a>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Contact us for a quote.</p>
+                  )
                 ) : (
-                  <p className="muted small">Contact us for a quote.</p>
-                )
-              ) : (
-                <p className="muted small">Workspaces move here automatically when a trial or paid plan ends.</p>
-              )}
-            </div>
+                  <p className="text-xs text-muted-foreground">Workspaces move here automatically when a trial or paid plan ends.</p>
+                )}
+              </CardFooter>
+            </Card>
           );
         })}
       </div>
 
-      <div className="card">
-        <h2>Payments</h2>
-        {!data.payments.length && <p className="muted">No payments yet.</p>}
-        {data.payments.length > 0 && (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Plan</th>
-                  <th>Amount</th>
-                  <th>Method</th>
-                  <th>Reference</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
+      <Card>
+        <CardHeader>
+          <CardTitle aria-level={2}>Payments</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {!data.payments.length && <p className="text-sm text-muted-foreground">No payments yet.</p>}
+          {data.payments.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.payments.map((p) => (
-                  <tr key={p.id}>
-                    <td>{dateTime(p.created_at)}</td>
-                    <td>
+                  <TableRow key={p.id}>
+                    <TableCell>{dateTime(p.created_at)}</TableCell>
+                    <TableCell>
                       {data.plans.find((x) => x.id === p.plan)?.name ?? p.plan} · {p.months} mo
-                    </td>
-                    <td>{usd(p.amount)}</td>
-                    <td>{p.method_label}</td>
-                    <td>
-                      <code>{p.reference}</code>
-                    </td>
-                    <td>
-                      <span className={`pill pay-${p.status}`}>{STATUS_TEXT[p.status]}</span>
-                      {p.decision_note && <small className="muted block">{p.decision_note}</small>}
-                      {p.status === 'approved' && p.period_end && <small className="muted block">Covers until {dateLabel(p.period_end)}</small>}
-                    </td>
-                    <td>
+                    </TableCell>
+                    <TableCell className="tabular-nums">{usd(p.amount)}</TableCell>
+                    <TableCell>{p.method_label}</TableCell>
+                    <TableCell>
+                      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{p.reference}</code>
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      <Pill tone={toneFor(p.status)}>{STATUS_TEXT[p.status]}</Pill>
+                      {p.decision_note && <span className="block text-xs text-muted-foreground">{p.decision_note}</span>}
+                      {p.status === 'approved' && p.period_end && <span className="block text-xs text-muted-foreground">Covers until {dateLabel(p.period_end)}</span>}
+                    </TableCell>
+                    <TableCell>
                       {p.status === 'pending' && (
-                        <button className="btn sm" onClick={async () => (await act(() => api.del(`/billing/payments/${p.id}`), 'Payment cancelled')) && reload()}>
+                        <Button variant="outline" size="sm" onClick={async () => (await act(() => api.del(`/billing/payments/${p.id}`), 'Payment cancelled')) && reload()}>
                           Cancel
-                        </button>
+                        </Button>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {data.support_email && (
-          <p className="muted small">
-            Questions about billing? Email <a href={`mailto:${data.support_email}`}>{data.support_email}</a>.
-          </p>
-        )}
-      </div>
+              </TableBody>
+            </Table>
+          )}
+          {data.support_email && (
+            <p className="text-xs text-muted-foreground">
+              Questions about billing? Email{' '}
+              <a className="text-primary hover:underline" href={`mailto:${data.support_email}`}>
+                {data.support_email}
+              </a>
+              .
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <PayModal data={data} plan={paying} onClose={() => setPaying(null)} onDone={reload} />
     </div>
@@ -258,18 +267,18 @@ function PayModal({ data, plan, onClose, onDone }: { data: BillingData; plan: Pl
   return (
     <Modal open={!!plan} onClose={onClose} title={done ? 'Payment submitted' : `Pay for ${chosen?.name ?? ''}`} eyebrow="BILLING" wide>
       {done ? (
-        <div className="stack">
+        <div className="flex flex-col gap-3">
           <p>
             Thank you. We'll check the payment and confirm it — usually within one business day. You'll get an email and a notification when it's done, and your plan
             starts then.
           </p>
-          <button className="btn primary" onClick={onClose}>
+          <Button onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       ) : (
         <form
-          className="stack"
+          className="flex flex-col gap-3"
           onSubmit={async (e) => {
             e.preventDefault();
             const ok = await act(() => api.post('/billing/payments', { ...form, months: Number(form.months) }));
@@ -279,83 +288,83 @@ function PayModal({ data, plan, onClose, onDone }: { data: BillingData; plan: Pl
             }
           }}
         >
-          <div className="form-row">
-            <Field label="Plan">
-              <select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value as PlanId })}>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+            <FormField label="Plan">
+              <NativeSelect value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value as PlanId })}>
                 {data.plans
                   .filter((p) => p.self_serve && (p.member_limit == null || data.usage.members <= p.member_limit))
                   .map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                       {p.name} — {usd(p.price ?? 0)} per workspace / month
-                    </option>
+                    </NativeSelectOption>
                   ))}
-              </select>
-            </Field>
-            <Field label="Pay for">
-              <select value={form.months} onChange={(e) => setForm({ ...form, months: Number(e.target.value) })}>
+              </NativeSelect>
+            </FormField>
+            <FormField label="Pay for">
+              <NativeSelect value={form.months} onChange={(e) => setForm({ ...form, months: Number(e.target.value) })}>
                 {data.month_options.map((m) => (
-                  <option key={m} value={m}>
+                  <NativeSelectOption key={m} value={m}>
                     {m === 1 ? '1 month' : m === 12 ? '12 months (2 months free)' : `${m} months`}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-            </Field>
+              </NativeSelect>
+            </FormField>
           </div>
-          <div className="pay-total">
-            <span className="grow">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-muted px-4 py-3">
+            <span className="min-w-0 flex-1 text-sm">
               {usd(chosen.price ?? 0)} × {form.months} month{form.months === 1 ? '' : 's'}
               {form.months >= 12 ? ' − 2 months free' : ''}
-              <small className="muted block">One price for the whole workspace, up to {chosen.member_limit} members. Guests don't count.</small>
+              <span className="block text-xs text-muted-foreground">One price for the whole workspace, up to {chosen.member_limit} members. Guests don't count.</span>
             </span>
-            <strong>
-              {usd(total)} <small className="muted">{lrd(total, data.lrd_per_usd)}</small>
+            <strong className="font-heading text-2xl font-semibold tabular-nums">
+              {usd(total)} <span className="text-xs font-normal text-muted-foreground">{lrd(total, data.lrd_per_usd)}</span>
             </strong>
           </div>
-          {switching && <p className="hint-box warn">Changing plans starts a new period on the day the payment is confirmed.</p>}
-          <div className="pay-instructions">
-            <h3>1. Send the payment</h3>
+          {switching && <Callout tone="warning">Changing plans starts a new period on the day the payment is confirmed.</Callout>}
+          <div className="flex flex-col gap-2 rounded-xl border p-4">
+            <h3 className="font-semibold">1. Send the payment</h3>
             {data.instructions ? (
               <Markdown text={data.instructions} />
             ) : (
-              <p className="muted">Payment details haven't been set up yet{data.support_email ? `. Email ${data.support_email} to pay.` : '. Please contact support.'}</p>
+              <p className="text-muted-foreground">Payment details haven't been set up yet{data.support_email ? `. Email ${data.support_email} to pay.` : '. Please contact support.'}</p>
             )}
-            <p className="muted small">Pay exactly {usd(total)} and keep the transaction ID from your confirmation SMS or receipt.</p>
+            <p className="text-muted-foreground text-xs">Pay exactly {usd(total)} and keep the transaction ID from your confirmation SMS or receipt.</p>
           </div>
-          <h3>2. Tell us about it</h3>
-          <div className="form-row">
-            <Field label="Paid with">
-              <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+          <h3 className="font-semibold">2. Tell us about it</h3>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+            <FormField label="Paid with">
+              <NativeSelect value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
                 {data.methods.map((m) => (
-                  <option key={m.id} value={m.id}>
+                  <NativeSelectOption key={m.id} value={m.id}>
                     {m.label}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-            </Field>
-            <Field label="Transaction ID / reference">
-              <input required minLength={3} maxLength={100} value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="e.g. MP240925.1234.A56789" />
-            </Field>
+              </NativeSelect>
+            </FormField>
+            <FormField label="Transaction ID / reference">
+              <Input required minLength={3} maxLength={100} value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="e.g. MP240925.1234.A56789" />
+            </FormField>
           </div>
-          <div className="form-row">
-            <Field label="Phone number used (optional)">
-              <input type="tel" maxLength={40} value={form.payerPhone} onChange={(e) => setForm({ ...form, payerPhone: e.target.value })} placeholder="0770 000 000" />
-            </Field>
-            <Field label="Name on the account (optional)">
-              <input maxLength={100} value={form.payerName} onChange={(e) => setForm({ ...form, payerName: e.target.value })} />
-            </Field>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+            <FormField label="Phone number used (optional)">
+              <Input type="tel" maxLength={40} value={form.payerPhone} onChange={(e) => setForm({ ...form, payerPhone: e.target.value })} placeholder="0770 000 000" />
+            </FormField>
+            <FormField label="Name on the account (optional)">
+              <Input maxLength={100} value={form.payerName} onChange={(e) => setForm({ ...form, payerName: e.target.value })} />
+            </FormField>
           </div>
-          <Field label="Note (optional)">
-            <input maxLength={500} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-          </Field>
-          {!me?.user.email_verified && <p className="hint-box warn">Confirm your email address first — use the link in the banner at the top of the page.</p>}
-          <div className="row-gap">
-            <span className="grow" />
-            <button type="button" className="btn" onClick={onClose}>
+          <FormField label="Note (optional)">
+            <Input maxLength={500} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+          </FormField>
+          {!me?.user.email_verified && <Callout tone="warning">Confirm your email address first — use the link in the banner at the top of the page.</Callout>}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 flex-1" />
+            <Button variant="outline" type="button" onClick={onClose}>
               Cancel
-            </button>
-            <button className="btn primary" disabled={!me?.user.email_verified}>
+            </Button>
+            <Button disabled={!me?.user.email_verified} type="submit">
               <Icon name="send" size={15} /> Submit payment
-            </button>
+            </Button>
           </div>
         </form>
       )}

@@ -3,7 +3,10 @@ import { api } from '../api';
 import { useApi, useRealtime } from '../hooks';
 import { enablePush, pushState, type PushState } from '../pwa';
 import { Icon } from './Icon';
-import { useToast } from './ui';
+import { useToast } from '@/components/kit';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
 
 const KEY = 'kuu:push-prompt';
 /** After "Not now", ask again only once this long has passed… */
@@ -93,27 +96,35 @@ export function PushPrompt() {
   };
 
   return (
-    <div className="push-prompt card" role="dialog" aria-labelledby="push-prompt-title" aria-describedby="push-prompt-text">
-      <span className="push-prompt-icon" aria-hidden="true">
-        <Icon name="bell" size={20} />
-      </span>
-      <div className="push-prompt-body">
-        <strong id="push-prompt-title">Turn on notifications?</strong>
-        <p id="push-prompt-text" className="muted">
+    <Card
+      size="sm"
+      className="fixed right-4 bottom-20 z-40 w-[min(24rem,calc(100vw-2rem))] shadow-lg md:bottom-4"
+      role="dialog"
+      aria-labelledby="push-prompt-title"
+      aria-describedby="push-prompt-text"
+    >
+      <CardHeader>
+        <CardTitle id="push-prompt-title" className="flex items-center gap-2">
+          <Icon name="bell" size={18} className="text-primary" /> Turn on notifications?
+        </CardTitle>
+        <CardDescription id="push-prompt-text">
           Get mentions, direct messages and assignments on this device, even when Küü isn’t open. Quiet hours and focus time still apply.
-        </p>
-        <div className="row-gap">
-          <button className="btn primary sm" onClick={turnOn} disabled={busy}>
-            {busy ? 'Turning on…' : 'Turn on'}
-          </button>
-          <button className="btn sm" onClick={later} disabled={busy}>
-            Not now
-          </button>
-        </div>
-      </div>
-      <button className="icon-btn xs push-prompt-close" onClick={later} aria-label="Close">
-        <Icon name="x" size={14} />
-      </button>
-    </div>
+        </CardDescription>
+        <CardAction>
+          <Button variant="ghost" size="icon-xs" onClick={later} aria-label="Close">
+            <Icon name="x" />
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardFooter className="gap-2">
+        <Button size="sm" onClick={turnOn} disabled={busy}>
+          {busy && <Spinner data-icon="inline-start" />}
+          {busy ? 'Turning on…' : 'Turn on'}
+        </Button>
+        <Button variant="outline" size="sm" onClick={later} disabled={busy}>
+          Not now
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

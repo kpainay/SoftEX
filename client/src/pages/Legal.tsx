@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { PublicPage, companyName } from '../components/Public';
 import { usePublicPricing, type PublicPricing } from './Pricing';
+import { Callout } from '@/components/kit';
+import { Separator } from '@/components/ui/separator';
 
 /*
  * Starting-point legal documents for a hosted Küü service. They describe how the
@@ -18,18 +20,19 @@ function LegalFrame({ title, children }: { title: string; children: (info: Publi
   const unconfigured = data && !data.company.name;
   return (
     <PublicPage title={`${title} · Küü`}>
-      <article className="legal">
+      <article className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-10 text-[15px] leading-relaxed md:px-8 [&_a]:text-primary [&_a:hover]:underline [&_h2]:mt-6 [&_h2]:font-heading [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_li+li]:mt-1 [&_ol]:ml-5 [&_ol]:list-decimal [&_ul]:ml-5 [&_ul]:list-disc">
         {unconfigured && (
-          <p className="hint-box warn">
-            <Icon name="alert" size={15} /> Draft: the service operator hasn’t added company details yet. Set SOFTEX_COMPANY_NAME, SOFTEX_COMPANY_ADDRESS and
-            SOFTEX_LEGAL_EMAIL, and have these terms reviewed by a lawyer before accepting customers.
-          </p>
+          <Callout tone="warning">
+            Draft: the service operator hasn’t added company details yet. Set SOFTEX_COMPANY_NAME, SOFTEX_COMPANY_ADDRESS and SOFTEX_LEGAL_EMAIL, and have these terms reviewed by a lawyer
+            before accepting customers.
+          </Callout>
         )}
-        <p className="eyebrow">LEGAL</p>
-        <h1>{title}</h1>
-        <p className="muted">
+        <p className="text-xs font-semibold tracking-wide text-primary uppercase">Legal</p>
+        <h1 className="font-heading text-3xl font-semibold tracking-tight">{title}</h1>
+        <p className="text-sm text-muted-foreground">
           Effective {EFFECTIVE} · Version {data?.terms_version ?? '—'}
         </p>
+        <Separator className="my-2" />
         {children(data)}
       </article>
     </PublicPage>

@@ -9,10 +9,18 @@ import { useShell } from '../components/Layout';
 import { Markdown } from '../components/Markdown';
 import { NewTaskForm } from '../components/QuickCreate';
 import { TaskRow } from '../components/TaskDrawer';
-import { Empty, ErrorState, Field, Loading, Modal, PeoplePicker, Tabs, useAction } from '../components/ui';
+import { EmptyState, ErrorState, FormField, Loading, LoadingRows, Modal, Page, PageHeader, Panel, PeoplePicker, Pill, SecretReveal, TabBar, useAction, useConfirm } from '@/components/kit';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Card, CardContent } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 import { dateTime, localTimeIn, timeOf } from '../format';
 import { useApi, useRealtime } from '../hooks';
 import { useSession } from '../session';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 
 /** Private calendar subscription link for Google Calendar, Outlook or Apple Calendar. */
 function CalendarSubscribe({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -28,54 +36,52 @@ function CalendarSubscribe({ open, onClose }: { open: boolean; onClose: () => vo
   };
   return (
     <Modal open={open} onClose={onClose} title="Add Küü meetings to your calendar">
-      <p className="muted">
+      <p className="mb-4 text-sm text-muted-foreground">
         Subscribe once and your Küü meetings (the ones you organise or were invited to) show up in Google Calendar, Outlook or Apple Calendar. Calendar apps
         refresh subscriptions every few hours, so a change can take a while to appear.
       </p>
       {link ? (
-        <div className="hint-box token-reveal">
-          <strong>Copy this private link now. It won’t be shown again.</strong>
-          <code className="secret">{link.url}</code>
-          <div className="row-gap">
-            <button type="button" className="btn sm" onClick={() => navigator.clipboard?.writeText(link.url)}>
-              Copy link
-            </button>
-            <a className="btn sm" href={link.webcal}>
+        <SecretReveal
+          title="Copy this private link now. It won’t be shown again."
+          value={link.url}
+          actions={
+            <a href={link.webcal} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
               Open in calendar app
             </a>
-          </div>
-          <small className="muted block">
-            Google Calendar: <em>Other calendars → + → From URL</em>. Outlook: <em>Add calendar → Subscribe from web</em>. Anyone with the link can see your
-            meeting titles and times, so keep it private.
-          </small>
-        </div>
+          }
+        >
+          <span className="text-xs">
+            Google Calendar: <em>Other calendars → + → From URL</em>. Outlook: <em>Add calendar → Subscribe from web</em>. Anyone with the link can see your meeting titles and
+            times, so keep it private.
+          </span>
+        </SecretReveal>
       ) : data?.enabled ? (
         <>
-          <p>
+          <p className="text-sm">
             You have a calendar link{data.last_used_at ? `, last read by your calendar ${new Date(data.last_used_at).toLocaleString()}` : ''}. Links are only
             shown when created; make a new one if you’ve lost it (the old link stops working).
           </p>
-          <div className="form-actions">
-            <button
-              className="btn danger-text"
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              className="text-destructive"
               onClick={async () => {
                 await act(() => api.del('/me/calendar-feed'), 'Calendar link turned off');
                 reload();
-              }}
-            >
+              }}>
               Turn off
-            </button>
-            <button className="btn primary" onClick={create}>
+            </Button>
+            <Button onClick={create}>
               Make a new link
-            </button>
+            </Button>
           </div>
         </>
       ) : (
         data && (
-          <div className="form-actions">
-            <button className="btn primary" onClick={create}>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button onClick={create}>
               Create my calendar link
-            </button>
+            </Button>
           </div>
         )
       )}
@@ -95,66 +101,69 @@ export function Meetings() {
     groups.set(key, [...(groups.get(key) ?? []), m]);
   }
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>Meetings</h1>
-          <p className="muted">Agendas, notes, decisions and follow-ups — connected to the work they concern.</p>
-        </div>
-        <div className="row-gap">
-          <button className="btn" onClick={() => setSubscribe(true)}>
-            <Icon name="calendar" size={16} /> Add to my calendar
-          </button>
-          <button className="btn primary" onClick={() => openCreate('meeting')}>
-            <Icon name="plus" size={16} /> Schedule
-          </button>
-        </div>
-      </div>
+    <Page width="narrow">
+      <PageHeader
+        title="Meetings"
+        description="Agendas, notes, decisions and follow-ups — connected to the work they concern."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setSubscribe(true)}>
+              <Icon name="calendar" data-icon="inline-start" /> Add to my calendar
+            </Button>
+            <Button onClick={() => openCreate('meeting')}>
+              <Icon name="plus" data-icon="inline-start" /> Schedule
+            </Button>
+          </>
+        }
+      />
       <CalendarSubscribe open={subscribe} onClose={() => setSubscribe(false)} />
-      <Tabs value={range} onChange={setRange} tabs={[{ id: 'upcoming', label: 'Upcoming' }, { id: 'past', label: 'Past' }]} />
+      <TabBar value={range} onChange={setRange} tabs={[{ id: 'upcoming', label: 'Upcoming' }, { id: 'past', label: 'Past' }]} />
       {error && <ErrorState error={error} retry={reload} />}
-      {!data && !error && <Loading />}
+      {!data && !error && <LoadingRows rows={4} />}
       {data && !data.length && (
-        <Empty
+        <EmptyState
           icon="video"
           title={range === 'upcoming' ? 'No upcoming meetings' : 'No past meetings'}
           action={
             range === 'upcoming' && (
-              <button className="btn primary" onClick={() => openCreate('meeting')}>
-                <Icon name="plus" size={16} /> Schedule a meeting
-              </button>
+              <Button onClick={() => openCreate('meeting')}>
+                <Icon name="plus" data-icon="inline-start" /> Schedule a meeting
+              </Button>
             )
           }
         >
           Schedule from here, a channel or a project.
-        </Empty>
+        </EmptyState>
       )}
       {[...groups.entries()].map(([day, list]) => (
-        <section key={day} className="meeting-day">
-          <h2 className="section-h">{new Date(day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
-          <div className="card">
-            {list.map((m) => (
-              <Link key={m.id} to={`/meetings/${m.id}`} className="meeting">
-                <div className="time">
-                  <strong>{timeOf(m.starts_at)}</strong>
-                  <small>{m.duration_min} min</small>
-                </div>
-                <div className={`meeting-line ${m.started_at && !m.ended_at ? 'live' : ''} fg-${m.project?.color ?? 'purple'}`} />
-                <div className="grow">
-                  <h3>
-                    {m.title} {m.started_at && !m.ended_at && <span className="pill prio-urgent">Live</span>}
-                  </h3>
-                  <p>
-                    {m.video_url && <Icon name="video" size={14} />} {m.project?.name ?? m.location ?? ''} · organised by {m.organizer?.name}
-                  </p>
-                  <AvatarStack users={m.participants} max={5} />
-                </div>
-              </Link>
-            ))}
-          </div>
+        <section key={day} className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">{new Date(day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
+          <Card className="gap-0 p-1.5">
+            {list.map((m) => {
+              const live = !!m.started_at && !m.ended_at;
+              return (
+                <Link key={m.id} to={`/meetings/${m.id}`} className="flex items-stretch gap-3 rounded-xl p-3 transition-colors hover:bg-muted/60">
+                  <div className="flex w-16 shrink-0 flex-col items-end">
+                    <strong className="text-sm font-semibold tabular-nums">{timeOf(m.starts_at)}</strong>
+                    <span className="text-xs text-muted-foreground">{m.duration_min} min</span>
+                  </div>
+                  <span className={cn('w-1 shrink-0 rounded-full', live && 'animate-pulse')} style={{ background: live ? 'var(--destructive)' : `var(--c-${m.project?.color ?? 'purple'})` }} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                      {m.title} {live && <Pill tone="danger">Live</Pill>}
+                    </h3>
+                    <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                      {m.video_url && <Icon name="video" size={13} />} {m.project?.name ?? m.location ?? ''} · organised by {m.organizer?.name}
+                    </p>
+                    <AvatarStack users={m.participants} max={5} />
+                  </div>
+                </Link>
+              );
+            })}
+          </Card>
         </section>
       ))}
-    </div>
+    </Page>
   );
 }
 
@@ -175,6 +184,7 @@ export function MeetingDetail() {
   const { openTask } = useShell();
   const { people } = useSession();
   const act = useAction();
+  const confirm = useConfirm();
   const { data: m, error, reload } = useApi<MeetingFull>(`/meetings/${id}`);
   const [notes, setNotes] = useState<string | null>(null);
   const [agenda, setAgenda] = useState<string | null>(null);
@@ -204,112 +214,126 @@ export function MeetingDetail() {
     reload();
   };
 
+  const status = live ? 'Happening now' : m.ended_at ? 'Ended' : 'Scheduled';
   return (
-    <div className="page">
-      <div className="crumbs">
-        <Link to="/meetings">Meetings</Link>
-        {m.project && (
-          <>
-            {' / '}
-            <Link to={`/projects/${m.project.id}`}>{m.project.name}</Link>
-          </>
-        )}
-      </div>
-      <div className="meeting-head card">
-        <div className="grow">
-          <p className="eyebrow">{live ? 'HAPPENING NOW' : m.ended_at ? 'ENDED' : 'SCHEDULED'}</p>
-          <h1>{m.title}</h1>
-          <p className="muted">
-            {dateTime(m.starts_at)} – {timeOf(m.ends_at)} · {m.duration_min} min{m.location && ` · ${m.location}`}
-          </p>
-          {zones.length > 0 && (
-            <p className="muted small">
-              {zones.map((tz) => `${new Date(m.starts_at).toLocaleTimeString(undefined, { timeZone: tz, hour: 'numeric', minute: '2-digit' })} ${tz}`).join(' · ')}
+    <Page>
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink render={<Link to="/meetings" />}>Meetings</BreadcrumbLink>
+          </BreadcrumbItem>
+          {m.project && (
+            <>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link to={`/projects/${m.project.id}`} />}>{m.project.name}</BreadcrumbLink>
+              </BreadcrumbItem>
+            </>
+          )}
+        </BreadcrumbList>
+      </Breadcrumb>
+      <Card>
+        <CardContent className="flex flex-wrap items-start gap-4">
+          <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
+            <p className={cn('text-xs font-semibold tracking-wide uppercase', live ? 'text-destructive' : 'text-muted-foreground')}>{status}</p>
+            <h1 className="font-heading text-2xl font-semibold tracking-tight">{m.title}</h1>
+            <p className="text-sm text-muted-foreground">
+              {dateTime(m.starts_at)} – {timeOf(m.ends_at)} · {m.duration_min} min{m.location && ` · ${m.location}`}
             </p>
-          )}
-        </div>
-        <div className="meeting-actions">
-          {m.video_url && !m.ended_at && (
-            <a
-              className="btn primary"
-              href={m.video_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => m.can_take_notes && !m.started_at && api.post(`/meetings/${m.id}/start`).then(reload)}
-            >
-              <Icon name="video" size={16} /> {live ? 'Join now' : 'Start & join video'}
+            {zones.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {zones.map((tz) => `${new Date(m.starts_at).toLocaleTimeString(undefined, { timeZone: tz, hour: 'numeric', minute: '2-digit' })} ${tz}`).join(' · ')}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {m.video_url && !m.ended_at && (
+              <a
+                href={m.video_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => m.can_take_notes && !m.started_at && api.post(`/meetings/${m.id}/start`).then(reload)}
+                className={buttonVariants()}
+              >
+                <Icon name="video" data-icon="inline-start" /> {live ? 'Join now' : 'Start & join video'}
+              </a>
+            )}
+            {m.can_take_notes && !m.ended_at && (
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!(await confirm({ title: 'End the meeting?', description: 'Notes, decisions and follow-ups are sent to participants.', confirmLabel: 'End & share' }))) return;
+                  await act(() => api.post(`/meetings/${m.id}/end`), 'Meeting wrapped up');
+                  reload();
+                }}
+              >
+                <Icon name="check" data-icon="inline-start" /> End & share follow-ups
+              </Button>
+            )}
+            <a href={`/api/meetings/${m.id}/ics`} className={buttonVariants({ variant: 'outline' })}>
+              <Icon name="calendar" data-icon="inline-start" />
+              Add to calendar
             </a>
-          )}
-          {m.can_take_notes && !m.ended_at && (
-            <button
-              className="btn"
-              onClick={async () => {
-                if (!confirm('End the meeting and send notes, decisions and follow-ups to participants?')) return;
-                await act(() => api.post(`/meetings/${m.id}/end`), 'Meeting wrapped up');
-                reload();
-              }}
-            >
-              <Icon name="check" size={16} /> End & share follow-ups
-            </button>
-          )}
-          <a className="btn" href={`/api/meetings/${m.id}/ics`}>
-            <Icon name="calendar" size={16} /> Add to calendar
-          </a>
-          {m.my_response && !m.ended_at && (
-            <select
-              value={m.my_response}
-              onChange={async (e) => {
-                await act(() => api.post(`/meetings/${m.id}/respond`, { response: e.target.value }), 'Response saved');
-                reload();
-              }}
-              aria-label="Your response"
-            >
-              <option value="pending">Not responded</option>
-              <option value="accepted">Going</option>
-              <option value="declined">Not going</option>
-            </select>
-          )}
-        </div>
-      </div>
+            {m.my_response && !m.ended_at && (
+              <NativeSelect
+                value={m.my_response}
+                onChange={async (e) => {
+                  await act(() => api.post(`/meetings/${m.id}/respond`, { response: e.target.value }), 'Response saved');
+                  reload();
+                }}
+                aria-label="Your response"
+              >
+                <NativeSelectOption value="pending">Not responded</NativeSelectOption>
+                <NativeSelectOption value="accepted">Going</NativeSelectOption>
+                <NativeSelectOption value="declined">Not going</NativeSelectOption>
+              </NativeSelect>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="dashboard-grid">
-        <div className="main-column">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-4">
           <MeetingRecordings meetingId={m.id} meetingTitle={m.title} />
-          <article className="card">
-            <div className="section-heading compact">
-              <h2>Agenda</h2>
-              {m.can_take_notes && agenda === null && (
-                <button className="link-btn" onClick={() => setAgenda(m.agenda)}>
-                  Edit
-                </button>
-              )}
-            </div>
+          <Panel
+            title="Agenda"
+            action={
+              m.can_take_notes &&
+              agenda === null && (
+                <Button variant="ghost" size="sm" onClick={() => setAgenda(m.agenda)}>
+                  <Icon name="edit" data-icon="inline-start" /> Edit
+                </Button>
+              )
+            }
+            contentClassName="flex flex-col gap-2"
+          >
             {agenda !== null ? (
               <>
-                <textarea rows={6} value={agenda} onChange={(e) => setAgenda(e.target.value)} autoFocus aria-label="Agenda" />
-                <div className="form-actions">
-                  <button className="btn sm" onClick={() => setAgenda(null)}>
+                <Textarea rows={6} value={agenda} onChange={(e) => setAgenda(e.target.value)} autoFocus aria-label="Agenda" />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setAgenda(null)}>
                     Cancel
-                  </button>
-                  <button className="btn primary sm" onClick={saveAgenda}>
+                  </Button>
+                  <Button size="sm" onClick={saveAgenda}>
                     Save
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : m.agenda ? (
               <Markdown text={m.agenda} />
             ) : (
-              <p className="muted">No agenda yet.</p>
+              <p className="text-sm text-muted-foreground">No agenda yet.</p>
             )}
-          </article>
+          </Panel>
 
-          <article className="card">
-            <div className="section-heading compact">
-              <h2>Notes</h2>
-              <div className="row-gap">
+          <Panel
+            title="Notes"
+            action={
+              <div className="flex flex-wrap items-center gap-1">
                 {aiEnabled && (
-                  <button
-                    className="btn sm"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     disabled={aiBusy}
                     onClick={async () => {
                       setAiBusy(true);
@@ -318,16 +342,18 @@ export function MeetingDetail() {
                       if (res) setAiSummary(res.summary);
                     }}
                   >
-                    <Icon name="spark" size={14} /> {aiBusy ? 'Drafting…' : 'Draft summary'}
-                  </button>
+                    {aiBusy ? <Spinner data-icon="inline-start" /> : <Icon name="spark" data-icon="inline-start" />} {aiBusy ? 'Drafting…' : 'Draft summary'}
+                  </Button>
                 )}
                 {m.can_take_notes && notes === null && (
-                  <button className="link-btn" onClick={() => setNotes(m.notes)}>
-                    {m.notes ? 'Edit' : 'Take notes'}
-                  </button>
+                  <Button variant="ghost" size="sm" onClick={() => setNotes(m.notes)}>
+                    <Icon name="edit" data-icon="inline-start" /> {m.notes ? 'Edit' : 'Take notes'}
+                  </Button>
                 )}
               </div>
-            </div>
+            }
+            contentClassName="flex flex-col gap-3"
+          >
             {aiSummary && (
               <AiDraft
                 text={aiSummary}
@@ -345,42 +371,45 @@ export function MeetingDetail() {
             )}
             {notes !== null ? (
               <>
-                <textarea rows={12} value={notes} onChange={(e) => setNotes(e.target.value)} autoFocus aria-label="Meeting notes" placeholder="Capture discussion points. Record decisions and follow-ups below so they are tracked." />
-                <div className="form-actions">
-                  <button className="btn sm" onClick={() => setNotes(null)}>
+                <Textarea
+                  rows={12}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  autoFocus
+                  aria-label="Meeting notes"
+                  placeholder="Capture discussion points. Record decisions and follow-ups below so they are tracked."
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setNotes(null)}>
                     Cancel
-                  </button>
-                  <button className="btn primary sm" onClick={saveNotes}>
+                  </Button>
+                  <Button size="sm" onClick={saveNotes}>
                     Save notes
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : m.notes ? (
               <Markdown text={m.notes} />
             ) : (
-              <p className="muted">No notes yet.</p>
+              <p className="text-sm text-muted-foreground">No notes yet.</p>
             )}
-          </article>
+          </Panel>
 
-          <article className="card">
-            <div className="section-heading compact">
-              <h2>Decisions</h2>
-            </div>
+          <Panel title="Decisions" contentClassName="flex flex-col gap-2">
             {m.decisions.map((d) => (
-              <div key={d.id} className="list-row">
-                <span className="activity-icon decision">
+              <div key={d.id} className="flex items-start gap-3 py-1">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
                   <Icon name="gavel" size={15} />
                 </span>
-                <span className="grow">
-                  <strong>{d.title}</strong>
-                  <small className="muted block">{d.decided_by_name}</small>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <strong className="text-sm font-semibold">{d.title}</strong>
+                  <span className="text-xs text-muted-foreground">{d.decided_by_name}</span>
                 </span>
               </div>
             ))}
-            {!m.decisions.length && <p className="muted">No decisions recorded.</p>}
+            {!m.decisions.length && <p className="text-sm text-muted-foreground">No decisions recorded.</p>}
             {m.can_take_notes && (
               <form
-                className="inline-add"
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!decision.trim()) return;
@@ -389,72 +418,77 @@ export function MeetingDetail() {
                   reload();
                 }}
               >
-                <input value={decision} onChange={(e) => setDecision(e.target.value)} placeholder="Record a decision and press Enter" aria-label="New decision" />
+                <Input value={decision} onChange={(e) => setDecision(e.target.value)} placeholder="Record a decision and press Enter" aria-label="New decision" />
               </form>
             )}
-          </article>
+          </Panel>
 
-          <article className="card">
-            <div className="section-heading compact">
-              <h2>Follow-up tasks</h2>
-              {m.can_take_notes && (
-                <button className="btn sm" onClick={() => setAddingTask(true)}>
-                  <Icon name="plus" size={14} /> Add follow-up
-                </button>
-              )}
-            </div>
-            <div className="task-list">
-              {m.tasks.map((t) => (
-                <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} />
-              ))}
-            </div>
-            {!m.tasks.length && <p className="muted">No follow-ups yet. Every action item should have one owner and a date.</p>}
-          </article>
+          <Panel
+            title="Follow-up tasks"
+            action={
+              m.can_take_notes && (
+                <Button variant="outline" size="sm" onClick={() => setAddingTask(true)}>
+                  <Icon name="plus" data-icon="inline-start" /> Add follow-up
+                </Button>
+              )
+            }
+            contentClassName="flex flex-col"
+          >
+            {m.tasks.map((t) => (
+              <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} />
+            ))}
+            {!m.tasks.length && <p className="text-sm text-muted-foreground">No follow-ups yet. Every action item should have one owner and a date.</p>}
+          </Panel>
         </div>
 
-        <aside className="right-column">
-          <article className="card">
-            <div className="section-heading compact">
-              <div>
-                <h2>Participants</h2>
-                <p>{m.participants.length} invited</p>
-              </div>
-              {m.can_manage && !m.ended_at && (
-                <button className="link-btn" onClick={() => setEditPeople(m.participants.map((p) => p.id))}>
+        <aside className="flex flex-col gap-4">
+          <Panel
+            title="Participants"
+            description={`${m.participants.length} invited`}
+            action={
+              m.can_manage &&
+              !m.ended_at && (
+                <Button variant="ghost" size="sm" onClick={() => setEditPeople(m.participants.map((p) => p.id))}>
                   Edit
-                </button>
-              )}
-            </div>
+                </Button>
+              )
+            }
+            contentClassName="flex flex-col gap-1"
+          >
             {m.participants.map((p) => (
-              <div key={p.id} className="list-row">
+              <div key={p.id} className="flex items-center gap-2.5 py-1.5">
                 <Avatar user={p} size="sm" showPresence />
-                <span className="grow">
-                  {p.name} {p.id === m.organizer?.id && <span className="pill">Organizer</span>}
-                  <small className="muted block">{localTimeIn(p.timezone)} local time</small>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="flex flex-wrap items-center gap-1.5 truncate text-sm">
+                    {p.name} {p.id === m.organizer?.id && <Pill>Organizer</Pill>}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{localTimeIn(p.timezone)} local time</span>
                 </span>
-                <span className={`rsvp rsvp-${p.response}`}>{p.response === 'accepted' ? 'Going' : p.response === 'declined' ? 'Declined' : 'Pending'}</span>
+                <Pill tone={p.response === 'accepted' ? 'success' : p.response === 'declined' ? 'danger' : 'outline'}>
+                  {p.response === 'accepted' ? 'Going' : p.response === 'declined' ? 'Declined' : 'Pending'}
+                </Pill>
               </div>
             ))}
-          </article>
+          </Panel>
           {m.channel && (
-            <article className="card">
-              <h2>Discussion</h2>
-              <Link to={`/channels/${m.channel.id}`} className="list-row">
-                <Icon name="hash" /> {m.channel.name}
+            <Panel title="Discussion">
+              <Link to={`/channels/${m.channel.id}`} className={buttonVariants({ variant: 'outline', className: 'w-full justify-start' })}>
+                <Icon name="hash" data-icon="inline-start" /> {m.channel.name}
               </Link>
-            </article>
+            </Panel>
           )}
           {m.can_manage && !m.ended_at && (
-            <button
-              className="btn block danger-text"
+            <Button
+              variant="destructive"
+              className="w-full"
               onClick={async () => {
-                if (!confirm('Cancel this meeting? Participants will be notified.')) return;
+                if (!(await confirm({ title: 'Cancel this meeting?', description: 'Participants will be notified.', confirmLabel: 'Cancel meeting', cancelLabel: 'Keep it', destructive: true }))) return;
                 await act(() => api.del(`/meetings/${m.id}`), 'Meeting cancelled');
                 navigate('/meetings');
               }}
             >
               Cancel meeting
-            </button>
+            </Button>
           )}
         </aside>
       </div>
@@ -474,7 +508,7 @@ export function MeetingDetail() {
       <Modal open={editPeople !== null} onClose={() => setEditPeople(null)} title="Participants">
         {editPeople && (
           <form
-            className="form"
+            className="flex flex-col gap-4"
             onSubmit={async (e) => {
               e.preventDefault();
               await act(() => api.patch(`/meetings/${m.id}`, { participantIds: editPeople }), 'Participants updated');
@@ -482,15 +516,15 @@ export function MeetingDetail() {
               reload();
             }}
           >
-            <Field label="People">
+            <FormField label="People">
               <PeoplePicker people={people} value={editPeople} onChange={setEditPeople} />
-            </Field>
-            <div className="form-actions">
-              <button className="btn primary">Save</button>
+            </FormField>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button type="submit">Save</Button>
             </div>
           </form>
         )}
       </Modal>
-    </div>
+    </Page>
   );
 }

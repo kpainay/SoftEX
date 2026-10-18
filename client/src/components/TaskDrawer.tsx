@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs, type Task } from '../api';
 import { bytes, dueLabel, plainMentions, STATUS_LABEL, timeAgo } from '../format';
@@ -9,38 +9,82 @@ import { Icon } from './Icon';
 import { RemindButton } from './Later';
 import { Markdown } from './Markdown';
 import { NewTaskForm } from './QuickCreate';
-import { ErrorBoundary, ErrorState, Loading, StatusPill, useAction } from './ui';
+import { Callout, DatePicker, ErrorBoundary, ErrorState, IconButton, Loading, Pill, PriorityPill, StatusPill, useAction, useConfirm } from '@/components/kit';
 import { LabelChips, LabelPicker, TaskFieldRows, TimeTracker } from './Work';
 import { usePlan } from './Plan';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/components/ui/input-group';
+import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { cn } from '@/lib/utils';
 
 /** Side drawer wrapper around TaskDetail, opened from any list. */
 export function TaskDrawer({ taskId, onClose }: { taskId: string | null; onClose: () => void }) {
-  useEffect(() => {
-    if (!taskId) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [taskId, onClose]);
-  if (!taskId) return null;
+  return (
+    <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl" showCloseButton={false}>
+        <SheetHeader className="flex-row items-center justify-between border-b py-2.5">
+          <SheetTitle className="sr-only">Task details</SheetTitle>
+          {taskId && (
+            <Link
+              to={`/tasks/${taskId}`}
+              onClick={onClose}
+              className={buttonVariants({
+                variant: "ghost",
+                size: "sm",
+                className: "text-muted-foreground"
+              })}>Open full page <Icon name="arrow" data-icon="inline-end" />
+            </Link>
+          )}
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close task">
+            <Icon name="x" />
+          </Button>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          {taskId && (
+            <ErrorBoundary resetKey={taskId}>
+              <TaskDetail taskId={taskId} onDeleted={onClose} />
+            </ErrorBoundary>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** A titled block inside the task detail. */
+function DetailSection({ title, action, children }: { title: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <Separator />
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** One label/value row in the task's property grid. */
+function Prop({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <div className="scrim drawer-scrim" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label="Task details">
-        <div className="drawer-head">
-          <Link to={`/tasks/${taskId}`} onClick={onClose} className="muted small">
-            Open full page <Icon name="arrow" size={14} />
-          </Link>
-          <button className="icon-btn" onClick={onClose} aria-label="Close task">
-            <Icon name="x" />
-          </button>
-        </div>
-        <ErrorBoundary resetKey={taskId}>
-          <TaskDetail taskId={taskId} onDeleted={onClose} />
-        </ErrorBoundary>
-      </aside>
+      <dt className="pt-1.5 text-sm text-muted-foreground">{label}</dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-2">{children}</dd>
     </>
   );
 }
+
+const None = ({ children }: { children: ReactNode }) => <p className="text-sm text-muted-foreground">{children}</p>;
 
 /** Sizes a one-row text area to its content. */
 function autoGrow(el: HTMLTextAreaElement | null) {
@@ -98,6 +142,7 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
   const { people, me } = useSession();
   const { has: planHas } = usePlan();
   const act = useAction();
+  const confirm = useConfirm();
   const { data: task, error, reload, setData } = useApi<TaskFull>(`/tasks/${taskId}`);
   const [newItem, setNewItem] = useState('');
   const [comment, setComment] = useState('');
@@ -139,24 +184,24 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
   const showStart = planHas('planning') || !!task.start_date;
 
   return (
-    <div className="task-detail">
-      <div className="task-detail-top">
+    <div className="task-detail flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         {task.project ? (
-          <Link to={`/projects/${task.project.id}`} className="crumb">
-            <span className={`project-dot bg-${task.project.color}`} /> {task.project.name}
+          <Link to={`/projects/${task.project.id}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+            <span className="size-2 rounded-full" style={{ background: `var(--c-${task.project.color})` }} /> {task.project.name}
           </Link>
         ) : (
-          <span className="crumb muted">Personal task</span>
+          <span className="text-muted-foreground">Personal task</span>
         )}
         {task.recurrence && (
-          <span className="pill">
-            <Icon name="refresh" size={12} /> Repeats {task.recurrence}
-          </span>
+          <Pill>
+            <Icon name="refresh" /> Repeats {task.recurrence}
+          </Pill>
         )}
       </div>
       {/* A text area that grows with the title, so long titles are readable on a phone. */}
-      <textarea
-        className="title-input"
+      <Textarea
+        className="min-h-0 resize-none rounded-lg border-0 bg-transparent px-1 py-0.5 font-heading text-xl font-semibold shadow-none hover:bg-muted/60 md:text-xl dark:bg-transparent"
         rows={1}
         defaultValue={task.title}
         key={task.title}
@@ -176,227 +221,240 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
         }}
       />
 
-      <div className="status-steps" role="group" aria-label="Status">
+      <ToggleGroup
+        className="status-steps w-full flex-wrap"
+        variant="outline"
+        size="sm"
+        spacing={0}
+        aria-label="Status"
+        value={[task.status]}
+        disabled={disabled}
+        onValueChange={(v) => v[0] && v[0] !== task.status && update({ status: v[0] })}
+      >
         {(['todo', 'in_progress', 'blocked', 'review', 'done'] as const).map((s) => (
-          <button key={s} disabled={disabled} className={`step status-${s} ${task.status === s ? 'active' : ''}`} onClick={() => update({ status: s })} aria-pressed={task.status === s}>
+          <ToggleGroupItem key={s} value={s} className="flex-1 data-pressed:bg-accent data-pressed:text-accent-foreground">
             {STATUS_LABEL[s]}
-          </button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
       {task.status === 'blocked' && (
-        <input
-          className="blocked-reason"
+        <Input
           placeholder="What is blocking this? (visible to the team)"
           defaultValue={task.blocked_reason}
           disabled={disabled}
+          aria-label="What is blocking this task"
           onBlur={(e) => e.target.value !== task.blocked_reason && update({ blockedReason: e.target.value })}
         />
       )}
       {task.waiting_on > 0 && (
-        <p className="hint-box warn">
-          <Icon name="alert" size={15} /> Waiting on {task.waiting_on} unfinished prerequisite task{task.waiting_on > 1 ? 's' : ''}.
-        </p>
+        <Callout tone="warning">
+          Waiting on {task.waiting_on} unfinished prerequisite task{task.waiting_on > 1 ? 's' : ''}.
+        </Callout>
       )}
 
-      <dl className="props">
-        <dt>Owner</dt>
-        <dd>
-          <select value={task.owner?.id ?? ''} disabled={disabled} onChange={(e) => update({ ownerId: e.target.value || null })} aria-label="Owner">
-            <option value="">Unassigned</option>
+      <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2.5">
+        <Prop label="Owner">
+          <NativeSelect className="w-full" value={task.owner?.id ?? ''} disabled={disabled} onChange={(e) => update({ ownerId: e.target.value || null })} aria-label="Owner">
+            <NativeSelectOption value="">Unassigned</NativeSelectOption>
             {people.map((p) => (
-              <option key={p.id} value={p.id}>
+              <NativeSelectOption key={p.id} value={p.id}>
                 {p.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-        </dd>
-        <dt>Due</dt>
-        <dd>
-          <input type="date" value={task.due_date ?? ''} disabled={disabled} onChange={(e) => update({ dueDate: e.target.value || null })} aria-label="Due date" />
-          {task.overdue && <span className="due overdue">Overdue</span>}
-        </dd>
+          </NativeSelect>
+        </Prop>
+        <Prop label="Due">
+          <DatePicker value={task.due_date} disabled={disabled} onChange={(v) => update({ dueDate: v })} aria-label="Due date" placeholder="No due date" />
+          {task.overdue && <Pill tone="danger">Overdue</Pill>}
+        </Prop>
         {showStart && (
-          <>
-            <dt>Start</dt>
-            <dd>
-              <input
-                type="date"
-                value={task.start_date ?? ''}
-                max={task.due_date ?? undefined}
-                disabled={disabled || !planHas('planning')}
-                onChange={(e) => update({ startDate: e.target.value || null })}
-                aria-label="Start date"
-              />
-            </dd>
-          </>
+          <Prop label="Start">
+            <DatePicker
+              value={task.start_date}
+              max={task.due_date ?? undefined}
+              disabled={disabled || !planHas('planning')}
+              onChange={(v) => update({ startDate: v })}
+              aria-label="Start date"
+              placeholder="No start date"
+            />
+          </Prop>
         )}
-        <dt>Estimate</dt>
-        <dd>
-          <input
-            type="number"
-            min={0}
-            max={1000}
-            step={0.5}
-            className="narrow-input"
-            defaultValue={task.estimate_hours ?? ''}
-            key={`est-${task.estimate_hours}`}
-            disabled={disabled}
-            placeholder="0"
-            aria-label="Estimate in hours"
-            onBlur={(e) => {
-              const v = e.target.value === '' ? null : Number(e.target.value);
-              if (v !== task.estimate_hours && (v === null || (v >= 0 && v <= 1000))) update({ estimateHours: v });
-            }}
-          />{' '}
-          <small className="muted">hours</small>
-        </dd>
-        <dt>Priority</dt>
-        <dd>
-          <select value={task.priority} disabled={disabled} onChange={(e) => update({ priority: e.target.value })} aria-label="Priority">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </dd>
-        <dt>Reviewer</dt>
-        <dd>
-          <select value={task.reviewer?.id ?? ''} disabled={disabled} onChange={(e) => update({ reviewerId: e.target.value || null })} aria-label="Reviewer">
-            <option value="">None</option>
+        <Prop label="Estimate">
+          <InputGroup className="w-32">
+            <InputGroupInput
+              type="number"
+              min={0}
+              max={1000}
+              step={0.5}
+              defaultValue={task.estimate_hours ?? ''}
+              key={`est-${task.estimate_hours}`}
+              disabled={disabled}
+              placeholder="0"
+              aria-label="Estimate in hours"
+              onBlur={(e) => {
+                const v = e.target.value === '' ? null : Number(e.target.value);
+                if (v !== task.estimate_hours && (v === null || (v >= 0 && v <= 1000))) update({ estimateHours: v });
+              }}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupText>hours</InputGroupText>
+            </InputGroupAddon>
+          </InputGroup>
+        </Prop>
+        <Prop label="Priority">
+          <NativeSelect className="w-full" value={task.priority} disabled={disabled} onChange={(e) => update({ priority: e.target.value })} aria-label="Priority">
+            <NativeSelectOption value="low">Low</NativeSelectOption>
+            <NativeSelectOption value="medium">Medium</NativeSelectOption>
+            <NativeSelectOption value="high">High</NativeSelectOption>
+            <NativeSelectOption value="urgent">Urgent</NativeSelectOption>
+          </NativeSelect>
+        </Prop>
+        <Prop label="Reviewer">
+          <NativeSelect className="w-full" value={task.reviewer?.id ?? ''} disabled={disabled} onChange={(e) => update({ reviewerId: e.target.value || null })} aria-label="Reviewer">
+            <NativeSelectOption value="">None</NativeSelectOption>
             {people
               .filter((p) => p.id !== task.owner?.id)
               .map((p) => (
-                <option key={p.id} value={p.id}>
+                <NativeSelectOption key={p.id} value={p.id}>
                   {p.name}
-                </option>
+                </NativeSelectOption>
               ))}
-          </select>
-        </dd>
+          </NativeSelect>
+        </Prop>
         {task.milestones.length > 0 && (
-          <>
-            <dt>Milestone</dt>
-            <dd>
-              <select value={task.milestone_id ?? ''} disabled={disabled} onChange={(e) => update({ milestoneId: e.target.value || null })} aria-label="Milestone">
-                <option value="">None</option>
-                {task.milestones.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </dd>
-          </>
+          <Prop label="Milestone">
+            <NativeSelect className="w-full" value={task.milestone_id ?? ''} disabled={disabled} onChange={(e) => update({ milestoneId: e.target.value || null })} aria-label="Milestone">
+              <NativeSelectOption value="">None</NativeSelectOption>
+              {task.milestones.map((m) => (
+                <NativeSelectOption key={m.id} value={m.id}>
+                  {m.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </Prop>
         )}
-        <dt>Labels</dt>
-        <dd>
+        <Prop label="Labels">
           <LabelPicker taskId={task.id} value={task.labels ?? []} disabled={disabled} onChange={(labels) => setData({ ...task, labels })} />
-        </dd>
+        </Prop>
         <TaskFieldRows taskId={task.id} projectId={task.project?.id} values={task.fields ?? {}} disabled={disabled} onChange={(fields) => setData({ ...task, fields })} />
-        <dt>Repeats</dt>
-        <dd>
-          <select value={task.recurrence ?? ''} disabled={disabled} onChange={(e) => update({ recurrence: e.target.value || null })} aria-label="Repeats">
-            <option value="">Never</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-        </dd>
+        <Prop label="Repeats">
+          <NativeSelect className="w-full" value={task.recurrence ?? ''} disabled={disabled} onChange={(e) => update({ recurrence: e.target.value || null })} aria-label="Repeats">
+            <NativeSelectOption value="">Never</NativeSelectOption>
+            <NativeSelectOption value="daily">Daily</NativeSelectOption>
+            <NativeSelectOption value="weekly">Weekly</NativeSelectOption>
+            <NativeSelectOption value="monthly">Monthly</NativeSelectOption>
+          </NativeSelect>
+        </Prop>
       </dl>
-      <div className="row-gap">
+      <div className="flex flex-wrap items-center gap-2">
         <RemindButton taskId={task.id} />
       </div>
 
       {(task.source_message || task.meeting) && (
-        <div className="linked">
+        <ItemGroup className="gap-2">
           {task.source_message && (
-            <Link to={`/channels/${task.source_message.channel_id}?message=${task.source_message.id}`} className="linked-item">
-              <Icon name="chat" size={15} /> From a message in {task.source_message.kind === 'dm' ? 'a direct message' : `#${task.source_message.channel_name}`}
-            </Link>
+            <Item variant="muted" size="sm" render={<Link to={`/channels/${task.source_message.channel_id}?message=${task.source_message.id}`} />}>
+              <ItemMedia variant="icon">
+                <Icon name="chat" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>From a message in {task.source_message.kind === 'dm' ? 'a direct message' : `#${task.source_message.channel_name}`}</ItemTitle>
+              </ItemContent>
+            </Item>
           )}
           {task.meeting && (
-            <Link to={`/meetings/${task.meeting.id}`} className="linked-item">
-              <Icon name="video" size={15} /> Follow-up from {task.meeting.title}
-            </Link>
+            <Item variant="muted" size="sm" render={<Link to={`/meetings/${task.meeting.id}`} />}>
+              <ItemMedia variant="icon">
+                <Icon name="video" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Follow-up from {task.meeting.title}</ItemTitle>
+              </ItemContent>
+            </Item>
           )}
-        </div>
+        </ItemGroup>
       )}
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Description</h3>
-          {!disabled && !editingDesc && (
-            <button
-              className="link-btn"
+      <DetailSection
+        title="Description"
+        action={
+          !disabled &&
+          !editingDesc && (
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => {
                 setDesc(task.description);
                 setEditingDesc(true);
               }}
             >
-              Edit
-            </button>
-          )}
-        </div>
+              <Icon name="edit" data-icon="inline-start" /> Edit
+            </Button>
+          )
+        }
+      >
         {editingDesc ? (
-          <div>
-            <textarea rows={6} value={desc} onChange={(e) => setDesc(e.target.value)} autoFocus aria-label="Description" />
-            <div className="form-actions">
-              <button className="btn sm" onClick={() => setEditingDesc(false)}>
+          <div className="flex flex-col gap-2">
+            <Textarea rows={6} value={desc} onChange={(e) => setDesc(e.target.value)} autoFocus aria-label="Description" />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditingDesc(false)}>
                 Cancel
-              </button>
-              <button
-                className="btn primary sm"
+              </Button>
+              <Button
+                size="sm"
                 onClick={async () => {
                   await update({ description: desc });
                   setEditingDesc(false);
                 }}
               >
                 Save
-              </button>
+              </Button>
             </div>
           </div>
         ) : task.description ? (
           <Markdown text={task.description} />
         ) : (
-          <p className="muted">No description.</p>
+          <None>No description.</None>
         )}
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>
-            Checklist {task.checklist.length ? `${task.checklist.filter((c: any) => c.done).length}/${task.checklist.length}` : ''}
-          </h3>
-        </div>
-        {task.checklist.map((item: { id: string; text: string; done: number }) => (
-          <label key={item.id} className="check-row">
-            <input
-              type="checkbox"
-              checked={!!item.done}
-              disabled={disabled}
-              onChange={async (e) => {
-                await act(() => api.patch(`/checklist/${item.id}`, { done: e.target.checked }));
-                reload();
-              }}
-            />
-            <span className={item.done ? 'done' : ''}>{item.text}</span>
-            {!disabled && (
-              <button
-                className="icon-btn xs"
-                aria-label={`Remove ${item.text}`}
-                onClick={async (e) => {
-                  e.preventDefault();
-                  await act(() => api.del(`/checklist/${item.id}`));
-                  reload();
-                }}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            )}
-          </label>
-        ))}
+      <DetailSection title={`Checklist ${task.checklist.length ? `${task.checklist.filter((c: any) => c.done).length}/${task.checklist.length}` : ''}`}>
+        {task.checklist.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {task.checklist.map((item: { id: string; text: string; done: number }) => (
+              <li key={item.id} className="group flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-muted/60">
+                <Checkbox
+                  id={`check-${item.id}`}
+                  checked={!!item.done}
+                  disabled={disabled}
+                  onCheckedChange={async (checked) => {
+                    await act(() => api.patch(`/checklist/${item.id}`, { done: checked }));
+                    reload();
+                  }}
+                />
+                <Label htmlFor={`check-${item.id}`} className={cn('flex-1 font-normal', item.done && 'text-muted-foreground line-through')}>
+                  {item.text}
+                </Label>
+                {!disabled && (
+                  <IconButton
+                    label={`Remove ${item.text}`}
+                    size="icon-xs"
+                    tooltip={false}
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                    onClick={async () => {
+                      await act(() => api.del(`/checklist/${item.id}`));
+                      reload();
+                    }}
+                  >
+                    <Icon name="x" />
+                  </IconButton>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         {!disabled && (
           <form
-            className="inline-add"
             onSubmit={async (e) => {
               e.preventDefault();
               if (!newItem.trim()) return;
@@ -405,145 +463,176 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
               reload();
             }}
           >
-            <input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add a checklist item" aria-label="New checklist item" />
+            <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add a checklist item" aria-label="New checklist item" />
           </form>
         )}
-      </section>
+      </DetailSection>
 
       {!task.parent_id && (
-        <section className="detail-section">
-          <div className="section-title">
-            <h3>Subtasks</h3>
-            {!disabled && (
-              <button className="link-btn" onClick={() => setAddingSub((v) => !v)}>
-                {addingSub ? 'Cancel' : 'Add'}
-              </button>
-            )}
-          </div>
+        <DetailSection
+          title="Subtasks"
+          action={
+            !disabled && (
+              <Button variant="ghost" size="xs" onClick={() => setAddingSub((v) => !v)}>
+                {addingSub ? 'Cancel' : (
+                  <>
+                    <Icon name="plus" data-icon="inline-start" /> Add
+                  </>
+                )}
+              </Button>
+            )
+          }
+        >
           {task.subtask_list.map((s) => (
-            <Link key={s.id} to={`/tasks/${s.id}`} className="mini-task">
-              <StatusPill status={s.status} /> {s.title}
+            <Link key={s.id} to={`/tasks/${s.id}`} className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-sm hover:bg-muted/60">
+              <StatusPill status={s.status} />
+              <span className="min-w-0 flex-1 truncate">{s.title}</span>
               {s.owner && <Avatar user={s.owner} size="xs" />}
             </Link>
           ))}
-          {!task.subtask_list.length && !addingSub && <p className="muted">No subtasks.</p>}
+          {!task.subtask_list.length && !addingSub && <None>No subtasks.</None>}
           {addingSub && (
-            <NewTaskForm
-              projectId={task.project?.id}
-              defaults={{ parentId: task.id, ownerId: task.owner?.id }}
-              onDone={() => {
-                setAddingSub(false);
-                reload();
-              }}
-            />
+            <Card size="sm">
+              <CardContent>
+                <NewTaskForm
+                  projectId={task.project?.id}
+                  defaults={{ parentId: task.id, ownerId: task.owner?.id }}
+                  onDone={() => {
+                    setAddingSub(false);
+                    reload();
+                  }}
+                />
+              </CardContent>
+            </Card>
           )}
-        </section>
+        </DetailSection>
       )}
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Dependencies</h3>
-        </div>
+      <DetailSection title="Dependencies">
         {task.depends_on.map((d) => (
-          <div key={d.id} className="mini-task">
-            <span className="muted small">Waits on</span>
-            <Link to={`/tasks/${d.id}`}>{d.title}</Link>
+          <div key={d.id} className="flex items-center gap-2 text-sm">
+            <span className="text-xs text-muted-foreground">Waits on</span>
+            <Link to={`/tasks/${d.id}`} className="min-w-0 flex-1 truncate hover:underline">
+              {d.title}
+            </Link>
             <StatusPill status={d.status} />
             {!disabled && (
-              <button
-                className="icon-btn xs"
-                aria-label="Remove dependency"
+              <IconButton
+                label="Remove dependency"
+                size="icon-xs"
                 onClick={async () => {
                   await act(() => api.del(`/tasks/${task.id}/dependencies/${d.id}`));
                   reload();
                 }}
               >
-                <Icon name="x" size={12} />
-              </button>
+                <Icon name="x" />
+              </IconButton>
             )}
           </div>
         ))}
         {task.blocking.map((d) => (
-          <div key={d.id} className="mini-task">
-            <span className="muted small">Blocks</span>
-            <Link to={`/tasks/${d.id}`}>{d.title}</Link>
+          <div key={d.id} className="flex items-center gap-2 text-sm">
+            <span className="text-xs text-muted-foreground">Blocks</span>
+            <Link to={`/tasks/${d.id}`} className="min-w-0 flex-1 truncate hover:underline">
+              {d.title}
+            </Link>
             <StatusPill status={d.status} />
           </div>
         ))}
         {!disabled && (
-          <div className="dep-search">
-            <input value={depQuery} onChange={(e) => setDepQuery(e.target.value)} placeholder="This task waits on… (search tasks)" aria-label="Add dependency" />
+          <div className="flex flex-col gap-1">
+            <InputGroup>
+              <InputGroupAddon>
+                <Icon name="search" />
+              </InputGroupAddon>
+              <InputGroupInput value={depQuery} onChange={(e) => setDepQuery(e.target.value)} placeholder="This task waits on… (search tasks)" aria-label="Add dependency" />
+            </InputGroup>
             {depOptions.length > 0 && (
-              <div className="picker-options">
+              <div className="flex flex-col rounded-xl border bg-popover p-1 shadow-md">
                 {depOptions
                   .filter((o) => o.id !== task.id)
                   .map((o) => (
-                    <button
+                    <Button
                       key={o.id}
+                      variant="ghost"
+                      className="justify-between font-normal"
                       onClick={async () => {
                         await act(() => api.post(`/tasks/${task.id}/dependencies`, { dependsOnId: o.id }));
                         setDepQuery('');
                         reload();
                       }}
                     >
-                      {o.title} <StatusPill status={o.status} />
-                    </button>
+                      <span className="truncate">{o.title}</span> <StatusPill status={o.status} />
+                    </Button>
                   ))}
               </div>
             )}
           </div>
         )}
-      </section>
+      </DetailSection>
 
       <TimeTracker taskId={task.id} estimateHours={task.estimate_hours} canLog={!disabled} />
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Attachments</h3>
-          {!disabled && (
-            <button className="link-btn" onClick={() => fileInput.current?.click()}>
-              Upload
-            </button>
-          )}
-          <input
-            ref={fileInput}
-            type="file"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              const form = new FormData();
-              form.append('file', file);
-              form.append('taskId', task.id);
-              await act(() => api.upload('/files', form), 'File attached');
-              e.target.value = '';
-              reload();
-            }}
-          />
-        </div>
-        {task.files.map((f) => (
-          <Link key={f.id} to={`/files/${f.id}`} className="file-chip">
-            <Icon name={f.external_url ? 'link' : 'file'} size={15} /> {f.name} <small className="muted">{bytes(f.size)}</small>
-          </Link>
-        ))}
-        {!task.files.length && <p className="muted">No attachments.</p>}
-      </section>
+      <DetailSection
+        title="Attachments"
+        action={
+          !disabled && (
+            <Button variant="ghost" size="xs" onClick={() => fileInput.current?.click()}>
+              <Icon name="upload" data-icon="inline-start" /> Upload
+            </Button>
+          )
+        }
+      >
+        <input
+          ref={fileInput}
+          type="file"
+          hidden
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const form = new FormData();
+            form.append('file', file);
+            form.append('taskId', task.id);
+            await act(() => api.upload('/files', form), 'File attached');
+            e.target.value = '';
+            reload();
+          }}
+        />
+        {task.files.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {task.files.map((f) => (
+              <Link
+                to={`/files/${f.id}`}
+                key={f.id}
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "sm",
+                  className: "max-w-full"
+                })}>
+                <Icon name={f.external_url ? 'link' : 'file'} data-icon="inline-start" />
+                <span className="truncate">{f.name}</span>
+                <span className="text-xs text-muted-foreground">{bytes(f.size)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+        {!task.files.length && <None>No attachments.</None>}
+      </DetailSection>
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Comments</h3>
-        </div>
+      <DetailSection title="Comments">
         {task.comments.map((c) => (
-          <div key={c.id} className="comment">
+          <div key={c.id} className="flex gap-2.5">
             <Avatar user={{ id: c.user_id, name: c.user_name, color: c.user_color }} size="sm" />
-            <div>
-              <strong>{c.user_name}</strong> <small className="muted">{timeAgo(c.created_at)}</small>
+            <div className="min-w-0 flex-1 text-sm">
+              <div className="flex items-baseline gap-2">
+                <strong className="font-semibold">{c.user_name}</strong> <span className="text-xs text-muted-foreground">{timeAgo(c.created_at)}</span>
+              </div>
               <Markdown text={c.body} compact />
             </div>
           </div>
         ))}
         <form
-          className="comment-form"
+          className="flex items-center gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!comment.trim()) return;
@@ -553,40 +642,41 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
           }}
         >
           <Avatar user={me!.user} size="sm" />
-          <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Write a comment…" aria-label="Comment" />
-          <button className="btn sm" disabled={!comment.trim()}>
+          <Input className="flex-1" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Write a comment…" aria-label="Comment" />
+          <Button variant="outline" size="sm" disabled={!comment.trim()} type="submit">
             Post
-          </button>
+          </Button>
         </form>
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Activity</h3>
-        </div>
-        <ul className="timeline">
+      <DetailSection title="Activity">
+        <ol className="relative flex flex-col gap-2 border-l pl-4 text-sm">
           {task.activity.map((a) => (
-            <li key={a.id}>
-              <strong>{a.actor_name}</strong> {a.summary} <small className="muted">{timeAgo(a.created_at)}</small>
+            <li key={a.id} className="relative before:absolute before:top-2 before:-left-[1.3rem] before:size-2 before:rounded-full before:bg-border">
+              <strong className="font-medium">{a.actor_name}</strong> {a.summary} <span className="text-xs text-muted-foreground">{timeAgo(a.created_at)}</span>
             </li>
           ))}
-          <li>
-            <strong>{task.creator?.name}</strong> created this task <small className="muted">{timeAgo(task.created_at)}</small>
+          <li className="relative before:absolute before:top-2 before:-left-[1.3rem] before:size-2 before:rounded-full before:bg-border">
+            <strong className="font-medium">{task.creator?.name}</strong> created this task <span className="text-xs text-muted-foreground">{timeAgo(task.created_at)}</span>
           </li>
-        </ul>
-      </section>
+        </ol>
+      </DetailSection>
 
       {!disabled && (task.created_by === me!.user.id || task.owner?.id === me!.user.id || me!.role === 'admin' || me!.role === 'owner') && (
-        <button
-          className="btn danger-text"
-          onClick={async () => {
-            if (!confirm('Delete this task? This cannot be undone.')) return;
-            const ok = await act(() => api.del(`/tasks/${task.id}`), 'Task deleted');
-            if (ok) onDeleted?.();
-          }}
-        >
-          <Icon name="trash" size={15} /> Delete task
-        </button>
+        <>
+          <Separator />
+          <Button
+            variant="destructive"
+            className="self-start"
+            onClick={async () => {
+              if (!(await confirm({ title: 'Delete this task?', description: 'This cannot be undone.', confirmLabel: 'Delete task', destructive: true }))) return;
+              const ok = await act(() => api.del(`/tasks/${task.id}`), 'Task deleted');
+              if (ok) onDeleted?.();
+            }}
+          >
+            <Icon name="trash" data-icon="inline-start" /> Delete task
+          </Button>
+        </>
       )}
     </div>
   );
@@ -608,15 +698,13 @@ export function TaskRow({
   const [pending, setPending] = useState<boolean | null>(null);
   const done = pending ?? task.status === 'done';
   return (
-    <div className={`task ${done ? 'is-done' : ''}`}>
-      <input
-        type="checkbox"
-        className="task-check"
+    <div className={cn('task group/task flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted/60', done && 'is-done')}>
+      <Checkbox
         checked={done}
-        onChange={async (e) => {
-          setPending(e.target.checked);
+        onCheckedChange={async (checked) => {
+          setPending(checked);
           try {
-            await onToggle?.(e.target.checked);
+            await onToggle?.(checked);
           } finally {
             setPending(null);
           }
@@ -624,30 +712,44 @@ export function TaskRow({
         aria-label={`Mark ${task.title} ${done ? 'not done' : 'done'}`}
         disabled={!onToggle}
       />
-      <button className="task-body" onClick={onOpen}>
-        <strong>{task.title}</strong>
-        <small>
-          {showProject && (task.project ? <span className="task-project"><span className={`project-dot bg-${task.project.color}`} /><span className="task-project-name">{task.project.name}</span></span> : 'Personal')}
+      <button className="task-body flex min-w-0 flex-1 flex-col items-start gap-1 text-left outline-none focus-visible:underline" onClick={onOpen}>
+        <strong className={cn('text-sm font-medium', done && 'text-muted-foreground line-through')}>{task.title}</strong>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {showProject &&
+            (task.project ? (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--c-${task.project.color})` }} />
+                <span className="truncate">{task.project.name}</span>
+              </span>
+            ) : (
+              'Personal'
+            ))}
           {task.status !== 'todo' && task.status !== 'done' && <StatusPill status={task.status} />}
           <LabelChips labels={task.labels} />
-          {task.priority === 'urgent' || task.priority === 'high' ? <span className={`pill prio-${task.priority}`}>{task.priority}</span> : null}
+          <PriorityPill priority={task.priority} />
           {task.checklist.total > 0 && (
-            <span className="meta">
+            <span className="inline-flex items-center gap-1">
               <Icon name="check" size={12} /> {task.checklist.done}/{task.checklist.total}
             </span>
           )}
           {task.comment_count > 0 && (
-            <span className="meta">
+            <span className="inline-flex items-center gap-1">
               <Icon name="chat" size={12} /> {task.comment_count}
             </span>
           )}
-          {task.status === 'blocked' && task.blocked_reason && <span className="meta">— {plainMentions(task.blocked_reason)}</span>}
-        </small>
+          {task.status === 'blocked' && task.blocked_reason && <span>— {plainMentions(task.blocked_reason)}</span>}
+        </span>
       </button>
-      <span className="task-meta">
-        {task.due_date && <small className={`due ${task.overdue ? 'overdue' : dueLabel(task.due_date) === 'Today' ? 'today' : ''}`}>{dueLabel(task.due_date)}</small>}
+      <span className="flex shrink-0 items-center gap-2">
+        {task.due_date && <DueLabel due={task.due_date} overdue={task.overdue} />}
         <Avatar user={task.owner} size="sm" />
       </span>
     </div>
   );
+}
+
+/** "Today", "Tomorrow", "Oct 14"… coloured when it is today or overdue. */
+export function DueLabel({ due, overdue }: { due: string; overdue?: boolean }) {
+  const label = dueLabel(due);
+  return <span className={cn('text-xs font-medium whitespace-nowrap', overdue ? 'text-destructive' : label === 'Today' ? 'text-primary' : 'text-muted-foreground')}>{label}</span>;
 }

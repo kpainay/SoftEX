@@ -1,5 +1,9 @@
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
+
+const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
 /**
  * A small, safe Markdown renderer. It never injects HTML: every node is built
@@ -15,13 +19,13 @@ function inline(text: string, keyBase: string): ReactNode[] {
     if (m.index > last) out.push(text.slice(last, m.index));
     const k = `${keyBase}-${i++}`;
     const token = m[0];
-    if (m[1]) out.push(<code key={k}>{token.slice(1, -1)}</code>);
+    if (m[1]) out.push(<code key={k} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em]">{token.slice(1, -1)}</code>);
     else if (m[2]) out.push(<strong key={k}>{inline(token.slice(2, -2), k)}</strong>);
     else if (m[3]) out.push(<em key={k}>{inline(token.slice(1, -1), k)}</em>);
     else if (m[4]) {
       const [, name, id] = token.match(/@\[([^\]]+)\]\(([^)]+)\)/)!;
       out.push(
-        <Link key={k} className="mention" to={`/people/${id}`}>
+        <Link key={k} className="rounded-sm bg-accent px-1 font-medium text-accent-foreground hover:underline" to={`/people/${id}`}>
           @{name}
         </Link>,
       );
@@ -49,7 +53,7 @@ function linkEl(href: string, label: string, key: string) {
   // In-app links only: a single leading slash, never "//" or "/\\" (which browsers treat as another site).
   if (/^\/(?![/\\])[^\s]*$/.test(href)) {
     return (
-      <Link key={key} to={href}>
+      <Link key={key} to={href} className={LINK}>
         {label}
       </Link>
     );
@@ -57,7 +61,7 @@ function linkEl(href: string, label: string, key: string) {
   const external = safeExternalUrl(href);
   if (external) {
     return (
-      <a key={key} href={external} target="_blank" rel="noopener noreferrer nofollow">
+      <a key={key} href={external} target="_blank" rel="noopener noreferrer nofollow" className={LINK}>
         {label}
       </a>
     );
@@ -78,7 +82,7 @@ export function Markdown({ text, compact = false }: { text: string; compact?: bo
       while (i < lines.length && !lines[i].startsWith('```')) code.push(lines[i++]);
       i++;
       blocks.push(
-        <pre key={key++}>
+        <pre key={key++} className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">
           <code>{code.join('\n')}</code>
         </pre>,
       );
@@ -88,7 +92,21 @@ export function Markdown({ text, compact = false }: { text: string; compact?: bo
     if (heading && !compact) {
       const level = heading[1].length;
       const content = inline(heading[2], `h${key}`);
-      blocks.push(level === 1 ? <h2 key={key++}>{content}</h2> : level === 2 ? <h3 key={key++}>{content}</h3> : <h4 key={key++}>{content}</h4>);
+      blocks.push(
+        level === 1 ? (
+          <h2 key={key++} className="mt-5 font-heading text-lg font-semibold first:mt-0">
+            {content}
+          </h2>
+        ) : level === 2 ? (
+          <h3 key={key++} className="mt-4 font-heading text-base font-semibold first:mt-0">
+            {content}
+          </h3>
+        ) : (
+          <h4 key={key++} className="mt-3 font-semibold first:mt-0">
+            {content}
+          </h4>
+        ),
+      );
       i++;
       continue;
     }
@@ -99,20 +117,34 @@ export function Markdown({ text, compact = false }: { text: string; compact?: bo
         const itemText = lines[i].replace(/^\s*([-*]|\d+\.)\s+/, '');
         const box = itemText.match(/^\[( |x)\]\s+(.*)$/i);
         items.push(
-          <li key={i} className={box ? 'checkbox-item' : undefined}>
-            {box ? <input type="checkbox" checked={box[1].toLowerCase() === 'x'} readOnly aria-label="checklist item" /> : null}
-            {inline(box ? box[2] : itemText, `li${i}`)}
+          <li key={i} className={box ? '-ml-5 flex list-none items-start gap-2' : undefined}>
+            {box ? <Checkbox className="mt-0.5" checked={box[1].toLowerCase() === 'x'} readOnly aria-label="checklist item" /> : null}
+            <span>{inline(box ? box[2] : itemText, `li${i}`)}</span>
           </li>,
         );
         i++;
       }
-      blocks.push(ordered ? <ol key={key++}>{items}</ol> : <ul key={key++}>{items}</ul>);
+      blocks.push(
+        ordered ? (
+          <ol key={key++} className="ml-5 list-decimal marker:text-muted-foreground [&>li+li]:mt-1">
+            {items}
+          </ol>
+        ) : (
+          <ul key={key++} className="ml-5 list-disc marker:text-muted-foreground [&>li+li]:mt-1">
+            {items}
+          </ul>
+        ),
+      );
       continue;
     }
     if (line.startsWith('>')) {
       const quote: string[] = [];
       while (i < lines.length && lines[i].startsWith('>')) quote.push(lines[i++].replace(/^>\s?/, ''));
-      blocks.push(<blockquote key={key++}>{inline(quote.join(' '), `q${key}`)}</blockquote>);
+      blocks.push(
+        <blockquote key={key++} className="border-l-2 border-primary/40 pl-3 text-muted-foreground">
+          {inline(quote.join(' '), `q${key}`)}
+        </blockquote>,
+      );
       continue;
     }
     if (!line.trim()) {
@@ -135,5 +167,6 @@ export function Markdown({ text, compact = false }: { text: string; compact?: bo
       </p>,
     );
   }
-  return <div className={`markdown ${compact ? 'compact' : ''}`}>{blocks}</div>;
+  // Blocks follow each other with a gap; compact (messages) keeps it tighter.
+  return <div className={cn('markdown min-w-0 break-words [&>*+*]:mt-3', compact && 'compact [&>*+*]:mt-2')}>{blocks}</div>;
 }

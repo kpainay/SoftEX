@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { dateLabel } from '../format';
 import { Link } from 'react-router-dom';
 import { api, type Feature, type PublicPlan } from '../api';
 import { useSession } from '../session';
+import { Sparkles } from 'lucide-react';
 import { Icon } from './Icon';
-import { useAction } from './ui';
+import { Callout, useAction } from '@/components/kit';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export const FEATURE_LABEL: Record<Feature, string> = {
   ai: 'AI assistance',
@@ -64,28 +68,38 @@ export function UpgradeNotice({ feature, compact = false, readOnly = false }: { 
   const { can } = useSession();
   const plan = useUpgradePlan(feature);
   return (
-    <div className={`upgrade-notice ${compact ? 'compact' : ''}`} role="note">
-      <span className="upgrade-icon">
-        <Icon name="spark" size={compact ? 16 : 22} />
-      </span>
-      <div className="grow">
-        <strong>
-          {readOnly ? `${FEATURE_LABEL[feature]} are read-only on your plan` : `${FEATURE_LABEL[feature]} is part of the ${plan ?? 'paid'} plan${plan ? '' : 's'}`}
-        </strong>
-        <p className="muted">
-          {readOnly
-            ? `Everything already here stays readable. ${can('admin') ? `Upgrade${plan ? ` to ${plan}` : ''} to create and change them again.` : 'Ask a workspace admin to upgrade to make changes.'}`
-            : can('admin')
-              ? 'Upgrade to unlock it for your whole team. Nothing you already have changes.'
-              : 'Ask a workspace admin to upgrade to unlock it.'}
-        </p>
-      </div>
+    <Alert role="note" className={cn('border-primary/20 bg-accent/60', compact && 'py-2.5')}>
+      <Sparkles className="text-primary" />
+      <AlertTitle>
+        {readOnly ? `${FEATURE_LABEL[feature]} are read-only on your plan` : `${FEATURE_LABEL[feature]} is part of the ${plan ?? 'paid'} plan${plan ? '' : 's'}`}
+      </AlertTitle>
+      <AlertDescription>
+        {readOnly
+          ? `Everything already here stays readable. ${can('admin') ? `Upgrade${plan ? ` to ${plan}` : ''} to create and change them again.` : 'Ask a workspace admin to upgrade to make changes.'}`
+          : can('admin')
+            ? 'Upgrade to unlock it for your whole team. Nothing you already have changes.'
+            : 'Ask a workspace admin to upgrade to unlock it.'}
+      </AlertDescription>
       {can('admin') && (
-        <Link className="btn primary sm" to="/admin?tab=billing">
-          See plans
-        </Link>
+        <AlertAction>
+          <Link
+            to="/admin?tab=billing"
+            className={buttonVariants({
+              size: "sm"
+            })}>See plans
+                      </Link>
+        </AlertAction>
       )}
-    </div>
+    </Alert>
+  );
+}
+
+/** A full-width strip under the top bar. */
+function Banner({ tone, children, action }: { tone: 'warning' | 'info'; children: ReactNode; action: ReactNode }) {
+  return (
+    <Callout tone={tone} className="rounded-none border-x-0 border-t-0" action={action}>
+      {children}
+    </Callout>
   );
 }
 
@@ -99,36 +113,64 @@ export function AccountBanners() {
   const banners = [];
   if (!me.user.email_verified) {
     banners.push(
-      <div className="banner warn" key="verify">
-        <Icon name="alert" size={15} /> Please confirm your email address ({me.user.email}) to invite people, use AI and pay for a plan.
-        <button
-          className="link-btn"
-          disabled={sent}
-          onClick={async () => {
-            if (await act(() => api.post('/me/verify-email/resend'), 'Confirmation email sent')) setSent(true);
-          }}
-        >
-          {sent ? 'Sent — check your inbox' : 'Resend link'}
-        </button>
-      </div>,
+      <Banner
+        tone="warning"
+        key="verify"
+        action={
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={sent}
+            onClick={async () => {
+              if (await act(() => api.post('/me/verify-email/resend'), 'Confirmation email sent')) setSent(true);
+            }}
+          >
+            {sent ? 'Sent — check your inbox' : 'Resend link'}
+          </Button>
+        }
+      >
+        Please confirm your email address ({me.user.email}) to invite people, use AI and pay for a plan.
+      </Banner>,
     );
   }
   if (can('admin')) {
     if (plan.status === 'trial' && daysUntil(plan.trial_ends_at) <= 14) {
       const days = daysUntil(plan.trial_ends_at);
       banners.push(
-        <div className="banner" key="trial">
-          <Icon name="clock" size={15} /> {days <= 1 ? 'Your Organization trial ends today.' : `${days} days left in your Organization trial.`} Choose a plan to keep every feature.
-          <Link to="/admin?tab=billing">See plans</Link>
-        </div>,
+        <Banner
+          tone="info"
+          key="trial"
+          action={
+            <Link
+              to="/admin?tab=billing"
+              className={buttonVariants({
+                variant: "outline",
+                size: "xs"
+              })}>See plans
+                          </Link>
+          }
+        >
+          {days <= 1 ? 'Your Organization trial ends today.' : `${days} days left in your Organization trial.`} Choose a plan to keep every feature.
+        </Banner>,
       );
     }
     if (plan.status === 'grace') {
       banners.push(
-        <div className="banner warn" key="grace">
-          <Icon name="alert" size={15} /> Your {plan.name} plan ended on {dateLabel(plan.paid_through)}. Renew within a few days to keep paid features.
-          <Link to="/admin?tab=billing">Renew</Link>
-        </div>,
+        <Banner
+          tone="warning"
+          key="grace"
+          action={
+            <Link
+              to="/admin?tab=billing"
+              className={buttonVariants({
+                variant: "outline",
+                size: "xs"
+              })}>Renew
+                          </Link>
+          }
+        >
+          Your {plan.name} plan ended on {dateLabel(plan.paid_through)}. Renew within a few days to keep paid features.
+        </Banner>,
       );
     }
   }
@@ -140,45 +182,46 @@ const storage = (gb: number) => (gb >= 1024 ? `${gb / 1024} TB` : `${gb} GB`);
 /** A plan's price line: flat per workspace, free, or by quote. */
 export function PlanPrice({ plan }: { plan: PublicPlan }) {
   return (
-    <p className="plan-price">
+    <p className="flex items-baseline gap-1.5">
       {plan.price == null ? (
-        <strong>Custom quote</strong>
+        <strong className="font-heading text-3xl font-semibold">Custom quote</strong>
       ) : plan.price ? (
         <>
-          <strong>{usd(plan.price)}</strong> <span className="muted">per workspace / month</span>
+          <strong className="font-heading text-3xl font-semibold">{usd(plan.price)}</strong> <span className="text-sm text-muted-foreground">per workspace / month</span>
         </>
       ) : (
         <>
-          <strong>$0</strong> <span className="muted">forever</span>
+          <strong className="font-heading text-3xl font-semibold">$0</strong> <span className="text-sm text-muted-foreground">forever</span>
         </>
       )}
     </p>
   );
 }
 
+function FeatureRow({ on = true, children }: { on?: boolean; children: ReactNode }) {
+  return (
+    <li className={cn('flex gap-2', !on && 'text-muted-foreground line-through decoration-muted-foreground/40')}>
+      <Icon name={on ? 'check' : 'x'} size={14} className={cn('mt-0.5 shrink-0', on ? 'text-success' : 'text-muted-foreground')} />
+      <span>{children}</span>
+    </li>
+  );
+}
+
 export function PlanFeatures({ plan, all }: { plan: PublicPlan; all: Feature[] }) {
   const has = (f: Feature) => plan.features.includes(f);
   return (
-    <ul className="plan-features">
-      <li>
-        <Icon name="check" size={14} /> {plan.member_limit ? `Up to ${plan.member_limit} members` : 'More than 50 members'}
-      </li>
-      <li>
-        <Icon name="check" size={14} /> {storage(plan.storage_gb)} storage
-      </li>
-      <li>
-        <Icon name="check" size={14} /> Projects, tasks, messaging, file sharing, knowledge and meetings
-      </li>
+    <ul className="flex flex-col gap-2 text-sm">
+      <FeatureRow>{plan.member_limit ? `Up to ${plan.member_limit} members` : 'More than 50 members'}</FeatureRow>
+      <FeatureRow>{storage(plan.storage_gb)} storage</FeatureRow>
+      <FeatureRow>Projects, tasks, messaging, file sharing, knowledge and meetings</FeatureRow>
       {all.map((f) => (
-        <li key={f} className={has(f) ? '' : 'off'}>
-          <Icon name={has(f) ? 'check' : 'x'} size={14} /> {FEATURE_LABEL[f]}
+        <FeatureRow key={f} on={has(f)}>
+          {FEATURE_LABEL[f]}
           {f === 'recordings' && has(f) ? (plan.recording_hours == null ? ' (unlimited)' : ` (${plan.recording_hours} hours a month)`) : ''}
           {f === 'ai' && has(f) && plan.ai_per_month ? ` (${plan.ai_per_month.toLocaleString()} requests a month)` : ''}
-        </li>
+        </FeatureRow>
       ))}
-      <li className={plan.priority_support ? '' : 'off'}>
-        <Icon name={plan.priority_support ? 'check' : 'x'} size={14} /> Priority support
-      </li>
+      <FeatureRow on={plan.priority_support}>Priority support</FeatureRow>
     </ul>
   );
 }

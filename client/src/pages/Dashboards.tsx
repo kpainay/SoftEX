@@ -7,9 +7,22 @@ import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { Markdown } from '../components/Markdown';
 import { UpgradeNotice, usePlan } from '../components/Plan';
-import { Empty, ErrorState, Field, HealthPill, Loading, Modal, StatusPill, useAction } from '../components/ui';
-import { dueLabel, timeAgo } from '../format';
+import { Callout, EmptyState, ErrorState, FormField, HealthPill, IconButton, Loading, Modal, Page, PageHeader, Pill, StatusPill, useAction, useConfirm } from '@/components/kit';
+import { DueLabel } from '../components/TaskDrawer';
+import { ButtonGroup } from '@/components/ui/button-group';
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { FieldDescription, FieldLegend, FieldSet } from '@/components/ui/field';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import { timeAgo } from '../format';
 import { useApi, useRealtime } from '../hooks';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 type WidgetType = 'number' | 'status' | 'priority' | 'owner' | 'label' | 'field' | 'trend' | 'time' | 'goals' | 'projects' | 'due' | 'note';
 type Metric = 'open' | 'overdue' | 'blocked' | 'done_week' | 'due_week' | 'hours_week' | 'field_sum';
@@ -90,94 +103,101 @@ export function Dashboards() {
   const [visibility, setVisibility] = useState<'workspace' | 'private'>('workspace');
   if (readOnly && data && !data.length) {
     return (
-      <div className="page">
-        <h1>Dashboards</h1>
+      <Page>
+        <PageHeader title="Dashboards" />
         <UpgradeNotice feature="insights" />
-      </div>
+      </Page>
     );
   }
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Dashboards</h1>
-          <p className="muted">Charts over tasks, time and goals. Everyone sees numbers from the projects they can open, so sharing a dashboard never shares private work.</p>
-        </div>
-        {!readOnly && (
-          <button className="btn primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> New dashboard
-          </button>
-        )}
-      </div>
+    <Page>
+      <PageHeader
+        title="Dashboards"
+        description="Charts over tasks, time and goals. Everyone sees numbers from the projects they can open, so sharing a dashboard never shares private work."
+        actions={
+          !readOnly && (
+            <Button onClick={() => setCreating(true)}>
+              <Icon name="plus" data-icon="inline-start" /> New dashboard
+            </Button>
+          )
+        }
+      />
       {readOnly && <UpgradeNotice feature="insights" compact readOnly />}
       {error ? (
         <ErrorState error={error} retry={reload} />
       ) : !data ? (
         <Loading />
       ) : !data.length ? (
-        <Empty
+        <EmptyState
           icon="chart"
           title="No dashboards yet"
           action={
-            <button className="btn primary" onClick={() => setCreating(true)}>
-              <Icon name="plus" size={16} /> New dashboard
-            </button>
+            <Button onClick={() => setCreating(true)}>
+              <Icon name="plus" data-icon="inline-start" /> New dashboard
+            </Button>
           }
         >
           Create one to see open work, overdue tasks, progress and trends at a glance. It starts with useful charts you can change.
-        </Empty>
+        </EmptyState>
       ) : (
-        <div className="card-list">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {data.map((d) => (
-            <Link key={d.id} to={`/dashboards/${d.id}`} className="card pad dash-card">
-              <div className="row-gap">
-                <Icon name="chart" size={18} />
-                <strong className="grow">{d.name}</strong>
-                {d.visibility === 'private' && <Icon name="lock" size={14} />}
-              </div>
-              {d.description && <p className="muted small">{d.description}</p>}
-              <small className="muted">
-                {d.owner_name} · updated {timeAgo(d.updated_at)}
-              </small>
+            <Link key={d.id} to={`/dashboards/${d.id}`} className="group/dash rounded-[min(var(--radius-4xl),24px)] outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+              <Card size="sm" className="h-full transition-shadow group-hover/dash:shadow-md">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                      <Icon name="chart" size={16} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{d.name}</span>
+                    {d.visibility === 'private' && <Icon name="lock" size={14} label="Private" className="text-muted-foreground" />}
+                  </CardTitle>
+                  {d.description && <CardDescription className="line-clamp-2">{d.description}</CardDescription>}
+                </CardHeader>
+                <CardFooter className="mt-auto text-xs text-muted-foreground">
+                  {d.owner_name} · updated {timeAgo(d.updated_at)}
+                </CardFooter>
+              </Card>
             </Link>
           ))}
         </div>
       )}
       <Modal open={creating} onClose={() => setCreating(false)} title="New dashboard">
         <form
-          className="stack"
+          className="flex flex-col gap-3"
           onSubmit={async (e) => {
             e.preventDefault();
             const d = await act(() => api.post<Dashboard>('/dashboards', { name, visibility }));
             if (d) navigate(`/dashboards/${d.id}`);
           }}
         >
-          <Field label="Name">
-            <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} placeholder="Operations this quarter" autoFocus />
-          </Field>
-          <Field label="Who can open it">
-            <select value={visibility} onChange={(e) => setVisibility(e.target.value as 'workspace' | 'private')}>
-              <option value="workspace">Everyone in the workspace (each sees their own data)</option>
-              <option value="private">Only me</option>
-            </select>
-          </Field>
-          <div className="form-actions">
-            <button type="button" className="btn" onClick={() => setCreating(false)}>
+          <FormField label="Name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} placeholder="Operations this quarter" autoFocus />
+          </FormField>
+          <FormField label="Who can open it">
+            <NativeSelect value={visibility} onChange={(e) => setVisibility(e.target.value as 'workspace' | 'private')}>
+              <NativeSelectOption value="workspace">Everyone in the workspace (each sees their own data)</NativeSelectOption>
+              <NativeSelectOption value="private">Only me</NativeSelectOption>
+            </NativeSelect>
+          </FormField>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" type="button" onClick={() => setCreating(false)}>
               Cancel
-            </button>
-            <button className="btn primary" disabled={!name.trim()}>
+            </Button>
+            <Button disabled={!name.trim()} type="submit">
               Create
-            </button>
+            </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   );
 }
 
 export function DashboardView() {
   const { id } = useParams();
   const act = useAction();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const { data: dash, error, reload, setData } = useApi<Dashboard>(`/dashboards/${id}`);
   const { data: values, reload: reloadData } = useApi<{ computed_at: string; widgets: Record<string, WidgetData> }>(`/dashboards/${id}/data`);
@@ -211,84 +231,109 @@ export function DashboardView() {
   };
 
   return (
-    <div className="page wide">
-      <div className="page-head">
-        <div className="grow">
-          <p className="eyebrow">
-            <Link to="/dashboards">Dashboards</Link> {dash.visibility === 'private' && '· PRIVATE'}
-          </p>
-          <h1>
+    <Page width="full" className="max-w-7xl">
+      <PageHeader
+        eyebrow={
+          <>
+            <Link to="/dashboards" className="hover:underline">
+              Dashboards
+            </Link>{' '}
+            {dash.visibility === 'private' && '· Private'}
+          </>
+        }
+        title={
+          <span className="inline-flex flex-wrap items-center gap-2">
             {dash.name} <FavoriteButton kind="dashboard" id={dash.id} />
-          </h1>
-          {dash.description && <p className="muted">{dash.description}</p>}
-          <small className="muted">Updated {values ? timeAgo(values.computed_at) : '…'} · numbers reflect the projects you can open</small>
-        </div>
-        <div className="row-gap wrap">
-          <button className="btn" onClick={reloadData} aria-label="Refresh numbers" title="Refresh">
-            <Icon name="refresh" size={15} />
-          </button>
-          {dash.can_edit && (
-            <>
-              {editing && (
-                <button className="btn" onClick={() => setEditWidget('new')}>
-                  <Icon name="plus" size={15} /> Add widget
-                </button>
-              )}
-              <button className={`btn ${editing ? 'primary' : ''}`} onClick={() => setEditing((e) => !e)}>
-                <Icon name={editing ? 'check' : 'edit'} size={15} /> {editing ? 'Done' : 'Edit'}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+          </span>
+        }
+        description={dash.description || undefined}
+        actions={
+          <>
+            <IconButton label="Refresh numbers" variant="outline" onClick={reloadData}>
+              <Icon name="refresh" />
+            </IconButton>
+            {dash.can_edit && (
+              <>
+                {editing && (
+                  <Button variant="outline" onClick={() => setEditWidget('new')}>
+                    <Icon name="plus" data-icon="inline-start" /> Add widget
+                  </Button>
+                )}
+                <Button variant={editing ? 'default' : 'outline'} onClick={() => setEditing((e) => !e)}>
+                  <Icon name={editing ? 'check' : 'edit'} data-icon="inline-start" /> {editing ? 'Done' : 'Edit'}
+                </Button>
+              </>
+            )}
+          </>
+        }
+      >
+        <p className="text-xs text-muted-foreground">Updated {values ? timeAgo(values.computed_at) : '…'} · numbers reflect the projects you can open</p>
+      </PageHeader>
 
       {editing && (
-        <div className="card pad row-gap wrap dash-settings">
-          <button className="link-btn" onClick={() => setRenaming(true)}>
-            Rename or share
-          </button>
-          <span className="grow" />
-          <button
-            className="btn sm danger-text"
-            onClick={async () => {
-              if (!confirm('Delete this dashboard? The work it shows is not affected.')) return;
-              if (await act(() => api.del(`/dashboards/${dash.id}`), 'Dashboard deleted')) navigate('/dashboards');
-            }}
-          >
-            <Icon name="trash" size={14} /> Delete dashboard
-          </button>
-        </div>
+        <Callout
+          tone="info"
+          title="Editing this dashboard"
+          action={
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" onClick={() => setRenaming(true)}>
+                Rename or share
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  if (!(await confirm({ title: 'Delete this dashboard?', description: 'The work it shows is not affected.', confirmLabel: 'Delete dashboard', destructive: true }))) return;
+                  if (await act(() => api.del(`/dashboards/${dash.id}`), 'Dashboard deleted')) navigate('/dashboards');
+                }}
+              >
+                <Icon name="trash" data-icon="inline-start" /> Delete
+              </Button>
+            </div>
+          }
+        >
+          Move, edit or remove widgets, then choose Done.
+        </Callout>
       )}
 
       {!dash.widgets.length && (
-        <Empty icon="chart" title="This dashboard is empty">
+        <EmptyState icon="chart" title="This dashboard is empty">
           {dash.can_edit ? 'Choose Edit, then Add widget.' : 'Its owner has not added any charts yet.'}
-        </Empty>
+        </EmptyState>
       )}
-      <div className="dash-grid">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {dash.widgets.map((w, i) => (
-          <section key={w.id} className={`card dash-widget ${w.size === 'full' ? 'full' : ''} ${w.type === 'number' ? 'metric' : ''}`} aria-label={w.title || WIDGET_LABEL[w.type]}>
-            <header className="dash-widget-head">
-              <h3>{w.title || (w.type === 'number' ? METRIC_LABEL[w.metric ?? 'open'] : WIDGET_LABEL[w.type])}</h3>
+          <Card
+            key={w.id}
+            role="region"
+            aria-label={w.title || WIDGET_LABEL[w.type]}
+            className={cn('dash-widget gap-3', w.size === 'full' ? 'col-span-full' : w.type === 'number' ? 'col-span-1' : 'md:col-span-2')}
+          >
+            <CardHeader>
+              <CardTitle className="text-sm">{w.title || (w.type === 'number' ? METRIC_LABEL[w.metric ?? 'open'] : WIDGET_LABEL[w.type])}</CardTitle>
               {editing && (
-                <span className="row-gap">
-                  <button className="icon-btn xs" aria-label="Move earlier" disabled={i === 0} onClick={() => move(i, -1)}>
-                    <Icon name="chevronLeft" size={13} />
-                  </button>
-                  <button className="icon-btn xs" aria-label="Move later" disabled={i === dash.widgets.length - 1} onClick={() => move(i, 1)}>
-                    <Icon name="chevronRight" size={13} />
-                  </button>
-                  <button className="icon-btn xs" aria-label={`Edit ${w.title || WIDGET_LABEL[w.type]}`} onClick={() => setEditWidget(w)}>
-                    <Icon name="edit" size={13} />
-                  </button>
-                  <button className="icon-btn xs" aria-label="Remove widget" onClick={() => save(dash.widgets.filter((x) => x.id !== w.id))}>
-                    <Icon name="x" size={13} />
-                  </button>
-                </span>
+                <CardAction>
+                  <ButtonGroup>
+                    <IconButton label="Move earlier" variant="outline" size="icon-xs" disabled={i === 0} onClick={() => move(i, -1)}>
+                      <Icon name="chevronLeft" />
+                    </IconButton>
+                    <IconButton label="Move later" variant="outline" size="icon-xs" disabled={i === dash.widgets.length - 1} onClick={() => move(i, 1)}>
+                      <Icon name="chevronRight" />
+                    </IconButton>
+                    <IconButton label={`Edit ${w.title || WIDGET_LABEL[w.type]}`} variant="outline" size="icon-xs" onClick={() => setEditWidget(w)}>
+                      <Icon name="edit" />
+                    </IconButton>
+                    <IconButton label="Remove widget" variant="outline" size="icon-xs" onClick={() => save(dash.widgets.filter((x) => x.id !== w.id))}>
+                      <Icon name="x" />
+                    </IconButton>
+                  </ButtonGroup>
+                </CardAction>
               )}
-            </header>
-            <WidgetBody widget={w} data={values?.widgets[w.id]} />
-          </section>
+            </CardHeader>
+            <CardContent className="flex-1">
+              <WidgetBody widget={w} data={values?.widgets[w.id]} />
+            </CardContent>
+          </Card>
         ))}
       </div>
 
@@ -313,62 +358,70 @@ export function DashboardView() {
           }}
         />
       )}
-    </div>
+    </Page>
   );
 }
 
 function WidgetBody({ widget: w, data }: { widget: Widget; data: WidgetData | undefined }) {
   const { openTask } = useShell();
-  if (w.type === 'note') return w.text ? <Markdown text={w.text} compact /> : <p className="muted">Empty note.</p>;
-  if (!data) return <div className="dash-loading" aria-busy="true" />;
+  if (w.type === 'note') return w.text ? <Markdown text={w.text} compact /> : <p className="text-sm text-muted-foreground">Empty note.</p>;
+  if (!data) return <Skeleton className="h-32 w-full" aria-busy="true" />;
   switch (data.kind) {
     case 'number':
       return (
-        <div className={`big-metric ${data.tone ?? ''}`}>
-          <strong>{data.value.toLocaleString()}</strong>
-          <small className="muted">
+        <div className="big-metric flex flex-col gap-1">
+          <strong
+            className={cn(
+              'font-heading text-4xl font-semibold tabular-nums',
+              data.tone === 'good' && 'text-success',
+              data.tone === 'bad' && 'text-destructive',
+              data.tone === 'warn' && 'text-warning',
+            )}
+          >
+            {data.value.toLocaleString()}
+          </strong>
+          <span className="text-xs text-muted-foreground">
             {data.unit}
             {data.note && ` · ${data.note}`}
-          </small>
+          </span>
         </div>
       );
     case 'series': {
       const total = data.items.reduce((s, i) => s + i.value, 0);
-      if (!total) return <p className="muted">Nothing to show yet.</p>;
+      if (!total) return <p className="text-sm text-muted-foreground">Nothing to show yet.</p>;
       const donut = (w.chart ?? (w.type === 'status' || w.type === 'field' ? 'donut' : 'bar')) === 'donut';
       return donut ? <DonutChart items={data.items} label={data.unit ?? 'tasks'} /> : <BarChart items={data.items} unit={data.unit} />;
     }
     case 'trend':
       return <LineChart labels={data.labels} series={data.series} />;
     case 'list':
-      if (!data.items.length) return <p className="muted">Nothing here.</p>;
+      if (!data.items.length) return <p className="text-sm text-muted-foreground">Nothing here.</p>;
       return (
-        <ul className="dash-list">
+        <ul className="flex flex-col divide-y">
           {data.items.map((item) =>
             item.task ? (
-              <li key={item.id}>
-                <button className="link-btn text-left grow" onClick={() => openTask(item.id)}>
+              <li key={item.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                <Button variant="link" size="inline" className="min-w-0 flex-1 justify-start truncate text-left text-foreground" onClick={() => openTask(item.id)}>
                   {item.title}
-                </button>
-                {item.owner && <small className="muted">{item.owner}</small>}
+                </Button>
+                {item.owner && <span className="text-xs text-muted-foreground">{item.owner}</span>}
                 {item.status && item.status !== 'todo' && <StatusPill status={item.status} />}
-                <small className={`due ${item.overdue ? 'overdue' : ''}`}>{dueLabel(item.due_date ?? null)}</small>
+                {item.due_date && <DueLabel due={item.due_date} overdue={item.overdue} />}
               </li>
             ) : (
-              <li key={item.id}>
-                <Link to={item.link ?? '#'} className="grow dash-list-link">
-                  {item.color && <span className={`project-dot bg-${item.color}`} />} {item.title}
-                  {item.detail && <small className="muted"> · {item.detail}</small>}
+              <li key={item.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                <Link to={item.link ?? '#'} className="flex min-w-0 flex-1 items-center gap-1.5 hover:underline">
+                  {item.color && <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--c-${item.color})` }} />}
+                  <span className="truncate">{item.title}</span>
+                  {item.detail && <span className="text-xs text-muted-foreground"> · {item.detail}</span>}
                 </Link>
                 {item.progress !== undefined && (
-                  <span className="dash-progress">
-                    <span className="progress">
-                      <i style={{ width: `${Math.round(item.progress * 100)}%` }} />
-                    </span>
-                    <small>{Math.round(item.progress * 100)}%</small>
+                  <span className="flex w-32 items-center gap-2">
+                    <Progress value={Math.round(item.progress * 100)} className="flex-1" aria-label={`${item.title} progress`} />
+                    <span className="w-8 text-right text-xs tabular-nums">{Math.round(item.progress * 100)}%</span>
                   </span>
                 )}
-                {item.status && (item.status === 'done' ? <span className="pill status-done">Achieved</span> : <HealthPill health={item.status} />)}
+                {item.status && (item.status === 'done' ? <Pill tone="success">Achieved</Pill> : <HealthPill health={item.status} />)}
               </li>
             ),
           )}
@@ -377,7 +430,7 @@ function WidgetBody({ widget: w, data }: { widget: Widget; data: WidgetData | un
     case 'locked':
       return <UpgradeNotice feature={data.feature} compact />;
     case 'empty':
-      return <p className="muted">{data.reason ?? 'Nothing to show.'}</p>;
+      return <p className="text-sm text-muted-foreground">{data.reason ?? 'Nothing to show.'}</p>;
     default:
       return null;
   }
@@ -406,7 +459,7 @@ function WidgetEditor({ widget, onClose, onSave }: { widget: Widget | null; onCl
   return (
     <Modal open onClose={onClose} title={widget ? 'Edit widget' : 'Add widget'}>
       <form
-        className="stack"
+        className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           onSave({
@@ -419,90 +472,88 @@ function WidgetEditor({ widget, onClose, onSave }: { widget: Widget | null; onCl
           });
         }}
       >
-        <Field label="Show">
-          <select value={w.type} onChange={(e) => set({ type: e.target.value as WidgetType, size: e.target.value === 'trend' ? 'full' : w.size })}>
+        <FormField label="Show">
+          <NativeSelect value={w.type} onChange={(e) => set({ type: e.target.value as WidgetType, size: e.target.value === 'trend' ? 'full' : w.size })}>
             {(Object.keys(WIDGET_LABEL) as WidgetType[]).map((t) => (
-              <option key={t} value={t}>
+              <NativeSelectOption key={t} value={t}>
                 {WIDGET_LABEL[t]}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-        </Field>
+          </NativeSelect>
+        </FormField>
         {w.type === 'number' && (
-          <Field label="Measure">
-            <select value={w.metric ?? 'open'} onChange={(e) => set({ metric: e.target.value as Metric })}>
+          <FormField label="Measure">
+            <NativeSelect value={w.metric ?? 'open'} onChange={(e) => set({ metric: e.target.value as Metric })}>
               {(Object.keys(METRIC_LABEL) as Metric[]).map((m) => (
-                <option key={m} value={m}>
+                <NativeSelectOption key={m} value={m}>
                   {METRIC_LABEL[m]}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </Field>
+            </NativeSelect>
+          </FormField>
         )}
-        <Field label="Title" hint="Leave empty to use the default.">
-          <input value={w.title} onChange={(e) => set({ title: e.target.value })} maxLength={80} />
-        </Field>
+        <FormField label="Title" hint="Leave empty to use the default.">
+          <Input value={w.title} onChange={(e) => set({ title: e.target.value })} maxLength={80} />
+        </FormField>
         {w.type === 'note' && (
-          <Field label="Text" hint="Markdown works.">
-            <textarea rows={5} value={w.text ?? ''} onChange={(e) => set({ text: e.target.value })} maxLength={4000} />
-          </Field>
+          <FormField label="Text" hint="Markdown works.">
+            <Textarea rows={5} value={w.text ?? ''} onChange={(e) => set({ text: e.target.value })} maxLength={4000} />
+          </FormField>
         )}
         {w.type !== 'note' && (
-          <Field label="Projects" hint={needsField ? 'Pick the project that has the field.' : 'None selected means every project you can open.'}>
-            <div className="chips-select">
+          <FieldSet className="gap-2">
+            <FieldLegend variant="label">Projects</FieldLegend>
+            <FieldDescription>{needsField ? 'Pick the project that has the field.' : 'None selected means every project you can open.'}</FieldDescription>
+            <div className="flex max-h-44 flex-col gap-1 overflow-y-auto rounded-xl border p-1.5">
               {(projects ?? [])
                 .filter((p) => !p.archived_at)
                 .map((p) => (
-                  <label key={p.id} className="check-inline">
-                    <input
-                      type="checkbox"
-                      checked={w.projectIds.includes(p.id)}
-                      onChange={(e) => set({ projectIds: e.target.checked ? [...w.projectIds, p.id] : w.projectIds.filter((x) => x !== p.id) })}
-                    />
-                    <span className={`project-dot bg-${p.color}`} /> {p.name}
-                  </label>
+                  <Label key={p.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 font-normal hover:bg-muted">
+                    <Checkbox checked={w.projectIds.includes(p.id)} onCheckedChange={(checked) => set({ projectIds: checked ? [...w.projectIds, p.id] : w.projectIds.filter((x) => x !== p.id) })} />
+                    <span className="size-2 rounded-full" style={{ background: `var(--c-${p.color})` }} /> {p.name}
+                  </Label>
                 ))}
             </div>
-          </Field>
+          </FieldSet>
         )}
         {needsField && (
-          <Field label="Field">
-            <select value={w.fieldId ?? ''} onChange={(e) => set({ fieldId: e.target.value || undefined })} required>
-              <option value="">{w.projectIds.length ? (fieldOptions.length ? 'Choose a field…' : 'No suitable fields in these projects') : 'Choose a project first'}</option>
+          <FormField label="Field">
+            <NativeSelect value={w.fieldId ?? ''} onChange={(e) => set({ fieldId: e.target.value || undefined })} required>
+              <NativeSelectOption value="">{w.projectIds.length ? (fieldOptions.length ? 'Choose a field…' : 'No suitable fields in these projects') : 'Choose a project first'}</NativeSelectOption>
               {fieldOptions.map((f) => (
-                <option key={f.id} value={f.id}>
+                <NativeSelectOption key={f.id} value={f.id}>
                   {f.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </Field>
+            </NativeSelect>
+          </FormField>
         )}
-        <div className="grid-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           {CHARTABLE.includes(w.type) && (
-            <Field label="Chart">
-              <select value={w.chart ?? (w.type === 'status' || w.type === 'field' ? 'donut' : 'bar')} onChange={(e) => set({ chart: e.target.value as 'bar' | 'donut' })}>
-                <option value="bar">Bars</option>
-                <option value="donut">Donut</option>
-              </select>
-            </Field>
+            <FormField label="Chart">
+              <NativeSelect value={w.chart ?? (w.type === 'status' || w.type === 'field' ? 'donut' : 'bar')} onChange={(e) => set({ chart: e.target.value as 'bar' | 'donut' })}>
+                <NativeSelectOption value="bar">Bars</NativeSelectOption>
+                <NativeSelectOption value="donut">Donut</NativeSelectOption>
+              </NativeSelect>
+            </FormField>
           )}
           {(w.type === 'trend' || w.type === 'time') && (
-            <Field label="Weeks">
-              <input type="number" min={2} max={26} value={w.weeks ?? (w.type === 'trend' ? 8 : 4)} onChange={(e) => set({ weeks: Number(e.target.value) })} />
-            </Field>
+            <FormField label="Weeks">
+              <Input type="number" min={2} max={26} value={w.weeks ?? (w.type === 'trend' ? 8 : 4)} onChange={(e) => set({ weeks: Number(e.target.value) })} />
+            </FormField>
           )}
-          <Field label="Width">
-            <select value={w.size} onChange={(e) => set({ size: e.target.value as 'half' | 'full' })}>
-              <option value="half">Half</option>
-              <option value="full">Full</option>
-            </select>
-          </Field>
+          <FormField label="Width">
+            <NativeSelect value={w.size} onChange={(e) => set({ size: e.target.value as 'half' | 'full' })}>
+              <NativeSelectOption value="half">Half</NativeSelectOption>
+              <NativeSelectOption value="full">Full</NativeSelectOption>
+            </NativeSelect>
+          </FormField>
         </div>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary">{widget ? 'Save widget' : 'Add widget'}</button>
+          </Button>
+          <Button type="submit">{widget ? 'Save widget' : 'Add widget'}</Button>
         </div>
       </form>
     </Modal>
@@ -517,32 +568,32 @@ function DashboardSettings({ dash, onClose, onSaved }: { dash: Dashboard; onClos
   return (
     <Modal open onClose={onClose} title="Dashboard settings">
       <form
-        className="stack"
+        className="flex flex-col gap-3"
         onSubmit={async (e) => {
           e.preventDefault();
           const d = await act(() => api.patch<Dashboard>(`/dashboards/${dash.id}`, { name, description, visibility }), 'Saved');
           if (d) onSaved(d);
         }}
       >
-        <Field label="Name">
-          <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} />
-        </Field>
-        <Field label="Description">
-          <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
-        </Field>
-        <Field label="Who can open it">
-          <select value={visibility} onChange={(e) => setVisibility(e.target.value as 'workspace' | 'private')}>
-            <option value="workspace">Everyone in the workspace (each sees their own data)</option>
-            <option value="private">Only me</option>
-          </select>
-        </Field>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <FormField label="Name">
+          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} />
+        </FormField>
+        <FormField label="Description">
+          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
+        </FormField>
+        <FormField label="Who can open it">
+          <NativeSelect value={visibility} onChange={(e) => setVisibility(e.target.value as 'workspace' | 'private')}>
+            <NativeSelectOption value="workspace">Everyone in the workspace (each sees their own data)</NativeSelectOption>
+            <NativeSelectOption value="private">Only me</NativeSelectOption>
+          </NativeSelect>
+        </FormField>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" disabled={!name.trim()}>
+          </Button>
+          <Button disabled={!name.trim()} type="submit">
             Save
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

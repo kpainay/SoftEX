@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, qs, type Channel, type Message } from '../api';
 import { ThreadAi } from '../components/Ai';
@@ -8,7 +8,59 @@ import { RemindModal, WhenModal } from '../components/Later';
 import { useShell } from '../components/Layout';
 import { Markdown } from '../components/Markdown';
 import { NewMeetingForm, NewTaskForm } from '../components/QuickCreate';
-import { Empty, ErrorState, Field, Loading, Modal, PeoplePicker, StatusPill, useAction } from '../components/ui';
+import {
+  Callout,
+  CountBadge,
+  EmptyState,
+  ErrorState,
+  FormField,
+  Hint,
+  IconButton,
+  Loading,
+  LoadingRows,
+  Modal,
+  notify,
+  Page,
+  PageHeader,
+  PeoplePicker,
+  Pill,
+  SearchField,
+  Section,
+  StatusPill,
+  SwitchField,
+  useAction,
+  useConfirm,
+} from '@/components/kit';
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from '@/components/ui/attachment';
+import { Badge } from '@/components/ui/badge';
+import { Bubble, BubbleContent } from '@/components/ui/bubble';
+import { Card } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupTextarea } from '@/components/ui/input-group';
+import { Marker, MarkerContent } from '@/components/ui/marker';
+import { Message as ChatRow, MessageAvatar, MessageContent, MessageHeader } from '@/components/ui/message';
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+} from '@/components/ui/message-scroller';
+import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
 import { bytes, plainMentions, timeAgo, timeOf } from '../format';
 import { useApi, useRealtime, useViewing } from '../hooks';
 import { realtime } from '../realtime';
@@ -17,6 +69,12 @@ import { useSession } from '../session';
 import { MediaAttachment, VideoLinks, isPlayable } from '../components/Media';
 import { FavoriteButton } from '../components/Favorites';
 import { ForwardModal, ForwardedQuote, PollCard, PollModal, VoiceNoteButton } from '../components/ChatExtras';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 const EMOJI = ['👍', '❤️', '🎉', '✅', '👀', '😄', '🙏', '🚀'];
 
@@ -58,78 +116,83 @@ export function Chats() {
   useRealtime((e) => (e.type === 'message.created' || e.type === 'presence') && reload());
   const dms = (channels ?? []).filter((c) => c.kind === 'dm').sort((a, b) => (b.last_message_at ?? '').localeCompare(a.last_message_at ?? ''));
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>Chats</h1>
-          <p className="muted">Direct and group conversations.</p>
-        </div>
-        <button className="btn primary" onClick={() => openCreate('message')}>
-          <Icon name="plus" size={16} /> New message
-        </button>
-      </div>
+    <Page width="narrow">
+      <PageHeader
+        title="Chats"
+        description="Direct and group conversations."
+        actions={
+          <Button onClick={() => openCreate('message')}>
+            <Icon name="plus" data-icon="inline-start" /> New message
+          </Button>
+        }
+      />
       {error && <ErrorState error={error} retry={reload} />}
-      {!channels && !error && <Loading />}
+      {!channels && !error && <LoadingRows rows={5} />}
       {channels && !dms.length && (
-        <Empty
+        <EmptyState
           icon="chat"
           title="No conversations yet"
           action={
-            <button className="btn primary" onClick={() => openCreate('message')}>
-              <Icon name="plus" size={16} /> New message
-            </button>
+            <Button onClick={() => openCreate('message')}>
+              <Icon name="plus" data-icon="inline-start" /> New message
+            </Button>
           }
         >
           Start a direct message with a teammate.
-        </Empty>
+        </EmptyState>
       )}
       {dms.length > 0 && (
-        <ul className="list-card">
-          {dms.map((c) => (
-            <li key={c.id}>
-              <Link to={`/channels/${c.id}`} className={`list-row ${c.unread ? 'unread' : ''}`}>
-                {c.members && c.members.length === 1 ? (
-                  <Avatar user={c.members[0]} size="md" showPresence />
-                ) : (
-                  <span className="avatar avatar-md c-lilac">{c.members?.length ?? 0}</span>
-                )}
-                <span className="grow list-text">
-                  <span className="list-text-top">
-                    <strong>{c.members?.map((m) => m.name).join(', ') || 'Just you'}</strong>
-                    {c.last_message_at && <small className="muted">{timeAgo(c.last_message_at)}</small>}
+        <Card className="gap-0 p-1.5">
+          <ul className="flex flex-col">
+            {dms.map((c) => (
+              <li key={c.id}>
+                <Link to={`/channels/${c.id}`} className={cn('list-row flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-muted/60', c.unread && 'unread')}>
+                  {c.members && c.members.length === 1 ? (
+                    <Avatar user={c.members[0]} size="md" showPresence />
+                  ) : (
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold" aria-hidden="true">
+                      {c.members?.length ?? 0}
+                    </span>
+                  )}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <strong className={cn('truncate text-sm', c.unread ? 'font-semibold' : 'font-medium')}>{c.members?.map((m) => m.name).join(', ') || 'Just you'}</strong>
+                      {c.last_message_at && <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(c.last_message_at)}</span>}
+                    </span>
+                    <span className={cn('list-preview truncate text-xs', c.unread ? 'text-foreground' : 'text-muted-foreground')}>
+                      {c.last_message ? `${c.last_message.mine ? 'You: ' : ''}${plainMentions(c.last_message.text) || 'Sent an attachment'}` : 'No messages yet'}
+                    </span>
                   </span>
-                  <small className="muted list-preview">
-                    {c.last_message ? `${c.last_message.mine ? 'You: ' : ''}${plainMentions(c.last_message.text) || 'Sent an attachment'}` : 'No messages yet'}
-                  </small>
-                </span>
-                {c.unread > 0 && <b className="badge">{c.unread}</b>}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      {saved && saved.length > 0 && (
-        <>
-          <h2 className="section-h">Saved messages</h2>
-          <ul className="list-card">
-            {saved.map((m) => (
-              <li key={m.id}>
-                <Link to={`/channels/${m.channel_id}?message=${m.parent_id ?? m.id}`} className="list-row">
-                  <Avatar user={m.user} size="sm" />
-                  <span className="grow">
-                    <strong>
-                      {m.user?.name} <small className="muted">in {m.channel_kind === 'dm' ? 'a direct message' : `#${m.channel_name}`}</small>
-                    </strong>
-                    <small className="muted">{plainMentions(m.body).slice(0, 140)}</small>
-                  </span>
-                  <Icon name="bookmark" size={16} />
+                  <CountBadge count={c.unread} />
                 </Link>
               </li>
             ))}
           </ul>
-        </>
+        </Card>
       )}
-    </div>
+      {saved && saved.length > 0 && (
+        <Section title="Saved messages">
+          <Card className="gap-0 p-1.5">
+            <ul className="flex flex-col">
+              {saved.map((m) => (
+                <li key={m.id}>
+                  <Link to={`/channels/${m.channel_id}?message=${m.parent_id ?? m.id}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/60">
+                    <Avatar user={m.user} size="sm" />
+                    <span className="flex min-w-0 flex-1 flex-col text-sm">
+                      <strong className="font-medium">
+                        {m.user?.name} <span className="text-xs font-normal text-muted-foreground">in {m.channel_kind === 'dm' ? 'a direct message' : `#${m.channel_name}`}</span>
+                      </strong>
+                      <span className="truncate text-xs text-muted-foreground">{plainMentions(m.body).slice(0, 140)}</span>
+                    </span>
+                    <Icon name="bookmark" size={16} className="text-muted-foreground" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Section>
+      )}
+    </Page>
   );
 }
 
@@ -150,79 +213,88 @@ export function ChannelsBrowser() {
     if (channel) navigate(`/channels/${channel.id}`);
   };
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>Channels</h1>
-          <p className="muted">Team and project conversations. Join public channels, or ask to be added to private ones.</p>
-        </div>
-        {me!.role !== 'guest' && (
-          <button className="btn primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> New channel
-          </button>
-        )}
-      </div>
-      <input className="filter" placeholder="Filter channels" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter channels" />
+    <Page width="narrow">
+      <PageHeader
+        title="Channels"
+        description="Team and project conversations. Join public channels, or ask to be added to private ones."
+        actions={
+          me!.role !== 'guest' && (
+            <Button onClick={() => setCreating(true)}>
+              <Icon name="plus" data-icon="inline-start" /> New channel
+            </Button>
+          )
+        }
+      />
+      <SearchField placeholder="Filter channels" value={filter} onChange={setFilter} aria-label="Filter channels" />
       {error && <ErrorState error={error} retry={reload} />}
-      {!channels && !error && <Loading />}
-      <ul className="list-card">
-        {list.map((c) => (
-          <li key={c.id} className="list-row">
-            <Icon name={channelIcon(c)} />
-            <Link to={`/channels/${c.id}`} className="grow">
-              <strong>{c.name}</strong> {c.project_name && <span className="pill">{c.project_name}</span>}
-              <small className="muted block">{c.topic}</small>
-            </Link>
-            {c.unread > 0 && <b className="badge">{c.unread}</b>}
-            {c.joined ? (
-              <span className="muted small">Joined</span>
-            ) : (
-              <button
-                className="btn sm"
-                onClick={async () => {
-                  await act(() => api.post(`/channels/${c.id}/join`), `Joined #${c.name}`);
-                  reload();
-                }}
-              >
-                Join
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+      {!channels && !error && <LoadingRows rows={5} />}
+      {list.length > 0 && (
+        <Card className="gap-0 p-1.5">
+          <ul className="flex flex-col">
+            {list.map((c) => (
+              <li key={c.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/60">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                  <Icon name={channelIcon(c)} size={16} />
+                </span>
+                <Link to={`/channels/${c.id}`} className="flex min-w-0 flex-1 flex-col text-sm">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <strong className="font-medium">{c.name}</strong> {c.project_name && <Pill>{c.project_name}</Pill>}
+                  </span>
+                  {c.topic && <span className="truncate text-xs text-muted-foreground">{c.topic}</span>}
+                </Link>
+                <CountBadge count={c.unread} />
+                {c.joined ? (
+                  <span className="text-xs text-muted-foreground">Joined</span>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await act(() => api.post(`/channels/${c.id}/join`), `Joined #${c.name}`);
+                      reload();
+                    }}
+                  >
+                    Join
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Modal open={creating} onClose={() => setCreating(false)} title="Create a channel">
-        <form className="form" onSubmit={create}>
-          <Field label="Name" hint="Lowercase letters, numbers and hyphens.">
-            <input
+        <form className="flex flex-col gap-4" onSubmit={create}>
+          <FormField label="Name" hint="Lowercase letters, numbers and hyphens.">
+            <Input
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
               placeholder="e.g. design-crit"
               autoFocus
             />
-          </Field>
-          <Field label="Topic">
-            <input value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} placeholder="What is this channel for?" />
-          </Field>
-          <Field label="Type">
-            <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
-              <option value="public">Public — anyone in the workspace can join</option>
-              <option value="private">Private — invite only</option>
-              {['lead', 'admin', 'owner'].includes(me!.role) && <option value="announcement">Announcement — only leads and admins post</option>}
-            </select>
-          </Field>
-          <Field label="Add people">
+          </FormField>
+          <FormField label="Topic">
+            <Input value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} placeholder="What is this channel for?" />
+          </FormField>
+          <FormField label="Type">
+            <NativeSelect value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+              <NativeSelectOption value="public">Public — anyone in the workspace can join</NativeSelectOption>
+              <NativeSelectOption value="private">Private — invite only</NativeSelectOption>
+              {['lead', 'admin', 'owner'].includes(me!.role) && <NativeSelectOption value="announcement">Announcement — only leads and admins post</NativeSelectOption>}
+            </NativeSelect>
+          </FormField>
+          <FormField label="Add people">
             <PeoplePicker people={people} value={form.memberIds} onChange={(ids) => setForm({ ...form, memberIds: ids })} exclude={[me!.user.id]} />
-          </Field>
-          <div className="form-actions">
-            <button type="button" className="btn" onClick={() => setCreating(false)}>
+          </FormField>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" type="button" onClick={() => setCreating(false)}>
               Cancel
-            </button>
-            <button className="btn primary">Create channel</button>
+            </Button>
+            <Button type="submit">Create channel</Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   );
 }
 
@@ -238,11 +310,24 @@ interface ChannelDetail extends Channel {
   ai_excluded: boolean;
 }
 
+/** Inside the scroller: jump to a linked message (?message=…), or open its thread when it's a reply. */
+function HighlightScroller({ highlight, loaded, exists, onThread }: { highlight: string | null; loaded: boolean; exists: boolean; onThread: (id: string) => void }) {
+  const { scrollToMessage } = useMessageScroller();
+  useEffect(() => {
+    if (!highlight || !loaded) return;
+    if (exists) window.requestAnimationFrame(() => scrollToMessage(highlight, { align: 'center' }));
+    else onThread(highlight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlight, loaded]);
+  return null;
+}
+
 export function ChannelView() {
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
   const { me } = useSession();
   const act = useAction();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const { data: channel, error, reload: reloadChannel } = useApi<ChannelDetail>(`/channels/${id}`);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -256,8 +341,6 @@ export function ChannelView() {
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [meeting, setMeeting] = useState(false);
   const [adding, setAdding] = useState(false);
-  const scroller = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
   const highlight = params.get('message');
   // Messages still on their way to the server show at the bottom straight away.
   const outgoing = useOutbox(id, null);
@@ -268,16 +351,11 @@ export function ChannelView() {
       outbox.onDelivered((message) => {
         if (message.channel_id !== id) return;
         if (message.parent_id) return void refreshMessage(message.parent_id);
-        stickToBottom.current = true;
         setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [id],
   );
-  useEffect(() => {
-    if (outgoing.length) stickToBottom.current = true;
-  }, [outgoing.length]);
-
   const load = async (before?: string) => {
     const res = await api.get<{ messages: Message[]; has_more: boolean }>(`/channels/${id}/messages${qs({ before, limit: 50 })}`);
     setHasMore(res.has_more);
@@ -290,28 +368,11 @@ export function ChannelView() {
     setFresh(new Set());
     setLoaded(false);
     setThreadId(null);
-    stickToBottom.current = true;
     load().catch(() => setLoaded(true));
     api.post(`/channels/${id}/read`).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  useEffect(() => {
-    if (highlight && loaded) {
-      const exists = messages.some((m) => m.id === highlight);
-      if (exists) {
-        document.getElementById(`m-${highlight}`)?.scrollIntoView({ block: 'center' });
-        stickToBottom.current = false;
-      } else {
-        setThreadId(highlight);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlight, loaded]);
-
-  useLayoutEffect(() => {
-    if (stickToBottom.current && scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
-  }, [messages, outgoing.length]);
 
   // While this chat (and any open thread) is on screen, new messages in it don't become notifications.
   useViewing(id ? [`/channels/${id}`, ...(threadId ? [`/channels/${id}?thread=${threadId}`] : [])] : []);
@@ -332,8 +393,6 @@ export function ChannelView() {
       const settled = e.message.user?.id === me!.user.id && outbox.settle(e.message);
       if (e.message.parent_id) refreshMessage(e.message.parent_id);
       else {
-        const el = scroller.current;
-        stickToBottom.current = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120 || e.message.user?.id === me!.user.id;
         if (!settled) setFresh((f) => new Set(f).add(e.message.id));
         setMessages((prev) => (prev.some((m) => m.id === e.message.id) ? prev : [...prev, e.message]));
       }
@@ -345,7 +404,6 @@ export function ChannelView() {
       });
     }
     if (e.type === 'message.updated' && e.channelId === id) {
-      stickToBottom.current = false;
       refreshMessage(e.parentId ?? e.messageId);
     }
     if (e.type === 'typing' && e.channelId === id) setTyping((t) => ({ ...t, [e.userId]: { name: e.name, at: Date.now() } }));
@@ -379,7 +437,7 @@ export function ChannelView() {
     },
     edit: async (m: Message, body: string) => act(() => api.patch(`/messages/${m.id}`, { body })),
     remove: async (m: Message) => {
-      if (confirm('Delete this message?')) await act(() => api.del(`/messages/${m.id}`), 'Message deleted');
+      if (await confirm({ title: 'Delete this message?', confirmLabel: 'Delete', destructive: true })) await act(() => api.del(`/messages/${m.id}`), 'Message deleted');
     },
     ack: async (m: Message) => act(() => api.post(`/messages/${m.id}/ack`), 'Acknowledged'),
     reply: (m: Message) => setThreadId(m.id),
@@ -387,133 +445,156 @@ export function ChannelView() {
     decision: (m: Message) => setDecisionFrom(m),
   };
 
+  const panelOpen = !!threadId || !!panel;
   return (
-    <div className={`chat-layout ${threadId || panel ? 'with-panel' : ''}`}>
-      <section className="chat-main" aria-label={`Conversation ${dmName}`}>
-        <header className="chat-head">
-          <div className="chat-title">
-            <Icon name={channelIcon(channel)} />
-            <div>
-              <h1>{dmName}</h1>
-              <p className="muted small">
+    <div className="flex h-[calc(100dvh-3.5rem-4rem)] min-h-0 md:h-[calc(100dvh-3.5rem)]">
+      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+        <section className={cn('flex min-w-0 flex-1 flex-col', panelOpen && 'max-lg:hidden')} aria-label={`Conversation ${dmName}`}>
+          <header className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+              <Icon name={channelIcon(channel)} size={16} />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <h1 className="truncate font-heading text-base font-semibold">{dmName}</h1>
+              <p className="truncate text-xs text-muted-foreground">
                 {channel.project && (
-                  <Link to={`/projects/${channel.project.id}`}>
-                    <span className={`project-dot bg-${channel.project.color}`} /> {channel.project.name}
+                  <Link to={`/projects/${channel.project.id}`} className="inline-flex items-center gap-1 hover:underline">
+                    <span className="size-2 rounded-full" style={{ background: `var(--c-${channel.project.color})` }} /> {channel.project.name}
                   </Link>
                 )}
                 {channel.project && channel.topic && ' · '}
                 {channel.topic}
               </p>
             </div>
-          </div>
-          <div className="chat-actions">
-            <FavoriteButton kind="channel" id={channel.id} />
-            <button className="icon-btn" onClick={() => setPanel(panel === 'members' ? null : 'members')} aria-label="Members" title="Members">
-              <Icon name="users" />
-              <span className="count">{channel.members.length}</span>
-            </button>
-            <button className="icon-btn" onClick={() => setPanel(panel === 'pins' ? null : 'pins')} aria-label="Pinned messages" title="Pinned">
-              <Icon name="pin" />
-            </button>
-            <button className="icon-btn" onClick={() => setPanel(panel === 'files' ? null : 'files')} aria-label="Files" title="Files">
-              <Icon name="paperclip" />
-            </button>
-            {channel.can_post && (
-              <button className="icon-btn" onClick={() => setMeeting(true)} aria-label="Schedule a meeting" title="Schedule a meeting">
-                <Icon name="video" />
-              </button>
-            )}
-            {channel.kind !== 'dm' && channel.joined && (
-              <select
-                value={channel.notify}
-                aria-label="Notification preference"
-                onChange={async (e) => {
-                  await act(() => api.patch(`/channels/${channel.id}/preferences`, { notify: e.target.value }), 'Notification preference saved');
-                  reloadChannel();
-                }}
-              >
-                <option value="all">All activity</option>
-                <option value="mentions">Mentions only</option>
-                <option value="none">Muted</option>
-              </select>
-            )}
-          </div>
-        </header>
+            <div className="flex items-center gap-0.5">
+              <FavoriteButton kind="channel" id={channel.id} />
+              <Hint label="Members">
+                <Button variant={panel === 'members' ? 'secondary' : 'ghost'} size="sm" onClick={() => setPanel(panel === 'members' ? null : 'members')} aria-label="Members">
+                  <Icon name="users" data-icon="inline-start" />
+                  <span className="tabular-nums">{channel.members.length}</span>
+                </Button>
+              </Hint>
+              <IconButton label="Pinned messages" variant={panel === 'pins' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setPanel(panel === 'pins' ? null : 'pins')}>
+                <Icon name="pin" />
+              </IconButton>
+              <IconButton label="Files" variant={panel === 'files' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setPanel(panel === 'files' ? null : 'files')}>
+                <Icon name="paperclip" />
+              </IconButton>
+              {channel.can_post && (
+                <IconButton label="Schedule a meeting" size="icon-sm" onClick={() => setMeeting(true)}>
+                  <Icon name="video" />
+                </IconButton>
+              )}
+              {channel.kind !== 'dm' && channel.joined && (
+                <NativeSelect
+                  size="sm"
+                  className="ml-1 max-sm:hidden"
+                  value={channel.notify}
+                  aria-label="Notification preference"
+                  onChange={async (e) => {
+                    await act(() => api.patch(`/channels/${channel.id}/preferences`, { notify: e.target.value }), 'Notification preference saved');
+                    reloadChannel();
+                  }}
+                >
+                  <NativeSelectOption value="all">All activity</NativeSelectOption>
+                  <NativeSelectOption value="mentions">Mentions only</NativeSelectOption>
+                  <NativeSelectOption value="none">Muted</NativeSelectOption>
+                </NativeSelect>
+              )}
+            </div>
+          </header>
 
-        {!channel.joined && channel.kind !== 'dm' && (
-          <div className="banner">
-            You are previewing #{channel.name}.{' '}
-            <button
-              className="link-btn"
-              onClick={async () => {
-                await act(() => api.post(`/channels/${channel.id}/join`), `Joined #${channel.name}`);
-                reloadChannel();
-              }}
+          {!channel.joined && channel.kind !== 'dm' && (
+            <Callout
+              tone="info"
+              className="rounded-none border-x-0 border-t-0"
+              action={
+                <Button
+                  size="xs"
+                  onClick={async () => {
+                    await act(() => api.post(`/channels/${channel.id}/join`), `Joined #${channel.name}`);
+                    reloadChannel();
+                  }}
+                >
+                  Join channel
+                </Button>
+              }
             >
-              Join channel
-            </button>
-          </div>
-        )}
+              You are previewing #{channel.name}.
+            </Callout>
+          )}
 
-        <div
-          className="messages"
-          ref={scroller}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-          }}
-        >
-          {hasMore && (
-            <button className="btn sm load-more" onClick={() => ((stickToBottom.current = false), load(messages[0]?.created_at))}>
-              Load earlier messages
-            </button>
-          )}
-          {loaded && !messages.length && (
-            <Empty icon={channelIcon(channel)} title={channel.kind === 'dm' ? `This is the start of your conversation` : `Welcome to #${channel.name}`}>
-              {channel.topic || 'Say hello, share a file or record a decision.'}
-            </Empty>
-          )}
-          {!loaded && <Loading />}
-          {messages.map((m, i) => {
-            const prev = messages[i - 1];
-            const grouped = prev && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
-            const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
-            return (
-              <div key={m.id}>
-                {newDay && (
-                  <div className="day-divider">
-                    <span>{new Date(m.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                  </div>
+          <MessageScroller className="flex-1">
+            <MessageScrollerViewport preserveScrollOnPrepend aria-label="Messages">
+              <MessageScrollerContent className="gap-0 px-2 py-4 md:px-4">
+                <HighlightScroller highlight={highlight} loaded={loaded} exists={messages.some((m) => m.id === highlight)} onThread={setThreadId} />
+                {hasMore && (
+                  <MessageScrollerItem>
+                    <Button variant="outline" size="sm" className="mx-auto mb-4 flex" onClick={() => load(messages[0]?.created_at)}>
+                      Load earlier messages
+                    </Button>
+                  </MessageScrollerItem>
                 )}
-                <MessageItem
-                  message={m}
-                  grouped={!!grouped && !newDay}
-                  highlight={m.id === highlight}
-                  isAnnouncement={channel.kind === 'announcement'}
-                  canPost={channel.can_post}
-                  actions={actions}
-                  entering={fresh.has(m.id)}
-                />
-              </div>
-            );
-          })}
-          {outgoing.map((o, i) => {
-            const last = i === 0 ? messages[messages.length - 1] : null;
-            const grouped = i > 0 || (!!last && last.user?.id === me!.user.id && Date.now() - new Date(last.created_at).getTime() < 5 * 60_000);
-            return <OutgoingMessage key={o.key} item={o} grouped={grouped} />;
-          })}
-        </div>
-        <div className="typing" aria-live="polite">
-          {typingNames.length > 0 && `${typingNames.join(', ')} ${typingNames.length > 1 ? 'are' : 'is'} typing…`}
-        </div>
-        {channel.can_post ? (
-          <Composer channelId={channel.id} placeholder={channel.kind === 'dm' ? `Message ${dmName}` : `Message #${channel.name}`} members={channel.members} />
-        ) : (
-          <p className="composer-disabled muted">
-            {channel.kind === 'announcement' ? 'Only leads and admins post here. You can reply in threads and acknowledge announcements.' : 'You cannot post in this channel.'}
-          </p>
-        )}
-      </section>
+                {loaded && !messages.length && (
+                  <MessageScrollerItem className="my-auto">
+                    <EmptyState icon={channelIcon(channel)} title={channel.kind === 'dm' ? `This is the start of your conversation` : `Welcome to #${channel.name}`}>
+                      {channel.topic || 'Say hello, share a file or record a decision.'}
+                    </EmptyState>
+                  </MessageScrollerItem>
+                )}
+                {!loaded && (
+                  <MessageScrollerItem>
+                    <Loading />
+                  </MessageScrollerItem>
+                )}
+                {messages.map((m, i) => {
+                  const prev = messages[i - 1];
+                  const grouped = prev && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
+                  const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
+                  return (
+                    <MessageScrollerItem key={m.id} messageId={m.id} scrollAnchor={m.user?.id === me!.user.id}>
+                      {newDay && (
+                        <Marker variant="separator" className="my-3">
+                          <MarkerContent>{new Date(m.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</MarkerContent>
+                        </Marker>
+                      )}
+                      <MessageItem
+                        message={m}
+                        grouped={!!grouped && !newDay}
+                        highlight={m.id === highlight}
+                        isAnnouncement={channel.kind === 'announcement'}
+                        canPost={channel.can_post}
+                        actions={actions}
+                        entering={fresh.has(m.id)}
+                      />
+                    </MessageScrollerItem>
+                  );
+                })}
+                {outgoing.map((o, i) => {
+                  const last = i === 0 ? messages[messages.length - 1] : null;
+                  const grouped = i > 0 || (!!last && last.user?.id === me!.user.id && Date.now() - new Date(last.created_at).getTime() < 5 * 60_000);
+                  return (
+                    <MessageScrollerItem key={o.key} scrollAnchor>
+                      <OutgoingMessage item={o} grouped={grouped} />
+                    </MessageScrollerItem>
+                  );
+                })}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
+          <div className="h-5 px-4 text-xs text-muted-foreground" aria-live="polite">
+            {typingNames.length > 0 && <span className="shimmer">{`${typingNames.join(', ')} ${typingNames.length > 1 ? 'are' : 'is'} typing…`}</span>}
+          </div>
+          {channel.can_post ? (
+            <Composer channelId={channel.id} placeholder={channel.kind === 'dm' ? `Message ${dmName}` : `Message #${channel.name}`} members={channel.members} />
+          ) : (
+            <p className="mx-4 mb-4 rounded-xl border border-dashed p-3 text-center text-sm text-muted-foreground">
+              {channel.kind === 'announcement' ? 'Only leads and admins post here. You can reply in threads and acknowledge announcements.' : 'You cannot post in this channel.'}
+            </p>
+          )}
+        </section>
+      </MessageScrollerProvider>
 
       {threadId && (
         <ThreadPanel
@@ -529,52 +610,49 @@ export function ChannelView() {
         />
       )}
       {!threadId && panel && (
-        <aside className="side-panel" aria-label="Channel details">
-          <div className="panel-head">
-            <h2>{panel === 'members' ? 'Members' : panel === 'pins' ? 'Pinned' : 'Files'}</h2>
-            <button className="icon-btn" onClick={() => setPanel(null)} aria-label="Close panel">
-              <Icon name="x" />
-            </button>
-          </div>
+        <SidePanelColumn title={panel === 'members' ? 'Members' : panel === 'pins' ? 'Pinned' : 'Files'} label="Channel details" onClose={() => setPanel(null)}>
           {panel === 'members' && (
-            <>
+            <div className="flex flex-col gap-1">
               {channel.members.map((m) => (
-                <Link key={m.id} to={`/people/${m.id}`} className="list-row">
+                <Link key={m.id} to={`/people/${m.id}`} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-muted">
                   <Avatar user={m} size="sm" showPresence />
-                  <span className="grow">
-                    <strong>{m.name}</strong>
-                    <small className="muted block">{m.title || m.role}</small>
+                  <span className="flex min-w-0 flex-1 flex-col text-sm">
+                    <strong className="truncate font-medium">{m.name}</strong>
+                    <span className="truncate text-xs text-muted-foreground">{m.title || m.role}</span>
                   </span>
                 </Link>
               ))}
-              {channel.kind !== 'dm' && me!.role !== 'guest' && channel.joined && (
-                <button className="btn block" onClick={() => setAdding(true)}>
-                  <Icon name="plus" size={15} /> Add people
-                </button>
-              )}
-              {channel.kind !== 'dm' && channel.joined && (
-                <button
-                  className="btn block danger-text"
-                  onClick={async () => {
-                    await act(() => api.post(`/channels/${channel.id}/leave`), `Left #${channel.name}`);
-                    navigate('/channels');
-                  }}
-                >
-                  Leave channel
-                </button>
-              )}
+              <div className="mt-3 flex flex-col gap-2">
+                {channel.kind !== 'dm' && me!.role !== 'guest' && channel.joined && (
+                  <Button variant="outline" className="w-full" onClick={() => setAdding(true)}>
+                    <Icon name="plus" data-icon="inline-start" /> Add people
+                  </Button>
+                )}
+                {channel.kind !== 'dm' && channel.joined && (
+                  <Button
+                    variant="ghost"
+                    className="w-full text-destructive"
+                    onClick={async () => {
+                      await act(() => api.post(`/channels/${channel.id}/leave`), `Left #${channel.name}`);
+                      navigate('/channels');
+                    }}
+                  >
+                    Leave channel
+                  </Button>
+                )}
+              </div>
               {channel.can_manage && channel.kind !== 'dm' && <ChannelSettings channel={channel} onSaved={reloadChannel} />}
-            </>
+            </div>
           )}
           {panel === 'pins' && <PinsList channelId={channel.id} />}
           {panel === 'files' && <FilesList channelId={channel.id} />}
-        </aside>
+        </SidePanelColumn>
       )}
 
-      <Modal open={!!taskFrom} onClose={() => setTaskFrom(null)} title="Create a task from this message" eyebrow="TURN DISCUSSION INTO DELIVERY">
+      <Modal open={!!taskFrom} onClose={() => setTaskFrom(null)} title="Create a task from this message" eyebrow="Turn discussion into delivery">
         {taskFrom && (
           <>
-            <blockquote className="quote">{plainMentions(taskFrom.body).slice(0, 300)}</blockquote>
+            <blockquote className="mb-4 border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground">{plainMentions(taskFrom.body).slice(0, 300)}</blockquote>
             <NewTaskForm
               endpoint={`/messages/${taskFrom.id}/task`}
               projectId={channel.project?.id}
@@ -585,7 +663,7 @@ export function ChannelView() {
         )}
       </Modal>
       <ForwardModal message={forwarding} onClose={() => setForwarding(null)} />
-      <Modal open={!!decisionFrom} onClose={() => setDecisionFrom(null)} title="Record a decision" eyebrow="DECISION LOG">
+      <Modal open={!!decisionFrom} onClose={() => setDecisionFrom(null)} title="Record a decision" eyebrow="Decision log">
         {decisionFrom && <DecisionForm message={decisionFrom} onDone={() => setDecisionFrom(null)} />}
       </Modal>
       <Modal open={meeting} onClose={() => setMeeting(false)} title="Schedule a meeting from this channel" wide>
@@ -596,46 +674,65 @@ export function ChannelView() {
   );
 }
 
+/** The column beside a conversation (thread, members, pins, files); full screen on phones. */
+function SidePanelColumn({ title, label, onClose, children }: { title: string; label: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <aside className="flex w-full min-w-0 flex-col border-l bg-card lg:w-96 lg:shrink-0" aria-label={label}>
+      <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+        <h2 className="font-heading text-base font-semibold">{title}</h2>
+        <IconButton label={label === 'Thread' ? 'Close thread' : 'Close panel'} size="icon-sm" tooltip={false} onClick={onClose}>
+          <Icon name="x" />
+        </IconButton>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">{children}</div>
+    </aside>
+  );
+}
+
 function ChannelSettings({ channel, onSaved }: { channel: ChannelDetail; onSaved: () => void }) {
   const act = useAction();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [topic, setTopic] = useState(channel.topic);
   return (
-    <div className="panel-section">
-      <h3>Channel settings</h3>
-      <Field label="Topic">
-        <input value={topic} onChange={(e) => setTopic(e.target.value)} />
-      </Field>
-      <button
-        className="btn sm"
-        onClick={async () => {
-          await act(() => api.patch(`/channels/${channel.id}`, { topic }), 'Topic updated');
+    <div className="mt-4 flex flex-col gap-3 border-t pt-4">
+      <h3 className="text-sm font-semibold">Channel settings</h3>
+      <FormField label="Topic">
+        <InputGroup>
+          <InputGroupInput value={topic} onChange={(e) => setTopic(e.target.value)} />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="xs"
+              onClick={async () => {
+                await act(() => api.patch(`/channels/${channel.id}`, { topic }), 'Topic updated');
+                onSaved();
+              }}
+            >
+              Save
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </FormField>
+      <SwitchField
+        label="Allow AI assistance in this channel"
+        checked={!channel.ai_excluded}
+        onCheckedChange={async (checked) => {
+          await act(() => api.patch('/ai/exclusions', { channelId: channel.id, excluded: !checked }), checked ? 'AI assistance allowed' : 'AI assistance turned off here');
           onSaved();
         }}
-      >
-        Save topic
-      </button>
-      <label className="check-inline">
-        <input
-          type="checkbox"
-          checked={!channel.ai_excluded}
-          onChange={async (e) => {
-            await act(() => api.patch('/ai/exclusions', { channelId: channel.id, excluded: !e.target.checked }), e.target.checked ? 'AI assistance allowed' : 'AI assistance turned off here');
-            onSaved();
-          }}
-        />{' '}
-        Allow AI assistance in this channel
-      </label>
-      <button
-        className="btn sm danger-text"
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start text-destructive"
         onClick={async () => {
-          if (!confirm(`Archive #${channel.name}? Messages are kept but no one can post.`)) return;
+          if (!(await confirm({ title: `Archive #${channel.name}?`, description: 'Messages are kept but no one can post.', confirmLabel: 'Archive', destructive: true }))) return;
           await act(() => api.patch(`/channels/${channel.id}`, { archived: true }), 'Channel archived');
           navigate('/channels');
         }}
       >
         Archive channel
-      </button>
+      </Button>
     </div>
   );
 }
@@ -647,7 +744,7 @@ function AddMembers({ open, onClose, channel, onDone }: { open: boolean; onClose
   return (
     <Modal open={open} onClose={onClose} title={`Add people to #${channel.name}`}>
       <form
-        className="form"
+        className="flex flex-col gap-4"
         onSubmit={async (e) => {
           e.preventDefault();
           await act(() => api.post(`/channels/${channel.id}/members`, { userIds: ids }), 'People added');
@@ -657,10 +754,10 @@ function AddMembers({ open, onClose, channel, onDone }: { open: boolean; onClose
         }}
       >
         <PeoplePicker people={people} value={ids} onChange={setIds} exclude={channel.members.map((m) => m.id)} />
-        <div className="form-actions">
-          <button className="btn primary" disabled={!ids.length}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button disabled={!ids.length} type="submit">
             Add
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -673,24 +770,24 @@ function DecisionForm({ message, onDone }: { message: Message; onDone: () => voi
   const [rationale, setRationale] = useState('');
   return (
     <form
-      className="form"
+      className="flex flex-col gap-4"
       onSubmit={async (e) => {
         e.preventDefault();
         const ok = await act(() => api.post('/decisions', { title, rationale, messageId: message.id }), 'Decision recorded');
         if (ok) onDone();
       }}
     >
-      <Field label="Decision">
-        <input required value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      </Field>
-      <Field label="Rationale (optional)">
-        <textarea rows={3} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="Why was this decided? What alternatives were considered?" />
-      </Field>
-      <div className="form-actions">
-        <button type="button" className="btn" onClick={onDone}>
+      <FormField label="Decision">
+        <Input required value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      </FormField>
+      <FormField label="Rationale (optional)">
+        <Textarea rows={3} value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="Why was this decided? What alternatives were considered?" />
+      </FormField>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" type="button" onClick={onDone}>
           Cancel
-        </button>
-        <button className="btn primary">Record decision</button>
+        </Button>
+        <Button type="submit">Record decision</Button>
       </div>
     </form>
   );
@@ -698,13 +795,15 @@ function DecisionForm({ message, onDone }: { message: Message; onDone: () => voi
 
 function PinsList({ channelId }: { channelId: string }) {
   const { data } = useApi<Message[]>(`/channels/${channelId}/pins`);
-  if (!data) return <Loading />;
-  if (!data.length) return <p className="muted pad">Nothing pinned yet. Pin important messages from their menu.</p>;
+  if (!data) return <LoadingRows rows={3} />;
+  if (!data.length) return <p className="p-2 text-sm text-muted-foreground">Nothing pinned yet. Pin important messages from their menu.</p>;
   return (
-    <div>
+    <div className="flex flex-col gap-2">
       {data.map((m) => (
-        <Link key={m.id} to={`/channels/${channelId}?message=${m.id}`} className="pin-item">
-          <strong>{m.user?.name}</strong> <small className="muted">{timeAgo(m.created_at)}</small>
+        <Link key={m.id} to={`/channels/${channelId}?message=${m.id}`} className="flex flex-col gap-1 rounded-xl border p-3 text-sm hover:bg-muted/60">
+          <span className="flex items-baseline gap-2">
+            <strong className="font-medium">{m.user?.name}</strong> <span className="text-xs text-muted-foreground">{timeAgo(m.created_at)}</span>
+          </span>
           <Markdown text={m.body} compact />
         </Link>
       ))}
@@ -714,18 +813,18 @@ function PinsList({ channelId }: { channelId: string }) {
 
 function FilesList({ channelId }: { channelId: string }) {
   const { data } = useApi<{ id: string; name: string; size: number; owner_name: string; created_at: string }[]>(`/channels/${channelId}/files`);
-  if (!data) return <Loading />;
-  if (!data.length) return <p className="muted pad">No files shared here yet.</p>;
+  if (!data) return <LoadingRows rows={3} />;
+  if (!data.length) return <p className="p-2 text-sm text-muted-foreground">No files shared here yet.</p>;
   return (
-    <div>
+    <div className="flex flex-col gap-1">
       {data.map((f) => (
-        <Link key={f.id} to={`/files/${f.id}`} className="list-row">
-          <Icon name="file" />
-          <span className="grow">
-            <strong>{f.name}</strong>
-            <small className="muted block">
+        <Link key={f.id} to={`/files/${f.id}`} className="flex items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-muted">
+          <Icon name="file" size={16} className="text-muted-foreground" />
+          <span className="flex min-w-0 flex-1 flex-col text-sm">
+            <strong className="truncate font-medium">{f.name}</strong>
+            <span className="text-xs text-muted-foreground">
               {f.owner_name} · {bytes(f.size)} · {timeAgo(f.created_at)}
-            </small>
+            </span>
           </span>
         </Link>
       ))}
@@ -783,142 +882,243 @@ function MessageItem({
 
   if (m.deleted) {
     return (
-      <div className={`message deleted ${grouped ? 'grouped' : ''}`} id={`m-${m.id}`}>
-        <span className="msg-gutter" />
-        <p className="muted small">
-          <Icon name="trash" size={13} /> This message was deleted.
-          {m.reply_count > 0 && !inThread && (
-            <button className="link-btn" onClick={() => actions.reply(m)}>
-              {' '}
-              View {m.reply_count} repl{m.reply_count === 1 ? 'y' : 'ies'}
-            </button>
-          )}
-        </p>
-      </div>
+      <ChatRow className={cn('message deleted py-1', !grouped && 'mt-3')} id={`m-${m.id}`}>
+        <MessageAvatar className="size-8 bg-transparent" />
+        <MessageContent className="gap-1">
+          <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground italic">
+            <Icon name="trash" size={13} /> This message was deleted.
+            {m.reply_count > 0 && !inThread && (
+              <Button variant="link" size="inline" className="text-xs not-italic" onClick={() => actions.reply(m)}>
+                View {m.reply_count} repl{m.reply_count === 1 ? 'y' : 'ies'}
+              </Button>
+            )}
+          </p>
+        </MessageContent>
+      </ChatRow>
     );
   }
 
   return (
-    <article className={`message ${grouped ? 'grouped' : ''} ${highlight ? 'highlight' : ''} ${m.urgent ? 'urgent' : ''} ${entering ? 'enter' : ''}`} id={`m-${m.id}`}>
-      <span className="msg-gutter">{grouped ? <time className="hover-time">{timeOf(m.created_at)}</time> : <Avatar user={m.user} size="md" />}</span>
-      <div className="msg-body">
+    <ChatRow
+      className={cn(
+        'message group/msg rounded-xl px-2 py-1 transition-colors hover:bg-muted/40',
+        grouped ? 'grouped' : 'mt-3',
+        highlight && 'highlight bg-accent/50 ring-1 ring-primary/30',
+        m.urgent && 'urgent',
+        entering && 'enter animate-in fade-in-0 slide-in-from-bottom-1',
+      )}
+      id={`m-${m.id}`}
+    >
+      <MessageAvatar className={cn('size-8 self-start bg-transparent', grouped && 'h-auto')}>
+        {grouped ? (
+          <time className="w-8 pt-1 text-center text-[10px] text-muted-foreground opacity-0 group-hover/msg:opacity-100">{timeOf(m.created_at).replace(/\s?[AP]M/i, '')}</time>
+        ) : (
+          <Avatar user={m.user} size="md" />
+        )}
+      </MessageAvatar>
+      <MessageContent className="gap-1">
         {!grouped && (
-          <header>
-            <Link to={`/people/${m.user?.id}`} className="msg-author">
+          <MessageHeader className="flex flex-wrap items-baseline gap-2">
+            <Link to={`/people/${m.user?.id}`} className="text-sm font-semibold text-foreground hover:underline">
               {m.user?.name}
             </Link>
-            <time dateTime={m.created_at} title={new Date(m.created_at).toLocaleString()}>
+            <time className="text-xs text-muted-foreground" dateTime={m.created_at} title={new Date(m.created_at).toLocaleString()}>
               {timeOf(m.created_at)}
             </time>
-            {m.urgent && <span className="pill prio-urgent">Urgent</span>}
+            {m.urgent && <Pill tone="danger">Urgent</Pill>}
             {m.pinned && (
-              <span className="pill">
-                <Icon name="pin" size={11} /> Pinned
-              </span>
+              <Pill>
+                <Icon name="pin" /> Pinned
+              </Pill>
             )}
-          </header>
+          </MessageHeader>
         )}
         {editing ? (
           <form
-            className="edit-form"
+            className="flex flex-col gap-2"
             onSubmit={async (e) => {
               e.preventDefault();
               await actions.edit(m, draft);
               setEditing(false);
             }}
           >
-            <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus aria-label="Edit message" />
-            <div className="form-actions">
-              <button type="button" className="btn sm" onClick={() => setEditing(false)}>
+            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus aria-label="Edit message" />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" type="button" onClick={() => setEditing(false)}>
                 Cancel
-              </button>
-              <button className="btn primary sm">Save</button>
+              </Button>
+              <Button size="sm" type="submit">
+                Save
+              </Button>
             </div>
           </form>
         ) : poll ? (
           <PollCard poll={poll} authorId={m.user?.id} onChange={setPoll} />
         ) : (
           m.body && (
-            <>
-              <Markdown text={m.body} compact />
-              <VideoLinks text={m.body} />
-            </>
+            <Bubble variant={mine ? 'tinted' : 'muted'} className={cn('max-w-full', m.urgent && 'ring-1 ring-destructive/40')}>
+              <BubbleContent className="rounded-2xl px-3 py-2">
+                <Markdown text={m.body} compact />
+                {m.edited_at && <span className="ml-1 text-[11px] text-muted-foreground">(edited)</span>}
+              </BubbleContent>
+            </Bubble>
           )
         )}
+        {m.body && !editing && !poll && <VideoLinks text={m.body} />}
         {m.forwarded && <ForwardedQuote f={m.forwarded} />}
-        {m.edited_at && !editing && <small className="muted edited">(edited)</small>}
         {m.files.length > 0 && (
-          <div className="attachments">
+          <div className="attachments flex flex-wrap gap-2">
             {m.files.map((f) =>
               f.mime?.startsWith('image/') ? (
-                <Link key={f.id} to={`/files/${f.id}`} className="image-attachment">
-                  <img src={`/api/files/${f.id}/download?inline=1`} alt={f.name} loading="lazy" />
+                <Link key={f.id} to={`/files/${f.id}`} className="block overflow-hidden rounded-xl border">
+                  <img src={`/api/files/${f.id}/download?inline=1`} alt={f.name} loading="lazy" className="max-h-64 max-w-xs object-cover" />
                 </Link>
               ) : isPlayable(f.mime) ? (
                 <MediaAttachment key={f.id} file={f} />
               ) : (
-                <Link key={f.id} to={`/files/${f.id}`} className="file-chip">
-                  <Icon name="file" size={15} /> {f.name} <small className="muted">{bytes(f.size)}</small>
-                </Link>
+                <Attachment key={f.id} size="sm" className="max-w-xs">
+                  <AttachmentTrigger render={<Link to={`/files/${f.id}`} aria-label={f.name} />} />
+                  <AttachmentMedia variant="icon">
+                    <Icon name="file" />
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle>{f.name}</AttachmentTitle>
+                    <AttachmentDescription>{bytes(f.size)}</AttachmentDescription>
+                  </AttachmentContent>
+                </Attachment>
               ),
             )}
           </div>
         )}
         {(m.tasks.length > 0 || m.decisions.length > 0) && (
-          <div className="linked">
+          <div className="flex flex-wrap gap-1.5">
             {m.tasks.map((t) => (
-              <Link key={t.id} to={`/tasks/${t.id}`} className="linked-item">
-                <Icon name="task" size={14} /> {t.title} <StatusPill status={t.status} />
-              </Link>
+              <Badge key={t.id} variant="outline" className="h-6 gap-1.5" render={<Link to={`/tasks/${t.id}`} />}>
+                <Icon name="task" /> {t.title} <StatusPill status={t.status} />
+              </Badge>
             ))}
             {m.decisions.map((d) => (
-              <span key={d.id} className="linked-item decision">
-                <Icon name="gavel" size={14} /> Decision: {d.title}
-              </span>
+              <Badge key={d.id} variant="brand" className="h-6 gap-1.5">
+                <Icon name="gavel" /> Decision: {d.title}
+              </Badge>
             ))}
           </div>
         )}
         {(m.reactions.length > 0 || (isAnnouncement && !inThread)) && (
-          <div className="reactions">
+          <div className="reactions flex flex-wrap gap-1">
             {m.reactions.map((r) => (
-              <button key={r.emoji} className={`reaction ${r.mine ? 'mine' : ''}`} onClick={() => actions.react(m, r.emoji)} aria-pressed={r.mine} aria-label={`${r.emoji} ${r.count}`}>
+              <button
+                key={r.emoji}
+                className={cn(
+                  'reaction inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs tabular-nums transition-colors hover:bg-muted',
+                  r.mine && 'mine border-primary/40 bg-accent text-accent-foreground',
+                )}
+                onClick={() => actions.react(m, r.emoji)}
+                aria-pressed={r.mine}
+                aria-label={`${r.emoji} ${r.count}`}
+              >
                 {r.emoji} {r.count}
               </button>
             ))}
             {isAnnouncement && !inThread && !m.parent_id && (
-              <button className={`reaction ack ${m.acked ? 'mine' : ''}`} onClick={() => !m.acked && actions.ack(m)} disabled={m.acked}>
+              <button
+                className={cn('reaction ack inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs hover:bg-muted disabled:cursor-default', m.acked && 'mine border-success/40 bg-success-soft text-success')}
+                onClick={() => !m.acked && actions.ack(m)}
+                disabled={m.acked}
+              >
                 <Icon name="check" size={13} /> {m.acked ? 'Acknowledged' : 'Acknowledge'} · {m.ack_count}
               </button>
             )}
           </div>
         )}
         {m.reply_count > 0 && !inThread && (
-          <button className="thread-link" onClick={() => actions.reply(m)}>
-            <Icon name="thread" size={14} /> {m.reply_count} repl{m.reply_count === 1 ? 'y' : 'ies'}
-            <span className="muted"> · last {timeAgo(m.last_reply_at)}</span>
-          </button>
+          <Button variant="ghost" size="xs" className="self-start text-primary" onClick={() => actions.reply(m)}>
+            <Icon name="thread" data-icon="inline-start" /> {m.reply_count} repl{m.reply_count === 1 ? 'y' : 'ies'}
+            <span className="font-normal text-muted-foreground">· last {timeAgo(m.last_reply_at)}</span>
+          </Button>
         )}
-      </div>
-      <div className="msg-toolbar" role="toolbar" aria-label="Message actions">
-        <button className="icon-btn xs" onClick={() => setPicker((p) => !p)} aria-label="Add reaction" title="React">
-          <Icon name="smile" size={15} />
-        </button>
+      </MessageContent>
+      <div
+        className={cn(
+          'absolute -top-3 right-2 z-10 flex items-center gap-0.5 rounded-lg border bg-popover p-0.5 shadow-sm transition-opacity',
+          picker || menu ? 'opacity-100' : 'opacity-0 group-focus-within/msg:opacity-100 group-hover/msg:opacity-100 max-md:opacity-100',
+        )}
+        role="toolbar"
+        aria-label="Message actions"
+      >
+        <IconButton label="Add reaction" size="icon-xs" tooltip={false} onClick={() => setPicker((p) => !p)} aria-expanded={picker}>
+          <Icon name="smile" />
+        </IconButton>
         {!inThread && (
-          <button className="icon-btn xs" onClick={() => actions.reply(m)} aria-label="Reply in thread" title="Reply in thread">
-            <Icon name="thread" size={15} />
-          </button>
+          <IconButton label="Reply in thread" size="icon-xs" tooltip={false} onClick={() => actions.reply(m)}>
+            <Icon name="thread" />
+          </IconButton>
         )}
-        <button className="icon-btn xs" onClick={() => actions.task(m)} aria-label="Create task" title="Create task">
-          <Icon name="task" size={15} />
-        </button>
-        <button className="icon-btn xs" onClick={() => setMenu((v) => !v)} aria-label="More actions" title="More">
-          <Icon name="more" size={15} />
-        </button>
+        <IconButton label="Create task" size="icon-xs" tooltip={false} onClick={() => actions.task(m)}>
+          <Icon name="task" />
+        </IconButton>
+        <DropdownMenu open={menu} onOpenChange={setMenu}>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label="More actions" />}>
+            <Icon name="more" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-52">
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => actions.forward(m)}>
+                <Icon name="forward" /> Forward
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => actions.decision(m)}>
+                <Icon name="gavel" /> Record decision
+              </DropdownMenuItem>
+              {canPost && (
+                <DropdownMenuItem onClick={() => actions.pin(m)}>
+                  <Icon name="pin" /> {m.pinned ? 'Unpin' : 'Pin to channel'}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => actions.save(m)}>
+                <Icon name="bookmark" /> {m.saved ? 'Remove from saved' : 'Save for later'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setRemind(true)}>
+                <Icon name="clock" /> Remind me about this
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  navigator.clipboard?.writeText(`${location.origin}/channels/${m.channel_id}?message=${m.parent_id ?? m.id}`);
+                  notify('Link copied', 'success');
+                }}
+              >
+                <Icon name="link" /> Copy link
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            {((canEdit && !poll) || canEdit || isAdmin) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  {canEdit && !poll && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setDraft(m.body);
+                        setEditing(true);
+                      }}
+                    >
+                      <Icon name="edit" /> Edit
+                    </DropdownMenuItem>
+                  )}
+                  {(canEdit || isAdmin) && (
+                    <DropdownMenuItem variant="destructive" onClick={() => actions.remove(m)}>
+                      <Icon name="trash" /> Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {picker && (
-          <div className="emoji-picker">
+          <div className="absolute top-full right-0 z-20 mt-1 flex gap-0.5 rounded-xl border bg-popover p-1 shadow-md" role="group" aria-label="Pick a reaction">
             {EMOJI.map((e) => (
               <button
                 key={e}
+                className="flex size-8 items-center justify-center rounded-lg text-lg hover:bg-muted"
                 onClick={() => {
                   actions.react(m, e);
                   setPicker(false);
@@ -930,49 +1130,9 @@ function MessageItem({
             ))}
           </div>
         )}
-        {menu && (
-          <div className="popover right" role="menu" onClick={() => setMenu(false)}>
-            <button role="menuitem" onClick={() => actions.forward(m)}>
-              <Icon name="forward" size={15} /> Forward
-            </button>
-            <button role="menuitem" onClick={() => actions.decision(m)}>
-              <Icon name="gavel" size={15} /> Record decision
-            </button>
-            {canPost && (
-              <button role="menuitem" onClick={() => actions.pin(m)}>
-                <Icon name="pin" size={15} /> {m.pinned ? 'Unpin' : 'Pin to channel'}
-              </button>
-            )}
-            <button role="menuitem" onClick={() => actions.save(m)}>
-              <Icon name="bookmark" size={15} /> {m.saved ? 'Remove from saved' : 'Save for later'}
-            </button>
-            <button role="menuitem" onClick={() => setRemind(true)}>
-              <Icon name="clock" size={15} /> Remind me about this
-            </button>
-            <button role="menuitem" onClick={() => navigator.clipboard?.writeText(`${location.origin}/channels/${m.channel_id}?message=${m.parent_id ?? m.id}`)}>
-              <Icon name="link" size={15} /> Copy link
-            </button>
-            {canEdit && !poll && (
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setDraft(m.body);
-                  setEditing(true);
-                }}
-              >
-                <Icon name="edit" size={15} /> Edit
-              </button>
-            )}
-            {(canEdit || isAdmin) && (
-              <button role="menuitem" className="danger-text" onClick={() => actions.remove(m)}>
-                <Icon name="trash" size={15} /> Delete
-              </button>
-            )}
-          </div>
-        )}
       </div>
       <RemindModal open={remind} onClose={() => setRemind(false)} messageId={m.id} />
-    </article>
+    </ChatRow>
   );
 }
 
@@ -989,53 +1149,66 @@ function OutgoingMessage({ item, grouped }: { item: Outgoing; grouped: boolean }
   const { me } = useSession();
   const failed = item.status === 'failed';
   return (
-    <article className={`message outgoing enter ${failed ? 'failed' : 'sending'} ${grouped ? 'grouped' : ''}`} aria-busy={!failed}>
-      <span className="msg-gutter">{grouped ? null : <Avatar user={me!.user} size="md" />}</span>
-      <div className="msg-body">
+    <ChatRow className={cn('message outgoing enter rounded-xl px-2 py-1 animate-in fade-in-0', failed ? 'failed' : 'sending', grouped ? 'grouped' : 'mt-3')} aria-busy={!failed}>
+      <MessageAvatar className="size-8 self-start bg-transparent">{grouped ? null : <Avatar user={me!.user} size="md" />}</MessageAvatar>
+      <MessageContent className="gap-1">
         {!grouped && (
-          <header>
-            <span className="msg-author">{me!.user.name}</span>
-            {item.urgent && <span className="pill prio-urgent">Urgent</span>}
-          </header>
+          <MessageHeader className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold">{me!.user.name}</span>
+            {item.urgent && <Pill tone="danger">Urgent</Pill>}
+          </MessageHeader>
         )}
-        {item.body && <Markdown text={item.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')} compact />}
+        {item.body && (
+          <Bubble variant={failed ? 'destructive' : 'tinted'} className={cn('max-w-full', !failed && 'opacity-60')}>
+            <BubbleContent className="rounded-2xl px-3 py-2">
+              <Markdown text={item.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1')} compact />
+            </BubbleContent>
+          </Bubble>
+        )}
         {item.fileNames.length > 0 && (
-          <div className="pending-files">
+          <AttachmentGroup className="pending-files">
             {item.fileNames.map((name) => (
-              <span key={name} className="chip">
-                <Icon name="file" size={13} /> {name}
-              </span>
+              <Attachment key={name} size="xs" state={failed ? 'error' : 'uploading'}>
+                <AttachmentMedia variant="icon">
+                  <Icon name="file" />
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{name}</AttachmentTitle>
+                </AttachmentContent>
+              </Attachment>
             ))}
-          </div>
+          </AttachmentGroup>
         )}
-        <p className="outgoing-status" role={failed ? 'alert' : 'status'}>
+        <p className={cn('flex flex-wrap items-center gap-1 text-xs', failed ? 'text-destructive' : 'text-muted-foreground')} role={failed ? 'alert' : 'status'}>
           {failed ? (
             <>
-              <Icon name="alert" size={13} /> Not sent{item.error ? `: ${item.error}` : ''}.{' '}
-              <button className="link-btn" onClick={() => outbox.retry(item.key)}>
+              <Icon name="alert" size={13} /> Not sent{item.error ? `: ${item.error}` : ''}.
+              <Button variant="link" size="inline" className="text-xs" onClick={() => outbox.retry(item.key)}>
                 Retry
-              </button>{' '}
-              ·{' '}
-              <button
-                className="link-btn"
+              </Button>
+              ·
+              <Button
+                variant="link"
+                size="inline"
+                className="text-xs"
                 onClick={() => {
                   outbox.discard(item.key);
                   window.dispatchEvent(new CustomEvent('kuu:restore-draft', { detail: { channelId: item.channelId, parentId: item.parentId, body: item.body } }));
                 }}
               >
                 Edit
-              </button>{' '}
-              ·{' '}
-              <button className="link-btn" onClick={() => outbox.discard(item.key)}>
+              </Button>
+              ·
+              <Button variant="link" size="inline" className="text-xs" onClick={() => outbox.discard(item.key)}>
                 Discard
-              </button>
+              </Button>
             </>
           ) : (
-            'Sending…'
+            <span className="shimmer">Sending…</span>
           )}
         </p>
-      </div>
-    </article>
+      </MessageContent>
+    </ChatRow>
   );
 }
 
@@ -1064,23 +1237,19 @@ function ThreadPanel({
   });
   useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [data?.replies.length, outgoing.length]);
   return (
-    <aside className="side-panel thread" aria-label="Thread">
-      <div className="panel-head">
-        <h2>Thread</h2>
-        <button className="icon-btn" onClick={onClose} aria-label="Close thread">
-          <Icon name="x" />
-        </button>
-      </div>
+    <SidePanelColumn title="Thread" label="Thread" onClose={onClose}>
       {error && <ErrorState error={error} />}
       {!data && !error && <Loading />}
       {data && (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col">
           {data.replies.length > 0 && <ThreadAi messageId={data.root.id} excluded={aiExcluded} />}
-          <div className="thread-messages">
+          <div className="flex flex-col">
             <MessageItem message={data.root} grouped={false} isAnnouncement={isAnnouncement} canPost actions={actions} inThread />
-            <div className="thread-count">
-              {data.replies.length} repl{data.replies.length === 1 ? 'y' : 'ies'}
-            </div>
+            <Marker variant="separator" className="my-3">
+              <MarkerContent>
+                {data.replies.length} repl{data.replies.length === 1 ? 'y' : 'ies'}
+              </MarkerContent>
+            </Marker>
             {data.replies.map((r) => (
               <MessageItem key={r.id} message={r} grouped={false} isAnnouncement={false} canPost actions={actions} inThread />
             ))}
@@ -1089,10 +1258,12 @@ function ThreadPanel({
             ))}
             <div ref={end} />
           </div>
-          <Composer channelId={data.root.channel_id} parentId={data.root.id} placeholder="Reply…" members={members} onSent={reload} />
-        </>
+          <div className="sticky bottom-0 -mx-3 mt-auto -mb-3 bg-card pt-2">
+            <Composer channelId={data.root.channel_id} parentId={data.root.id} placeholder="Reply…" members={members} onSent={reload} />
+          </div>
+        </div>
       )}
-    </aside>
+    </SidePanelColumn>
   );
 }
 
@@ -1231,7 +1402,7 @@ function Composer({
 
   return (
     <div
-      className="composer"
+      className="composer relative mx-3 mb-3 md:mx-4 md:mb-4"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -1240,12 +1411,18 @@ function Composer({
       }}
     >
       {candidates.length > 0 && (
-        <div className="mention-menu" role="listbox" aria-label="Mention someone">
-          {candidates.map((p) => (
-            <button key={p.id} role="option" aria-selected={false} onMouseDown={(e) => (e.preventDefault(), pick(p))}>
+        <div className="absolute bottom-full left-0 z-20 mb-1 flex w-72 flex-col rounded-xl border bg-popover p-1 shadow-md" role="listbox" aria-label="Mention someone">
+          {candidates.map((p, i) => (
+            <button
+              key={p.id}
+              role="option"
+              aria-selected={i === 0}
+              className={cn('flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted', i === 0 && 'bg-muted')}
+              onMouseDown={(e) => (e.preventDefault(), pick(p))}
+            >
               {'hint' in p ? (
                 <>
-                  <Icon name="megaphone" size={14} /> @{p.name} <small className="muted">{String(p.hint)}</small>
+                  <Icon name="megaphone" size={14} /> @{p.name} <span className="text-xs text-muted-foreground">{String(p.hint)}</span>
                 </>
               ) : (
                 <>
@@ -1256,94 +1433,96 @@ function Composer({
           ))}
         </div>
       )}
-      {files.length > 0 && (
-        <div className="pending-files">
-          {files.map((f) => (
-            <span key={f.id} className="chip">
-              {f.preview ? (
-                f.kind === 'video' ? (
-                  <video className="pending-thumb" src={`${f.preview}#t=0.1`} muted playsInline preload="metadata" aria-hidden="true" />
-                ) : (
-                  <img className="pending-thumb" src={f.preview} alt="" />
-                )
-              ) : (
-                <Icon name="file" size={13} />
-              )}{' '}
-              {f.name}
-              <button
-                onClick={() => {
-                  if (f.preview) URL.revokeObjectURL(f.preview);
-                  setFiles(files.filter((x) => x.id !== f.id));
-                }}
-                aria-label={`Remove ${f.name}`}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <textarea
-        ref={ref}
-        value={text}
-        rows={Math.min(8, Math.max(1, text.split('\n').length))}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !(e.nativeEvent as KeyboardEvent).isComposing) {
-            if (candidates.length && !e.shiftKey) {
-              e.preventDefault();
-              pick(candidates[0]);
-              return;
+      <InputGroup className="h-auto flex-col items-stretch rounded-2xl bg-card shadow-sm">
+        {files.length > 0 && (
+          <AttachmentGroup className="pending-files px-2 pt-2">
+            {files.map((f) => (
+              <Attachment key={f.id} size="sm" state="done">
+                <AttachmentMedia variant={f.preview ? 'image' : 'icon'}>
+                  {f.preview ? (
+                    f.kind === 'video' ? (
+                      <video className="pending-thumb size-full object-cover" src={`${f.preview}#t=0.1`} muted playsInline preload="metadata" aria-hidden="true" />
+                    ) : (
+                      <img className="pending-thumb size-full object-cover" src={f.preview} alt="" />
+                    )
+                  ) : (
+                    <Icon name="file" />
+                  )}
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{f.name}</AttachmentTitle>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => {
+                      if (f.preview) URL.revokeObjectURL(f.preview);
+                      setFiles(files.filter((x) => x.id !== f.id));
+                    }}
+                  >
+                    <Icon name="x" />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            ))}
+          </AttachmentGroup>
+        )}
+        <InputGroupTextarea
+          ref={ref}
+          value={text}
+          rows={Math.min(8, Math.max(1, text.split('\n').length))}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          className="max-h-60 min-h-11 resize-none"
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !(e.nativeEvent as KeyboardEvent).isComposing) {
+              if (candidates.length && !e.shiftKey) {
+                e.preventDefault();
+                pick(candidates[0]);
+                return;
+              }
+              // Ctrl/⌘+Enter always sends; plain Enter sends only when "Enter to send" is on. Otherwise Enter is a new line.
+              if (e.ctrlKey || e.metaKey || (enterSends && !e.shiftKey)) {
+                e.preventDefault();
+                send();
+              }
             }
-            // Ctrl/⌘+Enter always sends; plain Enter sends only when "Enter to send" is on. Otherwise Enter is a new line.
-            if (e.ctrlKey || e.metaKey || (enterSends && !e.shiftKey)) {
-              e.preventDefault();
-              send();
-            }
-          }
-          if (e.key === 'Escape') setQuery(null);
-        }}
-      />
-      <div className="composer-bar">
+            if (e.key === 'Escape') setQuery(null);
+          }}
+        />
         {/* The tools wrap onto a second line on narrow screens; the send button always stays in view. */}
-        <div className="composer-tools">
-          <button className="icon-btn xs" onClick={() => fileInput.current?.click()} aria-label="Attach a file" title="Attach a file" disabled={uploading}>
-            <Icon name="paperclip" size={16} />
-          </button>
+        <InputGroupAddon align="block-end" className="flex-wrap gap-1 border-t">
+          <IconButton label="Attach a file" size="icon-xs" onClick={() => fileInput.current?.click()} disabled={uploading}>
+            {uploading ? <Spinner /> : <Icon name="paperclip" />}
+          </IconButton>
           <input ref={fileInput} type="file" hidden onChange={(e) => e.target.files?.[0] && (upload(e.target.files[0]), (e.target.value = ''))} />
           <VoiceNoteButton onRecorded={upload} disabled={uploading} />
-          <button className="icon-btn xs" onClick={() => setPolling(true)} aria-label="Create a poll" title="Create a poll">
-            <Icon name="poll" size={16} />
-          </button>
-          <button className="icon-btn xs" onClick={() => onChange(`${text}${text && !text.endsWith(' ') ? ' ' : ''}@`)} aria-label="Mention someone" title="Mention">
-            @
-          </button>
-          <label className={`urgent-toggle ${urgent ? 'on' : ''}`} title="Urgent messages break through quiet hours and focus time">
-            <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> Urgent
-          </label>
-          <label className="enter-toggle" title={enterSends ? 'Shift+Enter starts a new line' : 'Ctrl+Enter (⌘+Enter on a Mac) sends'}>
-            <input type="checkbox" checked={enterSends} onChange={(e) => setEnterSends(e.target.checked)} /> Enter to send
-          </label>
-          <span className="muted small hide-mobile">
-            {enterSends ? 'Shift+Enter for a new line' : 'Ctrl+Enter to send'} · **bold**, *italic*, `code`
+          <IconButton label="Create a poll" size="icon-xs" onClick={() => setPolling(true)}>
+            <Icon name="poll" />
+          </IconButton>
+          <IconButton label="Mention someone" size="icon-xs" onClick={() => onChange(`${text}${text && !text.endsWith(' ') ? ' ' : ''}@`)}>
+            <span className="text-sm font-semibold">@</span>
+          </IconButton>
+          <Separator orientation="vertical" className="mx-1 h-4" />
+          <Label className={cn('h-6 gap-1.5 rounded-md px-1.5 text-xs font-normal', urgent && 'bg-destructive/10 text-destructive')} title="Urgent messages break through quiet hours and focus time">
+            <Checkbox checked={urgent} onCheckedChange={(checked) => setUrgent(checked)} /> Urgent
+          </Label>
+          <Label className="h-6 gap-1.5 px-1.5 text-xs font-normal" title={enterSends ? 'Shift+Enter starts a new line' : 'Ctrl+Enter (⌘+Enter on a Mac) sends'}>
+            <Checkbox checked={enterSends} onCheckedChange={(checked) => setEnterSends(checked)} /> Enter to send
+          </Label>
+          <span className="truncate text-xs text-muted-foreground max-lg:hidden">{enterSends ? 'Shift+Enter for a new line' : 'Ctrl+Enter to send'} · **bold**, *italic*, `code`</span>
+          <span className="ml-auto flex items-center gap-1">
+            <IconButton label={files.length ? 'Attachments cannot be scheduled' : 'Send later'} size="icon-xs" onClick={() => setLater(true)} disabled={!text.trim() || files.length > 0}>
+              <Icon name="clock" />
+            </IconButton>
+            <InputGroupButton variant="default" size="icon-sm" className="send rounded-xl" onClick={send} disabled={uploading || (!text.trim() && !files.length)} aria-label="Send">
+              <Icon name="send" />
+            </InputGroupButton>
           </span>
-          <button
-            className="icon-btn xs"
-            onClick={() => setLater(true)}
-            disabled={!text.trim() || files.length > 0}
-            aria-label="Send later"
-            title={files.length ? 'Attachments cannot be scheduled' : 'Send later'}
-          >
-            <Icon name="clock" size={16} />
-          </button>
-        </div>
-        <button className="btn primary sm send" onClick={send} disabled={uploading || (!text.trim() && !files.length)} aria-label="Send">
-          <Icon name="send" size={15} />
-        </button>
-      </div>
-      <WhenModal open={later} onClose={() => setLater(false)} eyebrow="SEND LATER" title="Schedule this message" confirmLabel="Schedule" onPick={schedule} />
+        </InputGroupAddon>
+      </InputGroup>
+      <WhenModal open={later} onClose={() => setLater(false)} eyebrow="Send later" title="Schedule this message" confirmLabel="Schedule" onPick={schedule} />
       <PollModal open={polling} onClose={() => setPolling(false)} channelId={channelId} parentId={parentId} onSent={onSent} />
     </div>
   );

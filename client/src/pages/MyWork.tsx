@@ -3,9 +3,15 @@ import { api, type Task } from '../api';
 import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { TaskRow } from '../components/TaskDrawer';
-import { Empty, ErrorState, Loading, useAction } from '../components/ui';
+import { ChevronRight } from 'lucide-react';
+import { DatePicker, EmptyState, ErrorState, Loading, Page, PageHeader, Pill, useAction } from '@/components/kit';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { cn } from '@/lib/utils';
 import { localToday } from '../format';
 import { useApi, useRealtime } from '../hooks';
+import { Button } from '@/components/ui/button';
 
 interface MyWorkData {
   overdue: Task[];
@@ -54,45 +60,52 @@ export function MyWork() {
   const total = SECTIONS.filter((s) => s.id !== 'done_recently').reduce((n, s) => n + data[s.id].length, 0);
 
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>My work</h1>
-          <p className="muted">Everything you own or need to review, across every project.</p>
-        </div>
-      </div>
-      <form className="quick-add card" onSubmit={add}>
-        <Icon name="plus" />
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a personal task and press Enter" aria-label="New task title" />
-        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Due date" />
-        <button className="btn primary sm" disabled={!title.trim()}>
-          Add
-        </button>
-      </form>
+    <Page width="narrow">
+      <PageHeader title="My work" description="Everything you own or need to review, across every project." />
+      <Card size="sm">
+        <CardContent>
+          <form className="flex flex-wrap items-center gap-2" onSubmit={add}>
+            <InputGroup className="min-w-48 flex-1">
+              <InputGroupAddon>
+                <Icon name="plus" />
+              </InputGroupAddon>
+              <InputGroupInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Add a personal task and press Enter" aria-label="New task title" />
+            </InputGroup>
+            <DatePicker value={due} onChange={(v) => setDue(v ?? '')} aria-label="Due date" placeholder="No date" />
+            <Button disabled={!title.trim()} type="submit">
+              Add
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
       {total === 0 && (
-        <Empty icon="check" title="You are all clear">
+        <EmptyState icon="check" title="You are all clear">
           Nothing assigned to you right now.
-        </Empty>
+        </EmptyState>
       )}
       {SECTIONS.map((s) =>
         data[s.id].length ? (
-          <section key={s.id} className={`card work-section ${s.tone ?? ''}`}>
-            <button className="section-toggle" onClick={() => setCollapsed({ ...collapsed, [s.id]: !collapsed[s.id] })} aria-expanded={!collapsed[s.id]}>
-              <Icon name={collapsed[s.id] ? 'chevronRight' : 'chevronDown'} size={16} />
-              <h2>{s.title}</h2>
-              <span className="count">{data[s.id].length}</span>
-              <span className="muted small">{s.hint}</span>
-            </button>
-            {!collapsed[s.id] && (
-              <div className="task-list">
-                {data[s.id].map((t) => (
-                  <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => toggle(t, d)} />
-                ))}
-              </div>
-            )}
-          </section>
+          <Collapsible key={s.id} open={!collapsed[s.id]} onOpenChange={(open) => setCollapsed({ ...collapsed, [s.id]: !open })}>
+            <Card size="sm" className={cn('gap-2', s.tone === 'danger' && 'ring-destructive/30', s.tone === 'warn' && 'ring-warning/40')}>
+              <CardHeader>
+                <CollapsibleTrigger className="group/trigger flex w-full items-center gap-2 text-left outline-none">
+                  <ChevronRight className="size-4 text-muted-foreground transition-transform group-data-[panel-open]/trigger:rotate-90" />
+                  <h2 className={cn('font-heading text-base font-semibold', s.tone === 'danger' && 'text-destructive')}>{s.title}</h2>
+                  <Pill tone={s.tone === 'danger' ? 'danger' : s.tone === 'warn' ? 'warning' : 'neutral'}>{data[s.id].length}</Pill>
+                  <span className="truncate text-xs text-muted-foreground">{s.hint}</span>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="flex flex-col">
+                  {data[s.id].map((t) => (
+                    <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => toggle(t, d)} />
+                  ))}
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         ) : null,
       )}
-    </div>
+    </Page>
   );
 }
