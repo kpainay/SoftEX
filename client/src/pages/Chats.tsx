@@ -956,7 +956,7 @@ function MessageItem({
           <PollCard poll={poll} authorId={m.user?.id} onChange={setPoll} />
         ) : (
           m.body && (
-            <Bubble variant={mine ? 'tinted' : 'muted'} className={cn('max-w-full', m.urgent && 'ring-1 ring-destructive/40')}>
+            <Bubble variant={mine ? 'tinted' : 'muted'} className="max-w-full">
               <BubbleContent className="rounded-2xl px-3 py-2">
                 <Markdown text={m.body} compact />
                 {m.edited_at && <span className="ml-1 text-[11px] text-muted-foreground">(edited)</span>}
