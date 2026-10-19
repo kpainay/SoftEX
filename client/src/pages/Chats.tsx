@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, qs, type Channel, type Message } from '../api';
 import { ThreadAi } from '../components/Ai';
@@ -79,6 +79,38 @@ import { Label } from '@/components/ui/label';
 const EMOJI = ['👍', '❤️', '🎉', '✅', '👀', '😄', '🙏', '🚀'];
 
 const channelIcon = (c: { kind: string }) => (c.kind === 'private' ? 'lock' : c.kind === 'announcement' ? 'megaphone' : c.kind === 'dm' ? 'chat' : 'hash');
+
+/**
+ * The message whose actions are showing on a touch screen. Phones have no hover, so tapping a message selects it
+ * (and tapping anywhere else clears it); only the two messages whose selection changed re-render.
+ */
+let selectedMessage: string | null = null;
+const selectionListeners = new Set<() => void>();
+const selectMessage = (id: string | null) => {
+  if (id === selectedMessage) return;
+  selectedMessage = id;
+  selectionListeners.forEach((l) => l());
+};
+const subscribeSelection = (fn: () => void) => {
+  selectionListeners.add(fn);
+  return () => void selectionListeners.delete(fn);
+};
+const useMessageSelected = (id: string) => useSyncExternalStore(subscribeSelection, () => selectedMessage === id);
+const canHover = () => window.matchMedia?.('(hover: hover)').matches ?? true;
+
+/** Taps on these inside a message do their own thing instead of selecting the message. */
+const INTERACTIVE = 'a, button, input, textarea, select, label, video, audio, [role="menuitem"], [role="toolbar"]';
+
+/** One object whose functions always call the latest ones, so memoised message rows don't re-render for new closures. */
+function useStableActions<T extends Record<string, (...args: never[]) => unknown>>(fns: T): T {
+  const latest = useRef(fns);
+  latest.current = fns;
+  return useMemo(
+    () => Object.fromEntries(Object.keys(fns).map((k) => [k, (...args: never[]) => latest.current[k](...args)])) as T,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+}
 
 // ======================= Chats (direct & group messages) =======================
 
@@ -322,6 +354,26 @@ function HighlightScroller({ highlight, loaded, exists, onThread }: { highlight:
   return null;
 }
 
+/**
+ * Chat rows are drawn in full rather than skipped while off screen: skipping clips the actions bar that sits over
+ * the row's top edge, and the guessed sizes of skipped rows made the jump to the latest message land short.
+ */
+const CHAT_ITEM = '[content-visibility:visible]';
+
+/**
+ * Inside the scroller: sending a message brings you to the bottom to see it, even when you'd scrolled up.
+ * (A message from someone else only scrolls the chat if you're already at the bottom.)
+ */
+function ScrollOnSend({ count }: { count: number }) {
+  const { scrollToEnd } = useMessageScroller();
+  const previous = useRef(count);
+  useEffect(() => {
+    if (count > previous.current) scrollToEnd({ behavior: 'auto' });
+    previous.current = count;
+  }, [count, scrollToEnd]);
+  return null;
+}
+
 export function ChannelView() {
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
@@ -412,17 +464,31 @@ export function ChannelView() {
   });
 
   useEffect(() => {
-    const t = window.setInterval(() => setTyping((ty) => Object.fromEntries(Object.entries(ty).filter(([, v]) => Date.now() - v.at < 4000))), 2000);
+    // Only a change re-renders: a fresh object every tick would redraw the whole conversation every 2 seconds.
+    const t = window.setInterval(
+      () =>
+        setTyping((ty) => {
+          const live = Object.entries(ty).filter(([, v]) => Date.now() - v.at < 4000);
+          return live.length === Object.keys(ty).length ? ty : Object.fromEntries(live);
+        }),
+      2000,
+    );
     return () => window.clearInterval(t);
   }, []);
 
-  if (error) return <ErrorState error={error} />;
-  if (!channel) return <Loading />;
+  // On a touch screen, tapping outside the selected message hides its actions again.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (selectedMessage && !(e.target as Element | null)?.closest?.(`[data-message-row="${selectedMessage}"]`)) selectMessage(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      selectMessage(null);
+    };
+  }, []);
 
-  const dmName = channel.kind === 'dm' ? channel.members.filter((m) => m.id !== me!.user.id).map((m) => m.name).join(', ') || 'Just you' : channel.name;
-  const typingNames = Object.values(typing).map((t) => t.name);
-
-  const actions = {
+  const actions = useStableActions({
     forward: (m: Message) => setForwarding(m),
     react: async (m: Message, emoji: string) => {
       // Show the reaction at once; undo it if the server says no.
@@ -443,12 +509,19 @@ export function ChannelView() {
     reply: (m: Message) => setThreadId(m.id),
     task: (m: Message) => setTaskFrom(m),
     decision: (m: Message) => setDecisionFrom(m),
-  };
+  });
+
+  if (error) return <ErrorState error={error} />;
+  if (!channel) return <Loading />;
+
+  const dmName = channel.kind === 'dm' ? channel.members.filter((m) => m.id !== me!.user.id).map((m) => m.name).join(', ') || 'Just you' : channel.name;
+  const typingNames = Object.values(typing).map((t) => t.name);
 
   const panelOpen = !!threadId || !!panel;
   return (
     <div className="flex h-[calc(100dvh-3.5rem-4rem)] min-h-0 md:h-[calc(100dvh-3.5rem)]">
-      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      {/* Keyed by chat, so switching chats starts each one at its latest message instead of where the last one was. */}
+      <MessageScrollerProvider key={id} autoScroll defaultScrollPosition="end">
         <section className={cn('flex min-w-0 flex-1 flex-col', panelOpen && 'max-lg:hidden')} aria-label={`Conversation ${dmName}`}>
           <header className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
@@ -526,15 +599,15 @@ export function ChannelView() {
 
           <MessageScroller className="flex-1">
             <MessageScrollerViewport preserveScrollOnPrepend aria-label="Messages">
+              {/* Outside the item list: older messages then go in above the first message, which keeps its place on screen. */}
+              {hasMore && (
+                <Button variant="outline" size="sm" className="mx-auto mt-4 flex" onClick={() => load(messages[0]?.created_at)}>
+                  Load earlier messages
+                </Button>
+              )}
               <MessageScrollerContent className="gap-0 px-2 py-4 md:px-4">
                 <HighlightScroller highlight={highlight} loaded={loaded} exists={messages.some((m) => m.id === highlight)} onThread={setThreadId} />
-                {hasMore && (
-                  <MessageScrollerItem>
-                    <Button variant="outline" size="sm" className="mx-auto mb-4 flex" onClick={() => load(messages[0]?.created_at)}>
-                      Load earlier messages
-                    </Button>
-                  </MessageScrollerItem>
-                )}
+                <ScrollOnSend count={outgoing.length} />
                 {loaded && !messages.length && (
                   <MessageScrollerItem className="my-auto">
                     <EmptyState icon={channelIcon(channel)} title={channel.kind === 'dm' ? `This is the start of your conversation` : `Welcome to #${channel.name}`}>
@@ -552,7 +625,7 @@ export function ChannelView() {
                   const grouped = prev && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
                   const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
                   return (
-                    <MessageScrollerItem key={m.id} messageId={m.id} scrollAnchor={m.user?.id === me!.user.id}>
+                    <MessageScrollerItem key={m.id} messageId={m.id} className={CHAT_ITEM}>
                       {newDay && (
                         <Marker variant="separator" className="my-3">
                           <MarkerContent>{new Date(m.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</MarkerContent>
@@ -574,7 +647,7 @@ export function ChannelView() {
                   const last = i === 0 ? messages[messages.length - 1] : null;
                   const grouped = i > 0 || (!!last && last.user?.id === me!.user.id && Date.now() - new Date(last.created_at).getTime() < 5 * 60_000);
                   return (
-                    <MessageScrollerItem key={o.key} scrollAnchor>
+                    <MessageScrollerItem key={o.key} className={CHAT_ITEM}>
                       <OutgoingMessage item={o} grouped={grouped} />
                     </MessageScrollerItem>
                   );
@@ -847,7 +920,8 @@ interface Actions {
   decision: (m: Message) => void;
 }
 
-function MessageItem({
+/** Memoised: a chat redraws only the rows that changed, not every message whenever anything in the chat changes. */
+const MessageItem = memo(function MessageItem({
   message: m,
   grouped,
   highlight,
@@ -875,6 +949,7 @@ function MessageItem({
   const [remind, setRemind] = useState(false);
   const [poll, setPoll] = useState(m.poll ?? null);
   useEffect(() => setPoll(m.poll ?? null), [m.poll]);
+  const selected = useMessageSelected(m.id);
   const mine = m.user?.id === me!.user.id;
   const isAdmin = me!.role === 'admin' || me!.role === 'owner';
   const policy = me!.workspace.message_edit_policy;
@@ -901,17 +976,24 @@ function MessageItem({
   return (
     <ChatRow
       className={cn(
-        'message group/msg rounded-xl px-2 py-1 transition-colors hover:bg-muted/40',
+        'message group/msg rounded-xl px-2 py-1 transition-colors hover:bg-muted/40 data-selected:bg-muted/60',
         grouped ? 'grouped' : 'mt-3',
         highlight && 'highlight bg-accent/50 ring-1 ring-primary/30',
         m.urgent && 'urgent',
         entering && 'enter animate-in fade-in-0 slide-in-from-bottom-1',
       )}
       id={`m-${m.id}`}
+      data-message-row={m.id}
+      data-selected={selected || undefined}
+      onClick={(e) => {
+        // Touch screens: a tap on the message (not on a link or button in it) shows or hides its actions.
+        if (canHover() || editing || (e.target as Element).closest(INTERACTIVE)) return;
+        selectMessage(selected ? null : m.id);
+      }}
     >
       <MessageAvatar className={cn('size-8 self-start bg-transparent', grouped && 'h-auto')}>
         {grouped ? (
-          <time className="w-8 pt-1 text-center text-[10px] text-muted-foreground opacity-0 group-hover/msg:opacity-100">{timeOf(m.created_at).replace(/\s?[AP]M/i, '')}</time>
+          <time className="w-8 pt-1 text-center text-[10px] text-muted-foreground opacity-0 group-hover/msg:opacity-100 group-data-selected/msg:opacity-100">{timeOf(m.created_at).replace(/\s?[AP]M/i, '')}</time>
         ) : (
           <Avatar user={m.user} size="md" />
         )}
@@ -1041,7 +1123,10 @@ function MessageItem({
       <div
         className={cn(
           'absolute -top-3 right-2 z-10 flex items-center gap-0.5 rounded-lg border bg-popover p-0.5 shadow-sm transition-opacity',
-          picker || menu ? 'opacity-100' : 'opacity-0 group-focus-within/msg:opacity-100 group-hover/msg:opacity-100 max-md:opacity-100',
+          // Hidden bars can't be tapped by accident; they show on hover, keyboard focus, or a tap on the message (touch).
+          picker || menu
+            ? 'opacity-100'
+            : 'pointer-events-none opacity-0 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-data-selected/msg:pointer-events-auto group-data-selected/msg:opacity-100',
         )}
         role="toolbar"
         aria-label="Message actions"
@@ -1134,7 +1219,7 @@ function MessageItem({
       <RemindModal open={remind} onClose={() => setRemind(false)} messageId={m.id} />
     </ChatRow>
   );
-}
+});
 
 /** Add or remove my reaction, as the server does when it is toggled. */
 function toggleReaction(reactions: Message['reactions'], emoji: string): Message['reactions'] {
