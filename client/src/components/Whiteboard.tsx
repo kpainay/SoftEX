@@ -2,6 +2,13 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEven
 import * as Y from 'yjs';
 import { LOCAL, type LiveDoc } from '../collab';
 import { Icon } from './Icon';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Hint, IconButton } from '@/components/kit';
+import { Minus, Plus } from 'lucide-react';
+import { Toggle } from '@/components/ui/toggle';
+import { Separator } from '@/components/ui/separator';
+import { ButtonGroup } from '@/components/ui/button-group';
 
 /**
  * A collaborative whiteboard. Elements live in a Y.Map shared through the live-collaboration
@@ -115,7 +122,7 @@ function wrap(text: string, width: number, size: number) {
 
 function ElementShape({ e: raw, byId, selected }: { e: El; byId: Map<string, El>; selected: boolean }) {
   const e = { ...raw, color: safeColor(raw.color, raw.type === 'sticky' ? STICKY[0] : INK[0]) };
-  const stroke = selected ? 'var(--accent)' : undefined;
+  const stroke = selected ? 'var(--k-accent)' : undefined;
   switch (e.type) {
     case 'sticky':
     case 'rect':
@@ -424,32 +431,42 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
   const peers = [...live.peers.values()].filter((p) => p.cursor);
 
   return (
-    <div className="wb">
-      <div className="wb-toolbar" role="toolbar" aria-label="Whiteboard tools">
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
+      <div
+        className="absolute top-3 left-1/2 z-10 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl border bg-popover p-1 shadow-md"
+        role="toolbar"
+        aria-label="Whiteboard tools"
+      >
         {TOOLS.filter((t) => !readOnly || t.id === 'select' || t.id === 'hand').map((t) => (
-          <button key={t.id} className={`icon-btn ${tool === t.id ? 'active' : ''}`} aria-pressed={tool === t.id} aria-label={t.label} title={`${t.label} (${t.key.toUpperCase()})`} onClick={() => setTool(t.id)}>
-            <Icon name={t.icon} size={18} />
-          </button>
+          <Hint key={t.id} label={`${t.label} (${t.key.toUpperCase()})`} side="bottom">
+            <Toggle size="sm" pressed={tool === t.id} onPressedChange={() => setTool(t.id)} aria-label={t.label} className="data-pressed:bg-accent data-pressed:text-accent-foreground">
+              <Icon name={t.icon} />
+            </Toggle>
+          </Hint>
         ))}
         {!readOnly && (
           <>
-            <span className="wb-sep" />
-            <button className="icon-btn" aria-label="Undo" title="Undo (Ctrl+Z)" onClick={() => undo.undo()}>
-              <Icon name="undo" size={17} />
-            </button>
-            <button className="icon-btn" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" onClick={() => undo.redo()}>
-              <Icon name="redo" size={17} />
-            </button>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <IconButton label="Undo (Ctrl+Z)" size="icon-sm" onClick={() => undo.undo()}>
+              <Icon name="undo" />
+            </IconButton>
+            <IconButton label="Redo (Ctrl+Shift+Z)" size="icon-sm" onClick={() => undo.redo()}>
+              <Icon name="redo" />
+            </IconButton>
           </>
         )}
       </div>
 
       {!readOnly && (sel.length > 0 || tool !== 'select') && (
-        <div className="wb-props" role="group" aria-label="Colour">
+        <div
+          className="absolute bottom-16 left-2 z-10 flex items-center gap-1 rounded-2xl border bg-popover p-1.5 shadow-md md:top-1/2 md:bottom-auto md:left-3 md:-translate-y-1/2 md:flex-col"
+          role="group"
+          aria-label="Colour"
+        >
           {(single?.type === 'sticky' || (!single && tool === 'sticky') ? STICKY : INK).map((c) => (
             <button
               key={c}
-              className="wb-swatch"
+              className="size-6 rounded-full border-2 border-popover ring-1 ring-border transition-transform outline-none hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring"
               style={{ background: c }}
               aria-label={`Colour ${c}`}
               onClick={() => {
@@ -460,42 +477,43 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
           ))}
           {sel.length > 0 && (
             <>
-              <span className="wb-sep" />
-              <button className="icon-btn" aria-label="Bring to front" title="Bring to front" onClick={() => set(sel.map((e, i) => ({ ...e, z: topZ() + i })))}>
-                <Icon name="layers" size={16} />
-              </button>
-              <button
-                className="icon-btn"
-                aria-label="Delete selection"
+              <Separator className="my-1 max-md:hidden" />
+              <Separator orientation="vertical" className="mx-1 h-5 md:hidden" />
+              <IconButton label="Bring to front" size="icon-sm" onClick={() => set(sel.map((e, i) => ({ ...e, z: topZ() + i })))}>
+                <Icon name="layers" />
+              </IconButton>
+              <IconButton
+                label="Delete selection"
+                size="icon-sm"
                 onClick={() => {
                   remove(selected);
                   setSelected([]);
                 }}
               >
-                <Icon name="trash" size={16} />
-              </button>
+                <Icon name="trash" />
+              </IconButton>
             </>
           )}
         </div>
       )}
 
-      <div className="wb-zoom">
-        <button className="icon-btn" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
-          −
-        </button>
-        <button className="link-btn" onClick={() => setView((v) => ({ ...v, zoom: 1 }))} aria-label="Reset zoom">
+      <ButtonGroup className="absolute right-3 bottom-3 z-10 shadow-md" aria-label="View">
+        <IconButton label="Zoom out" variant="outline" size="icon-sm" className="bg-popover" onClick={() => zoomBy(1 / 1.25)}>
+          <Minus />
+        </IconButton>
+        <Button variant="outline" size="sm" className="w-14 bg-popover tabular-nums" onClick={() => setView((v) => ({ ...v, zoom: 1 }))} aria-label="Reset zoom">
           {Math.round(view.zoom * 100)}%
-        </button>
-        <button className="icon-btn" aria-label="Zoom in" onClick={() => zoomBy(1.25)}>
-          +
-        </button>
-        <button className="icon-btn" aria-label="Fit to screen" title="Fit to screen" onClick={fit}>
-          <Icon name="maximize" size={15} />
-        </button>
-        <button className="icon-btn" aria-label="Download as SVG" title="Download as SVG" onClick={exportSvg}>
-          <Icon name="download" size={15} />
-        </button>
-      </div>
+        </Button>
+        <IconButton label="Zoom in" variant="outline" size="icon-sm" className="bg-popover" onClick={() => zoomBy(1.25)}>
+          <Plus />
+        </IconButton>
+        <IconButton label="Fit to screen" variant="outline" size="icon-sm" className="bg-popover" onClick={fit}>
+          <Icon name="maximize" />
+        </IconButton>
+        <IconButton label="Download as SVG" variant="outline" size="icon-sm" className="bg-popover" onClick={exportSvg}>
+          <Icon name="download" />
+        </IconButton>
+      </ButtonGroup>
 
       <svg
         ref={svg}
@@ -542,7 +560,7 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
           )}
           {marquee && <rect className="wb-ui wb-marquee" x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} />}
           {peers.map((p) => (
-            <g key={p.clientId} className="wb-ui wb-cursor" transform={`translate(${p.cursor!.x} ${p.cursor!.y}) scale(${1 / view.zoom})`} style={{ color: `var(--c-${p.user.color}, var(--accent))` }}>
+            <g key={p.clientId} className="wb-ui wb-cursor" transform={`translate(${p.cursor!.x} ${p.cursor!.y}) scale(${1 / view.zoom})`} style={{ color: `var(--c-${p.user.color}, var(--k-accent))` }}>
               <path d="M0 0 L0 16 L4.5 12 L8 19 L10.5 18 L7 11 L13 11 z" fill="currentColor" stroke="#fff" strokeWidth="1" />
               <text x={14} y={24} className="wb-cursor-name" fill="currentColor">
                 {p.user.name}
@@ -553,8 +571,8 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
       </svg>
 
       {editingEl && (
-        <textarea
-          className="wb-editor"
+        <Textarea
+          className="absolute z-20 min-h-0 resize-none rounded-sm border-2 border-primary p-2 text-center leading-tight text-[#2b2118] shadow-none focus-visible:ring-0"
           autoFocus
           aria-label="Edit text"
           defaultValue={editingEl.text ?? ''}
@@ -584,7 +602,7 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
         />
       )}
       {!els.length && !readOnly && (
-        <p className="wb-hint muted">
+        <p className="pointer-events-none absolute top-[45%] left-1/2 max-w-md -translate-x-1/2 -translate-y-1/2 text-center text-sm text-muted-foreground">
           Pick a tool above, or double-click anywhere to add a sticky note. Drag with the hand tool (or hold Alt) to move around; Ctrl + scroll to zoom.
         </p>
       )}

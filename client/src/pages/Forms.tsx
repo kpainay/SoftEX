@@ -4,9 +4,16 @@ import { api, type UserRef } from '../api';
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { useProjectFields } from '../components/Work';
-import { Empty, ErrorState, Field, Loading, Modal, useAction, useToast } from '../components/ui';
+import { Callout, CheckboxField, EmptyState, ErrorState, FormField, IconButton, Loading, Modal, notify, Page, PageHeader, Pill, useAction, useConfirm } from '@/components/kit';
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/spinner';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 type QuestionType = 'short' | 'long' | 'email' | 'number' | 'date' | 'select';
 interface Question {
@@ -53,40 +60,44 @@ export function ProjectForms({ projectId, canManage }: { projectId: string; canM
   if (error) return <ErrorState error={error} retry={reload} />;
   if (!data) return <Loading />;
   return (
-    <div>
-      <div className="toolbar">
-        <p className="muted grow">Collect requests with a form. Every response becomes a task here, assigned to the form’s owner.</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-sm text-muted-foreground">Collect requests with a form. Every response becomes a task here, assigned to the form’s owner.</p>
         {canManage && (
-          <button className="btn primary sm" onClick={() => setEditing('new')}>
-            <Icon name="plus" size={15} /> New form
-          </button>
+          <Button size="sm" onClick={() => setEditing('new')}>
+            <Icon name="plus" data-icon="inline-start" /> New form
+          </Button>
         )}
       </div>
-      {!data.length && <Empty icon="form" title="No forms yet">{canManage ? 'Create one to take in bug reports, design requests or IT tickets.' : 'Project leads can create forms.'}</Empty>}
-      <div className="card-list">
+      {!data.length && <EmptyState icon="form" title="No forms yet">{canManage ? 'Create one to take in bug reports, design requests or IT tickets.' : 'Project leads can create forms.'}</EmptyState>}
+      <div className="grid gap-3 md:grid-cols-2">
         {data.map((f) => (
-          <article key={f.id} className="card pad form-card">
-            <div className="row-gap">
-              <Icon name="form" size={18} />
-              <strong className="grow">{f.title}</strong>
-              {f.closed ? <span className="pill">Closed</span> : f.public ? <span className="pill status-done">Public link</span> : <span className="pill">Members only</span>}
-            </div>
-            <p className="muted small">
-              {f.questions.length} question{f.questions.length === 1 ? '' : 's'} · {f.responses} response{f.responses === 1 ? '' : 's'}
-              {f.owner && <> · goes to {f.owner.name}</>}
-            </p>
-            <div className="row-gap wrap">
-              <Link className="btn sm" to={`/forms/${f.id}`}>
+          <Card key={f.id} size="sm" className="form-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                  <Icon name="form" size={16} />
+                </span>
+                <span className="truncate">{f.title}</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {f.questions.length} question{f.questions.length === 1 ? '' : 's'} · {f.responses} response{f.responses === 1 ? '' : 's'}
+                {f.owner && <> · goes to {f.owner.name}</>}
+              </CardDescription>
+              <CardAction>{f.closed ? <Pill>Closed</Pill> : f.public ? <Pill tone="success">Public link</Pill> : <Pill>Members only</Pill>}</CardAction>
+            </CardHeader>
+            <CardFooter className="flex-wrap gap-2">
+              <Link to={`/forms/${f.id}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
                 Open form
               </Link>
               {f.public_url && <CopyLink url={f.public_url} />}
               {canManage && (
-                <button className="btn sm" onClick={() => setEditing(f)}>
+                <Button variant="ghost" size="sm" onClick={() => setEditing(f)}>
                   Edit
-                </button>
+                </Button>
               )}
-            </div>
-          </article>
+            </CardFooter>
+          </Card>
         ))}
       </div>
       {editing && (
@@ -105,26 +116,28 @@ export function ProjectForms({ projectId, canManage }: { projectId: string; canM
 }
 
 function CopyLink({ url }: { url: string }) {
-  const toast = useToast();
   return (
-    <button
-      className="btn sm"
+    <Button
+      variant="outline"
+      size="sm"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(url);
-          toast('Link copied');
+          notify('Link copied', 'success');
         } catch {
-          prompt('Copy this link', url);
+          notify('Copy this link', 'info', { description: url });
         }
       }}
     >
-      <Icon name="link" size={14} /> Copy public link
-    </button>
+      <Icon name="link" data-icon="inline-start" />
+      Copy public link
+    </Button>
   );
 }
 
 function FormBuilder({ projectId, form, onClose, onSaved }: { projectId: string; form: Form | null; onClose: () => void; onSaved: () => void }) {
   const act = useAction();
+  const confirm = useConfirm();
   const { people } = useSession();
   const { data: fields } = useProjectFields(projectId);
   const [title, setTitle] = useState(form?.title ?? '');
@@ -146,53 +159,48 @@ function FormBuilder({ projectId, form, onClose, onSaved }: { projectId: string;
 
   return (
     <Modal open onClose={onClose} title={form ? 'Edit form' : 'New form'} eyebrow="Intake form" wide>
-      <div className="stack">
-        <Field label="Title">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="Design request" />
-        </Field>
-        <Field label="Introduction" hint="Shown above the questions.">
-          <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} />
-        </Field>
-        <div className="grid-2">
-          <Field label="New tasks go to">
-            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-              <option value="">Nobody (unassigned)</option>
+      <div className="flex flex-col gap-3">
+        <FormField label="Title">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="Design request" />
+        </FormField>
+        <FormField label="Introduction" hint="Shown above the questions.">
+          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} />
+        </FormField>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="New tasks go to">
+            <NativeSelect value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+              <NativeSelectOption value="">Nobody (unassigned)</NativeSelectOption>
               {people.map((p) => (
-                <option key={p.id} value={p.id}>
+                <NativeSelectOption key={p.id} value={p.id}>
                   {p.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </Field>
-          <div className="stack">
-            <label className="check-inline">
-              <input type="checkbox" checked={isPublic} onChange={(e) => setPublic(e.target.checked)} /> Anyone with the link can respond (no sign-in)
-            </label>
-            {form && (
-              <label className="check-inline">
-                <input type="checkbox" checked={closed} onChange={(e) => setClosed(e.target.checked)} /> Closed — stop taking responses
-              </label>
-            )}
+            </NativeSelect>
+          </FormField>
+          <div className="flex flex-col gap-3 sm:pt-6">
+            <CheckboxField label="Anyone with the link can respond (no sign-in)" checked={isPublic} onCheckedChange={setPublic} />
+            {form && <CheckboxField label="Closed — stop taking responses" checked={closed} onCheckedChange={setClosed} />}
           </div>
         </div>
-        <h3>Questions</h3>
+        <Separator />
+        <h3 className="font-semibold">Questions</h3>
         {questions.map((q, i) => (
-          <div key={q.id} className="question-edit card pad">
-            <div className="row-gap wrap">
-              <input className="grow" value={q.label} onChange={(e) => set(i, { label: e.target.value })} placeholder={`Question ${i + 1}`} aria-label={`Question ${i + 1}`} maxLength={200} />
-              <select value={q.type} onChange={(e) => set(i, { type: e.target.value as QuestionType })} aria-label="Answer type">
+          <div key={q.id} className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Input className="min-w-0 flex-1" value={q.label} onChange={(e) => set(i, { label: e.target.value })} placeholder={`Question ${i + 1}`} aria-label={`Question ${i + 1}`} maxLength={200} />
+              <NativeSelect value={q.type} onChange={(e) => set(i, { type: e.target.value as QuestionType })} aria-label="Answer type">
                 {(Object.keys(TYPE_LABEL) as QuestionType[]).map((t) => (
-                  <option key={t} value={t}>
+                  <NativeSelectOption key={t} value={t}>
                     {TYPE_LABEL[t]}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-              <button className="icon-btn xs" aria-label="Remove question" disabled={questions.length === 1} onClick={() => setQuestions((qs) => qs.filter((_, j) => j !== i))}>
-                <Icon name="trash" size={13} />
-              </button>
+              </NativeSelect>
+              <IconButton label="Remove question" size="icon-sm" disabled={questions.length === 1} onClick={() => setQuestions((qs) => qs.filter((_, j) => j !== i))}>
+                <Icon name="trash" />
+              </IconButton>
             </div>
             {q.type === 'select' && (
-              <input
+              <Input
                 value={q.options.join(', ')}
                 onChange={(e) => set(i, { options: e.target.value.split(',').map((o) => o.trimStart()) })}
                 onBlur={() => set(i, { options: q.options.map((o) => o.trim()).filter(Boolean) })}
@@ -200,57 +208,61 @@ function FormBuilder({ projectId, form, onClose, onSaved }: { projectId: string;
                 aria-label="Choices"
               />
             )}
-            <div className="row-gap wrap small">
-              <label className="check-inline">
-                <input type="checkbox" checked={q.required} onChange={(e) => set(i, { required: e.target.checked })} /> Required
-              </label>
-              <label className="check-inline">
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <CheckboxField label="Required" checked={q.required} onCheckedChange={(checked) => set(i, { required: checked })} className="w-auto" />
+              <label className="inline-flex items-center gap-2 text-muted-foreground">
                 Fills in
-                <select value={q.maps ?? ''} onChange={(e) => set(i, { maps: e.target.value || null })} aria-label="Fills in">
-                  <option value="">Description only</option>
+                <NativeSelect size="sm" value={q.maps ?? ''} onChange={(e) => set(i, { maps: e.target.value || null })} aria-label="Fills in">
+                  <NativeSelectOption value="">Description only</NativeSelectOption>
                   {mapOptions.map(([id, label]) => (
-                    <option key={id} value={id}>
+                    <NativeSelectOption key={id} value={id}>
                       {label}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
             </div>
           </div>
         ))}
-        <button className="btn sm" onClick={() => setQuestions((qs) => [...qs, newQuestion(qs.length)])} disabled={questions.length >= 40}>
-          <Icon name="plus" size={14} /> Add question
-        </button>
-        <div className="form-actions">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setQuestions((qs) => [...qs, newQuestion(qs.length)])}
+          disabled={questions.length >= 40}>
+          <Icon name="plus" data-icon="inline-start" /> Add question
+        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {form && (
-            <button
-              className="btn danger-text"
+            <Button
+              variant="ghost"
+              className="text-destructive"
               onClick={async () => {
-                if (!confirm('Delete this form? Tasks it created stay.')) return;
+                if (!(await confirm({ title: 'Delete this form?', description: 'Tasks it created stay.', confirmLabel: 'Delete form', destructive: true }))) return;
                 if (await act(() => api.del(`/forms/${form.id}`), 'Form deleted')) onSaved();
-              }}
-            >
+              }}>
               Delete
-            </button>
+            </Button>
           )}
-          <span className="grow" />
+          <span className="min-w-0 flex-1" />
           {form?.public && (
-            <button
-              className="btn"
+            <Button
+              variant="outline"
               onClick={async () => {
-                if (!confirm('Make a new public link? The old one stops working.')) return;
+                if (!(await confirm({ title: 'Make a new public link?', description: 'The old one stops working.', confirmLabel: 'New link' }))) return;
                 if (await act(() => api.patch(`/forms/${form.id}`, { newLink: true }), 'New link created')) onSaved();
               }}
             >
               New link
-            </button>
+            </Button>
           )}
-          <button className="btn" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" onClick={save} disabled={!title.trim() || questions.some((q) => !q.label.trim())}>
+          </Button>
+          <Button
+            onClick={save}
+            disabled={!title.trim() || questions.some((q) => !q.label.trim())}>
             Save form
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -266,20 +278,20 @@ function FormFields({ questions, answers, onChange }: { questions: Question[]; a
         const value = (answers[q.id] as string | undefined) ?? '';
         const label = `${q.label}${q.required ? ' *' : ''}`;
         return (
-          <Field key={q.id} label={label}>
+          <FormField key={q.id} label={label}>
             {q.type === 'long' ? (
-              <textarea rows={4} value={value} required={q.required} maxLength={10000} onChange={(e) => set(q.id, e.target.value)} />
+              <Textarea rows={4} value={value} required={q.required} maxLength={10000} onChange={(e) => set(q.id, e.target.value)} />
             ) : q.type === 'select' ? (
-              <select value={value} required={q.required} onChange={(e) => set(q.id, e.target.value)}>
-                <option value="">Choose…</option>
+              <NativeSelect value={value} required={q.required} onChange={(e) => set(q.id, e.target.value)}>
+                <NativeSelectOption value="">Choose…</NativeSelectOption>
                 {q.options.map((o) => (
-                  <option key={o} value={o}>
+                  <NativeSelectOption key={o} value={o}>
                     {o}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             ) : (
-              <input
+              <Input
                 type={q.type === 'short' ? 'text' : q.type}
                 value={value}
                 required={q.required}
@@ -287,7 +299,7 @@ function FormFields({ questions, answers, onChange }: { questions: Question[]; a
                 onChange={(e) => set(q.id, q.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
               />
             )}
-          </Field>
+          </FormField>
         );
       })}
     </>
@@ -306,46 +318,65 @@ export function FormFill() {
   if (error) return <ErrorState error={error} retry={reload} />;
   if (!form) return <Loading />;
   return (
-    <div className="page narrow">
-      <p className="eyebrow">{form.project ? <Link to={`/projects/${form.project.id}?tab=forms`}>{form.project.name}</Link> : 'Form'}</p>
-      <h1>{form.title}</h1>
-      {form.description && <p className="muted pre-wrap">{form.description}</p>}
+    <Page width="narrow">
+      <PageHeader
+        eyebrow={
+          form.project ? (
+            <Link className="hover:underline" to={`/projects/${form.project.id}?tab=forms`}>
+              {form.project.name}
+            </Link>
+          ) : (
+            'Form'
+          )
+        }
+        title={form.title}
+        description={form.description && <span className="whitespace-pre-wrap">{form.description}</span>}
+      />
       {done ? (
-        <div className="card pad stack">
-          <strong>Thanks — your request was sent.</strong>
-          <div className="row-gap">
-            <Link className="btn sm" to={`/tasks/${done}`}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Icon name="check" className="text-success" /> Thanks — your request was sent.
+            </CardTitle>
+          </CardHeader>
+          <CardFooter className="gap-2">
+            <Link to={`/tasks/${done}`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
               View the task
             </Link>
-            <button
-              className="btn sm"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setAnswers({});
                 setDone(null);
               }}
             >
               Send another
-            </button>
-          </div>
-        </div>
+            </Button>
+          </CardFooter>
+        </Card>
       ) : form.closed ? (
-        <Empty icon="lock" title="This form is closed" />
+        <EmptyState icon="lock" title="This form is closed" />
       ) : (
-        <form
-          className="card pad stack"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const res = await act(() => api.post<{ taskId: string }>(`/forms/${form.id}/responses`, { answers: cleanAnswers(answers) }));
-            if (res) setDone(res.taskId);
-          }}
-        >
-          <FormFields questions={form.questions} answers={answers} onChange={setAnswers} />
-          <div className="form-actions">
-            <button className="btn primary">Submit</button>
-          </div>
-        </form>
+        <Card>
+          <CardContent>
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const res = await act(() => api.post<{ taskId: string }>(`/forms/${form.id}/responses`, { answers: cleanAnswers(answers) }));
+                if (res) setDone(res.taskId);
+              }}
+            >
+              <FormFields questions={form.questions} answers={answers} onChange={setAnswers} />
+              <div className="flex justify-end">
+                <Button type="submit">Submit</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -358,64 +389,78 @@ export function PublicForm() {
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [problem, setProblem] = useState('');
   return (
-    <div className="public-shell">
-      <header className="public-head">
-        <Logo height={24} />
+    <div className="flex min-h-svh flex-col bg-background">
+      <header className="border-b bg-card">
+        <div className="mx-auto flex h-14 max-w-2xl items-center px-4">
+          <Logo height={24} />
+        </div>
       </header>
-      <main className="public-main">
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-10">
         {error ? (
-          <Empty icon="alert" title="This form isn’t available">The link may have been changed or removed.</Empty>
+          <EmptyState icon="alert" title="This form isn’t available">
+            The link may have been changed or removed.
+          </EmptyState>
         ) : !form ? (
           <Loading />
         ) : (
           <>
-            <p className="eyebrow">{form.workspace_name}</p>
-            <h1>{form.title}</h1>
-            {form.description && <p className="muted pre-wrap">{form.description}</p>}
+            <PageHeader eyebrow={form.workspace_name} title={form.title} description={form.description && <span className="whitespace-pre-wrap">{form.description}</span>} />
             {state === 'sent' ? (
-              <div className="card pad">
-                <strong>Thank you — your response was received.</strong>
-              </div>
+              <Callout tone="success" title="Thank you — your response was received." />
             ) : form.closed ? (
-              <Empty icon="lock" title="This form is no longer taking responses" />
+              <EmptyState icon="lock" title="This form is no longer taking responses" />
             ) : (
-              <form
-                className="card pad stack"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  setState('sending');
-                  setProblem('');
-                  try {
-                    await api.post(`/public/forms/${token}`, { answers: cleanAnswers(answers), ...who });
-                    setState('sent');
-                  } catch (err) {
-                    setProblem((err as Error).message);
-                    setState('idle');
-                  }
-                }}
-              >
-                <FormFields questions={form.questions} answers={answers} onChange={setAnswers} />
-                <div className="grid-2">
-                  <Field label="Your name">
-                    <input value={who.name} onChange={(e) => setWho({ ...who, name: e.target.value })} maxLength={100} autoComplete="name" />
-                  </Field>
-                  <Field label="Your email" hint="So the team can follow up.">
-                    <input type="email" value={who.email} onChange={(e) => setWho({ ...who, email: e.target.value })} maxLength={200} autoComplete="email" />
-                  </Field>
-                </div>
-                {/* Left empty by people; bots fill it in. */}
-                <input className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" value={who.website} onChange={(e) => setWho({ ...who, website: e.target.value })} name="website" />
-                {problem && <p className="hint-box warn">{problem}</p>}
-                <div className="form-actions">
-                  <button className="btn primary" disabled={state === 'sending'}>
-                    {state === 'sending' ? 'Sending…' : 'Submit'}
-                  </button>
-                </div>
-              </form>
+              <Card>
+                <CardContent>
+                  <form
+                    className="relative flex flex-col gap-4"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setState('sending');
+                      setProblem('');
+                      try {
+                        await api.post(`/public/forms/${token}`, { answers: cleanAnswers(answers), ...who });
+                        setState('sent');
+                      } catch (err) {
+                        setProblem((err as Error).message);
+                        setState('idle');
+                      }
+                    }}
+                  >
+                    <FormFields questions={form.questions} answers={answers} onChange={setAnswers} />
+                    <Separator />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <FormField label="Your name">
+                        <Input value={who.name} onChange={(e) => setWho({ ...who, name: e.target.value })} maxLength={100} autoComplete="name" />
+                      </FormField>
+                      <FormField label="Your email" hint="So the team can follow up.">
+                        <Input type="email" value={who.email} onChange={(e) => setWho({ ...who, email: e.target.value })} maxLength={200} autoComplete="email" />
+                      </FormField>
+                    </div>
+                    {/* Left empty by people; bots fill it in. */}
+                    <input
+                      className="pointer-events-none absolute -left-[9999px] size-px opacity-0"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      aria-hidden="true"
+                      value={who.website}
+                      onChange={(e) => setWho({ ...who, website: e.target.value })}
+                      name="website"
+                    />
+                    {problem && <Callout tone="warning">{problem}</Callout>}
+                    <div className="flex justify-end">
+                      <Button disabled={state === 'sending'} type="submit">
+                        {state === 'sending' && <Spinner data-icon="inline-start" />}
+                        {state === 'sending' ? 'Sending…' : 'Submit'}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
             )}
           </>
         )}
-        <p className="muted small public-foot">Powered by Küü</p>
+        <p className="mt-auto pt-8 text-center text-xs text-muted-foreground">Powered by Küü</p>
       </main>
     </div>
   );

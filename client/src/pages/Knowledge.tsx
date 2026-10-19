@@ -1,11 +1,16 @@
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, qs, type Project } from '../api';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { Markdown } from '../components/Markdown';
-import { Empty, ErrorState, Field, Loading, Modal, Tabs, useAction } from '../components/ui';
+import { DatePicker, EmptyState, ErrorState, FilterBar, FormField, Loading, Modal, Page, PageHeader, Panel, Pill, SearchField, SwitchField, TabBar, useAction } from '@/components/kit';
+import { Badge } from '@/components/ui/badge';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { bytes, dateTime, plainMentions, timeAgo, dateLabel } from '../format';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
@@ -13,6 +18,9 @@ import { MediaAttachment, isPlayable } from '../components/Media';
 import { FavoriteButton } from '../components/Favorites';
 import { IconPicker, PageComments, PublishPanel } from '../components/PageExtras';
 import { LiveEditor, PeerList, useEditingNow } from '../components/LiveEditor';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 interface PageSummary {
   id: string;
@@ -75,86 +83,86 @@ export function Knowledge() {
   const fileList = (files.data ?? []).filter((f) => !filter || `${f.name} ${f.label}`.toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Knowledge</h1>
-          <p className="muted">Policies, how-tos, decisions and files — with owners and review dates so they stay trustworthy.</p>
-        </div>
-        {me!.role !== 'guest' && (
-          <div className="row-gap">
-            {tab === 'files' ? (
-              <>
-                <button className="btn" onClick={() => setLinking(true)}>
-                  <Icon name="link" size={16} /> Link file
-                </button>
-                <button className="btn primary" onClick={() => upload.current?.click()}>
-                  <Icon name="upload" size={16} /> Upload
-                </button>
-                <input
-                  ref={upload}
-                  type="file"
-                  hidden
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const form = new FormData();
-                    form.append('file', f);
-                    await act(() => api.upload('/files', form), 'File uploaded');
-                    e.target.value = '';
-                    files.reload();
-                  }}
-                />
-              </>
-            ) : (
-              <button className="btn primary" onClick={() => openCreate('page')}>
-                <Icon name="plus" size={16} /> New page
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      <Tabs value={tab} onChange={(t) => setParams(t === 'pages' ? {} : { tab: t })} tabs={[{ id: 'pages', label: 'Pages' }, { id: 'files', label: 'Files' }]} />
-      <div className="toolbar">
-        <input className="filter" placeholder={`Filter ${tab}`} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter" />
+    <Page>
+      <PageHeader
+        title="Knowledge"
+        description="Policies, how-tos, decisions and files — with owners and review dates so they stay trustworthy."
+        actions={
+          me!.role !== 'guest' &&
+          (tab === 'files' ? (
+            <>
+              <Button variant="outline" onClick={() => setLinking(true)}>
+                <Icon name="link" data-icon="inline-start" /> Link file
+              </Button>
+              <Button onClick={() => upload.current?.click()}>
+                <Icon name="upload" data-icon="inline-start" /> Upload
+              </Button>
+              <input
+                ref={upload}
+                type="file"
+                hidden
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const form = new FormData();
+                  form.append('file', f);
+                  await act(() => api.upload('/files', form), 'File uploaded');
+                  e.target.value = '';
+                  files.reload();
+                }}
+              />
+            </>
+          ) : (
+            <Button onClick={() => openCreate('page')}>
+              <Icon name="plus" data-icon="inline-start" /> New page
+            </Button>
+          ))
+        }
+      />
+      <TabBar value={tab} onChange={(t) => setParams(t === 'pages' ? {} : { tab: t })} tabs={[{ id: 'pages', label: 'Pages' }, { id: 'files', label: 'Files' }]} />
+      <FilterBar>
+        <SearchField className="max-w-sm flex-1" placeholder={`Filter ${tab}`} value={filter} onChange={setFilter} aria-label="Filter" />
         {tab === 'pages' && (
-          <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
-            <option value="all">All pages</option>
-            <option value="approved">Approved</option>
-            <option value="draft">Drafts</option>
-            <option value="review">Due for review</option>
-          </select>
+          <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
+            <NativeSelectOption value="all">All pages</NativeSelectOption>
+            <NativeSelectOption value="approved">Approved</NativeSelectOption>
+            <NativeSelectOption value="draft">Drafts</NativeSelectOption>
+            <NativeSelectOption value="review">Due for review</NativeSelectOption>
+          </NativeSelect>
         )}
-        <label className="check-inline">
-          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Archived
-        </label>
-      </div>
+        <SwitchField label="Archived" checked={archived} onCheckedChange={setArchived} className="w-auto" />
+      </FilterBar>
 
       {tab === 'pages' && (
         <>
           {pages.error && <ErrorState error={pages.error} retry={pages.reload} />}
           {!pages.data && !pages.error && <Loading />}
           {pages.data && !pageList.length && (
-            <Empty icon="book" title="No pages yet">
+            <EmptyState icon="book" title="No pages yet">
               Capture how your team works: policies, onboarding guides, runbooks.
-            </Empty>
+            </EmptyState>
           )}
-          <div className="page-grid">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {pageList.map((p) => (
-              <Link key={p.id} to={`/knowledge/${p.id}`} className="page-card">
-                <div className="row-gap">
-                  {p.icon ? <span className="page-emoji sm">{p.icon}</span> : <Icon name="book" />}
-                  {p.public && <Icon name="globe" size={14} />}
-                  {p.status === 'approved' ? <span className="pill status-done">Approved</span> : <span className="pill">Draft</span>}
-                  {p.needs_review && <span className="pill status-blocked">Review due</span>}
-                </div>
-                <h3>{p.title}</h3>
-                <p className="muted">{p.excerpt || 'Empty page'}</p>
-                <small className="muted">
-                  {p.project_name ? `${p.project_name} · ` : ''}
-                  {p.owner?.name} · updated {timeAgo(p.updated_at)}
-                  {!narrowed && childCount(p.id) > 0 && ` · ${childCount(p.id)} sub-page${childCount(p.id) === 1 ? '' : 's'}`}
-                </small>
+              <Link key={p.id} to={`/knowledge/${p.id}`} className="page-card group/page rounded-[min(var(--radius-4xl),24px)] outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+                <Card size="sm" className="h-full transition-shadow group-hover/page:shadow-md">
+                  <CardHeader>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {p.icon ? <span className="text-lg leading-none">{p.icon}</span> : <Icon name="book" size={16} className="text-muted-foreground" />}
+                      {p.public && <Icon name="globe" size={14} label="Published" className="text-muted-foreground" />}
+                      <span className="flex-1" />
+                      {p.status === 'approved' ? <Pill tone="success">Approved</Pill> : <Pill>Draft</Pill>}
+                      {p.needs_review && <Pill tone="danger">Review due</Pill>}
+                    </div>
+                    <CardTitle className="pt-1">{p.title}</CardTitle>
+                    <CardDescription className="line-clamp-2">{p.excerpt || 'Empty page'}</CardDescription>
+                  </CardHeader>
+                  <CardFooter className="mt-auto text-xs text-muted-foreground">
+                    {p.project_name ? `${p.project_name} · ` : ''}
+                    {p.owner?.name} · updated {timeAgo(p.updated_at)}
+                    {!narrowed && childCount(p.id) > 0 && ` · ${childCount(p.id)} sub-page${childCount(p.id) === 1 ? '' : 's'}`}
+                  </CardFooter>
+                </Card>
               </Link>
             ))}
           </div>
@@ -165,39 +173,41 @@ export function Knowledge() {
         <>
           {files.error && <ErrorState error={files.error} retry={files.reload} />}
           {!files.data && !files.error && <Loading />}
-          {files.data && !fileList.length && <Empty icon="file" title="No files here" />}
+          {files.data && !fileList.length && <EmptyState icon="file" title="No files here" />}
           {fileList.length > 0 && (
-            <div className="scroll-x"><table className="table card">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th className="hide-mobile">Owner</th>
-                  <th className="hide-mobile">Size</th>
-                  <th>Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fileList.map((f) => (
-                  <tr key={f.id}>
-                    <td>
-                      <Link to={`/files/${f.id}`} className="row-gap">
-                        <Icon name={f.external_url ? 'link' : 'file'} size={16} /> {f.name}
-                      </Link>
-                      {f.label && <span className="pill">{f.label}</span>}
-                    </td>
-                    <td className="hide-mobile">{f.owner?.name}</td>
-                    <td className="hide-mobile">{f.external_url ? 'Link' : `${bytes(f.size)} · v${f.version}`}</td>
-                    <td>{timeAgo(f.updated_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table></div>
+            <Card className="py-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead className="max-md:hidden">Owner</TableHead>
+                    <TableHead className="max-md:hidden">Size</TableHead>
+                    <TableHead>Updated</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fileList.map((f) => (
+                    <TableRow key={f.id}>
+                      <TableCell className="max-w-80 whitespace-normal">
+                        <Link to={`/files/${f.id}`} className="inline-flex items-center gap-2 font-medium hover:underline">
+                          <Icon name={f.external_url ? 'link' : 'file'} size={16} className="shrink-0 text-muted-foreground" /> {f.name}
+                        </Link>{' '}
+                        {f.label && <Pill>{f.label}</Pill>}
+                      </TableCell>
+                      <TableCell className="max-md:hidden">{f.owner?.name}</TableCell>
+                      <TableCell className="text-muted-foreground max-md:hidden">{f.external_url ? 'Link' : `${bytes(f.size)} · v${f.version}`}</TableCell>
+                      <TableCell className="text-muted-foreground">{timeAgo(f.updated_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
           )}
         </>
       )}
       <Modal open={linking} onClose={() => setLinking(false)} title="Link an external file">
         <form
-          className="form"
+          className="flex flex-col gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
             const ok = await act(() => api.post('/files/link', link), 'Link added');
@@ -208,18 +218,18 @@ export function Knowledge() {
             }
           }}
         >
-          <Field label="Name">
-            <input required value={link.name} onChange={(e) => setLink({ ...link, name: e.target.value })} />
-          </Field>
-          <Field label="URL">
-            <input required type="url" value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} placeholder="https://…" />
-          </Field>
-          <div className="form-actions">
-            <button className="btn primary">Add link</button>
+          <FormField label="Name">
+            <Input required value={link.name} onChange={(e) => setLink({ ...link, name: e.target.value })} />
+          </FormField>
+          <FormField label="URL">
+            <Input required type="url" value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} placeholder="https://…" />
+          </FormField>
+          <div className="flex justify-end">
+            <Button type="submit">Add link</Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   );
 }
 
@@ -281,25 +291,33 @@ export function PageView() {
   };
 
   return (
-    <div className="page narrow">
-      <div className="crumbs">
-        <Link to="/knowledge">Knowledge</Link>
-        {page.project && (
-          <>
-            {' / '}
-            <Link to={`/projects/${page.project.id}?tab=resources`}>{page.project.name}</Link>
-          </>
-        )}
-        {page.breadcrumbs.map((b) => (
-          <span key={b.id}>
-            {' / '}
-            <Link to={`/knowledge/${b.id}`}>
-              {b.icon && `${b.icon} `}
-              {b.title}
-            </Link>
-          </span>
-        ))}
-      </div>
+    <Page width="narrow">
+      <Breadcrumb className="crumbs">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink render={<Link to="/knowledge" />}>Knowledge</BreadcrumbLink>
+          </BreadcrumbItem>
+          {page.project && (
+            <>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link to={`/projects/${page.project.id}?tab=resources`} />}>{page.project.name}</BreadcrumbLink>
+              </BreadcrumbItem>
+            </>
+          )}
+          {page.breadcrumbs.map((b) => (
+            <Fragment key={b.id}>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link to={`/knowledge/${b.id}`} />}>
+                  {b.icon && `${b.icon} `}
+                  {b.title}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+            </Fragment>
+          ))}
+        </BreadcrumbList>
+      </Breadcrumb>
       {editing ? (
         <LiveEditor
           page={page}
@@ -313,14 +331,14 @@ export function PageView() {
           }}
         />
       ) : (
-        <article className="card doc">
-          <div className="doc-head">
-            <div className="row-gap wrap">
-              {page.status === 'approved' ? <span className="pill status-done">Approved</span> : <span className="pill">Draft</span>}
-              {page.needs_review && <span className="pill status-blocked">Review due</span>}
-              {page.archived_at && <span className="pill">Archived</span>}
+        <Card className="doc">
+          <CardHeader className="gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {page.status === 'approved' ? <Pill tone="success">Approved</Pill> : <Pill>Draft</Pill>}
+              {page.needs_review && <Pill tone="danger">Review due</Pill>}
+              {page.archived_at && <Pill>Archived</Pill>}
             </div>
-            <h1 className="doc-title">
+            <h1 className="doc-title flex flex-wrap items-center gap-2 font-heading text-3xl font-semibold tracking-tight">
               {page.can_edit ? (
                 <IconPicker
                   value={page.icon}
@@ -330,131 +348,152 @@ export function PageView() {
                   }}
                 />
               ) : (
-                page.icon && <span className="page-emoji">{page.icon}</span>
+                page.icon && <span aria-hidden="true">{page.icon}</span>
               )}
               {page.title} <FavoriteButton kind="page" id={page.id} />
             </h1>
-            <p className="muted small">
-              Owner <strong>{page.owner?.name}</strong> · version {page.version} · updated {timeAgo(page.updated_at)} by {page.updated_by?.name}
+            <p className="text-xs text-muted-foreground">
+              Owner <strong className="text-foreground">{page.owner?.name}</strong> · version {page.version} · updated {timeAgo(page.updated_at)} by {page.updated_by?.name}
               {page.review_date && ` · review by ${dateLabel(page.review_date)}`}
             </p>
             {editingNow.length > 0 && (
-              <p className="row-gap">
+              <div className="flex flex-wrap items-center gap-2">
                 <PeerList peers={editingNow} label="Editing now" />
                 {page.can_edit && (
-                  <button className="link-btn" onClick={() => setParams({ edit: '1' })}>
+                  <Button variant="outline" size="xs" onClick={() => setParams({ edit: '1' })}>
                     Join them
-                  </button>
+                  </Button>
                 )}
-              </p>
+              </div>
             )}
-            <div className="row-gap wrap">
+            <div className="flex flex-wrap items-center gap-2">
               {page.can_edit && (
-                <button className="btn sm" onClick={() => setParams({ edit: '1' })}>
-                  <Icon name="edit" size={14} /> Edit
-                </button>
+                <Button variant="outline" size="sm" onClick={() => setParams({ edit: '1' })}>
+                  <Icon name="edit" data-icon="inline-start" /> Edit
+                </Button>
               )}
-              <button className="btn sm" onClick={() => setShowVersions((v) => !v)}>
-                <Icon name="clock" size={14} /> History ({page.versions.length})
-              </button>
-              <a className="btn sm" href="#comments">
-                <Icon name="chat" size={14} /> Comments{page.comment_count ? ` (${page.comment_count})` : ''}
+              <Button variant="outline" size="sm" onClick={() => setShowVersions((v) => !v)} aria-expanded={showVersions}>
+                <Icon name="clock" data-icon="inline-start" /> History ({page.versions.length})
+              </Button>
+              <a href="#comments" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                <Icon name="chat" data-icon="inline-start" />
+                Comments{page.comment_count ? ` (${page.comment_count})` : ''}
               </a>
               {page.can_edit && (
-                <button className="btn sm" onClick={addSubPage}>
-                  <Icon name="plus" size={14} /> Sub-page
-                </button>
+                <Button variant="outline" size="sm" onClick={addSubPage}>
+                  <Icon name="plus" data-icon="inline-start" /> Sub-page
+                </Button>
               )}
               {page.can_edit && me!.role !== 'guest' && (
-                <button className={`btn sm ${page.public ? 'on' : ''}`} onClick={() => setSharing(true)}>
-                  <Icon name="globe" size={14} /> {page.public ? 'Published' : 'Publish'}
-                </button>
+                <Button size="sm" variant={page.public ? 'secondary' : 'outline'} onClick={() => setSharing(true)}>
+                  <Icon name="globe" data-icon="inline-start" /> {page.public ? 'Published' : 'Publish'}
+                </Button>
               )}
               {page.owner && page.owner.id !== me!.user.id && (
-                <button className="btn sm" onClick={askOwner}>
-                  <Icon name="chat" size={14} /> Ask the owner
-                </button>
+                <Button variant="ghost" size="sm" onClick={askOwner}>
+                  <Icon name="chat" data-icon="inline-start" /> Ask the owner
+                </Button>
               )}
             </div>
-          </div>
-          {page.body ? <Markdown text={page.body} /> : <p className="muted">This page is empty.</p>}
-          {page.children.length > 0 && (
-            <nav className="sub-pages" aria-label="Sub-pages">
-              <h3>Sub-pages</h3>
-              {page.children.map((c) => (
-                <Link key={c.id} to={`/knowledge/${c.id}`} className="list-row">
-                  {c.icon ? <span className="page-emoji sm">{c.icon}</span> : <Icon name="file" size={16} />} {c.title}
-                </Link>
-              ))}
-            </nav>
-          )}
-        </article>
+          </CardHeader>
+          <Separator />
+          <CardContent className="flex flex-col gap-6">
+            {page.body ? <Markdown text={page.body} /> : <p className="text-sm text-muted-foreground">This page is empty.</p>}
+            {page.children.length > 0 && (
+              <nav className="flex flex-col gap-1" aria-label="Sub-pages">
+                <h3 className="text-sm font-semibold">Sub-pages</h3>
+                {page.children.map((c) => (
+                  <Link key={c.id} to={`/knowledge/${c.id}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
+                    {c.icon ? <span aria-hidden="true">{c.icon}</span> : <Icon name="file" size={16} className="text-muted-foreground" />} {c.title}
+                  </Link>
+                ))}
+              </nav>
+            )}
+          </CardContent>
+        </Card>
       )}
       {!editing && <PageComments pageId={page.id} canModerate={page.can_edit} onChange={reload} />}
       <PublishPanel open={sharing} onClose={() => setSharing(false)} pageId={page.id} isPublic={page.public} url={page.public_url} onChange={reload} />
 
       {showVersions && (
-        <div className="card">
-          <h2>Version history</h2>
-          <ul className="timeline">
+        <Panel title="Version history">
+          <ol className="flex flex-col divide-y text-sm">
             {page.versions.map((v) => (
-              <li key={v.version}>
-                <button className="link-btn" onClick={async () => setVersion(await api.get(`/pages/${page.id}/versions/${v.version}`))}>
+              <li key={v.version} className="flex flex-wrap items-center gap-2 py-2">
+                <Button variant="link" size="inline" onClick={async () => setVersion(await api.get(`/pages/${page.id}/versions/${v.version}`))}>
                   Version {v.version}
-                </button>{' '}
-                · {v.edited_by_name} · {dateTime(v.created_at)}
+                </Button>
+                <span className="text-muted-foreground">
+                  · {v.edited_by_name} · {dateTime(v.created_at)}
+                </span>
               </li>
             ))}
-          </ul>
-        </div>
+          </ol>
+        </Panel>
       )}
 
       {page.can_edit && !editing && (
-        <div className="card form">
-          <h2>Page settings</h2>
-          <div className="form-row">
-            <Field label="Status">
-              <select
+        <Panel
+          title="Page settings"
+          footer={
+            (page.owner?.id === me!.user.id || me!.role === 'admin' || me!.role === 'owner') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive"
+                onClick={async () => {
+                  await act(() => api.post(`/pages/${page.id}/archive`, { archived: !page.archived_at }), page.archived_at ? 'Page restored' : 'Page archived');
+                  page.archived_at ? reload() : navigate('/knowledge');
+                }}
+              >
+                {page.archived_at ? 'Restore page' : 'Archive page'}
+              </Button>
+            )
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Status">
+              <NativeSelect
                 value={page.status}
                 onChange={async (e) => {
                   await act(() => api.patch(`/pages/${page.id}`, { status: e.target.value }), e.target.value === 'approved' ? 'Page approved' : 'Marked as draft');
                   reload();
                 }}
               >
-                <option value="draft">Draft</option>
-                <option value="approved">Approved</option>
-              </select>
-            </Field>
-            <Field label="Review date" hint="The owner is reminded on Home when it is due.">
-              <input
-                type="date"
-                value={page.review_date ?? ''}
-                onChange={async (e) => {
-                  await act(() => api.patch(`/pages/${page.id}`, { reviewDate: e.target.value || null }));
+                <NativeSelectOption value="draft">Draft</NativeSelectOption>
+                <NativeSelectOption value="approved">Approved</NativeSelectOption>
+              </NativeSelect>
+            </FormField>
+            <FormField label="Review date" hint="The owner is reminded on Home when it is due.">
+              <DatePicker
+                value={page.review_date}
+                placeholder="No review date"
+                onChange={async (v) => {
+                  await act(() => api.patch(`/pages/${page.id}`, { reviewDate: v }));
                   reload();
                 }}
               />
-            </Field>
-            <Field label="Inside" hint="Nest this page under another.">
-              <select
+            </FormField>
+            <FormField label="Inside" hint="Nest this page under another.">
+              <NativeSelect
                 value={page.parent_id ?? ''}
                 onChange={async (e) => {
                   await act(() => api.patch(`/pages/${page.id}`, { parentId: e.target.value || null }), 'Page moved');
                   reload();
                 }}
               >
-                <option value="">Top level</option>
+                <NativeSelectOption value="">Top level</NativeSelectOption>
                 {(allPages ?? [])
                   .filter((p) => !descendants.has(p.id))
                   .map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                       {p.title}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-              </select>
-            </Field>
-            <Field label="Owner">
-              <select
+              </NativeSelect>
+            </FormField>
+            <FormField label="Owner">
+              <NativeSelect
                 value={page.owner?.id ?? ''}
                 onChange={async (e) => {
                   await act(() => api.patch(`/pages/${page.id}`, { ownerId: e.target.value }), 'Owner changed');
@@ -464,53 +503,40 @@ export function PageView() {
                 {people
                   .filter((p) => p.role !== 'guest')
                   .map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                       {p.name}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-              </select>
-            </Field>
+              </NativeSelect>
+            </FormField>
           </div>
-          {(page.owner?.id === me!.user.id || me!.role === 'admin' || me!.role === 'owner') && (
-            <button
-              className="btn sm danger-text"
-              onClick={async () => {
-                await act(() => api.post(`/pages/${page.id}/archive`, { archived: !page.archived_at }), page.archived_at ? 'Page restored' : 'Page archived');
-                page.archived_at ? reload() : navigate('/knowledge');
-              }}
-            >
-              {page.archived_at ? 'Restore page' : 'Archive page'}
-            </button>
-          )}
-        </div>
+        </Panel>
       )}
 
       {page.discussions.length > 0 && (
-        <div className="card">
-          <h2>Related discussions</h2>
+        <Panel title="Related discussions" contentClassName="flex flex-col gap-1">
           {page.discussions.map((d) => (
-            <Link key={d.id} to={`/channels/${d.channel_id}?message=${d.id}`} className="list-row">
-              <Icon name="chat" />
-              <span className="grow">
-                <strong>
+            <Link key={d.id} to={`/channels/${d.channel_id}?message=${d.id}`} className="-mx-2 flex items-start gap-3 rounded-xl p-2 hover:bg-muted/60">
+              <Icon name="chat" size={16} className="mt-0.5 text-muted-foreground" />
+              <span className="flex min-w-0 flex-1 flex-col text-sm">
+                <strong className="font-medium">
                   {d.user_name} in #{d.channel_name}
                 </strong>
-                <small className="muted block">{plainMentions(d.body).slice(0, 160)}</small>
+                <span className="line-clamp-2 text-xs text-muted-foreground">{plainMentions(d.body).slice(0, 160)}</span>
               </span>
-              <small className="muted">{timeAgo(d.created_at)}</small>
+              <span className="text-xs text-muted-foreground">{timeAgo(d.created_at)}</span>
             </Link>
           ))}
-        </div>
+        </Panel>
       )}
 
       <Modal open={!!version} onClose={() => setVersion(null)} title={version ? `Version ${version.version}: ${version.title}` : ''} wide>
         {version && (
-          <>
+          <div className="flex flex-col gap-4">
             <Markdown text={version.body} />
             {page.can_edit && version.version !== page.version && (
-              <div className="form-actions">
-                <button
-                  className="btn primary"
+              <div className="flex justify-end">
+                <Button
                   onClick={async () => {
                     await act(() => api.post(`/pages/${page.id}/restore-version`, { version: version.version }), 'Version restored');
                     setVersion(null);
@@ -518,13 +544,13 @@ export function PageView() {
                   }}
                 >
                   Restore this version
-                </button>
+                </Button>
               </div>
             )}
-          </>
+          </div>
         )}
       </Modal>
-    </div>
+    </Page>
   );
 }
 
@@ -548,72 +574,76 @@ export function FileView() {
   const previewable = !file.external_url && file.mime && (file.mime.startsWith('image/') || file.mime.startsWith('text/') || isPlayable(file.mime));
   const src = `/api/files/${file.id}/download?inline=1`;
   return (
-    <div className="page narrow">
-      <div className="crumbs">
-        <Link to="/knowledge?tab=files">Files</Link>
-      </div>
-      <div className="card">
-        <div className="file-head">
-          <span className="project-icon lg bg-blue">
+    <Page width="narrow">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink render={<Link to="/knowledge?tab=files" />}>Files</BreadcrumbLink>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+      <Card>
+        <CardContent className="flex flex-wrap items-start gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
             <Icon name={file.external_url ? 'link' : 'file'} size={22} />
           </span>
-          <div className="grow">
-            <h1>{file.name}</h1>
-            <p className="muted small">
+          <div className="flex min-w-0 flex-1 basis-60 flex-col gap-1.5">
+            <h1 className="font-heading text-2xl font-semibold tracking-tight break-words">{file.name}</h1>
+            <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Avatar user={file.owner} size="xs" /> {file.owner?.name} · {file.external_url ? 'External link' : `version ${file.version} · ${bytes(file.size)}`} · updated{' '}
               {timeAgo(file.updated_at)}
             </p>
-            <p className="small">
+            <div className="flex flex-wrap gap-1.5">
               {file.project && (
-                <Link to={`/projects/${file.project.id}?tab=resources`} className="pill">
-                  <Icon name="folder" size={11} /> {file.project.name}
-                </Link>
+                <Badge variant="outline" render={<Link to={`/projects/${file.project.id}?tab=resources`} />}>
+                  <Icon name="folder" /> {file.project.name}
+                </Badge>
               )}
               {file.channel && (
-                <Link to={`/channels/${file.channel.id}`} className="pill">
-                  <Icon name="hash" size={11} /> {file.channel.kind === 'dm' ? 'Direct message' : file.channel.name}
-                </Link>
+                <Badge variant="outline" render={<Link to={`/channels/${file.channel.id}`} />}>
+                  <Icon name="hash" /> {file.channel.kind === 'dm' ? 'Direct message' : file.channel.name}
+                </Badge>
               )}
               {file.task && (
-                <Link to={`/tasks/${file.task.id}`} className="pill">
-                  <Icon name="task" size={11} /> {file.task.title}
-                </Link>
+                <Badge variant="outline" render={<Link to={`/tasks/${file.task.id}`} />}>
+                  <Icon name="task" /> {file.task.title}
+                </Badge>
               )}
-            </p>
+            </div>
           </div>
-          <div className="row-gap">
-            {file.external_url ? (
-              <a className="btn primary" href={file.external_url} target="_blank" rel="noopener noreferrer">
-                Open link
-              </a>
-            ) : (
-              <a className="btn primary" href={`/api/files/${file.id}/download`}>
-                <Icon name="download" size={16} /> Download
-              </a>
-            )}
-          </div>
-        </div>
+          {file.external_url ? (
+            <a href={file.external_url} target="_blank" rel="noopener noreferrer" className={buttonVariants()}>
+              <Icon name="link" data-icon="inline-start" />
+              Open link
+            </a>
+          ) : (
+            <a href={`/api/files/${file.id}/download`} className={buttonVariants()}>
+              <Icon name="download" data-icon="inline-start" />
+              Download
+            </a>
+          )}
+        </CardContent>
         {previewable && (
-          <div className="file-preview">
+          <CardFooter className="justify-center border-t bg-muted/40 pt-4">
             {file.mime!.startsWith('image/') ? (
-              <img src={src} alt={file.name} />
+              <img src={src} alt={file.name} className="max-h-[70vh] max-w-full rounded-lg object-contain" />
             ) : isPlayable(file.mime) ? (
               <MediaAttachment file={file} />
             ) : (
-              <iframe src={src} title={`Preview of ${file.name}`} sandbox="" />
+              <iframe src={src} title={`Preview of ${file.name}`} sandbox="" className="h-[60vh] w-full rounded-lg border bg-background" />
             )}
-          </div>
+          </CardFooter>
         )}
-      </div>
+      </Card>
       {!file.external_url && (
-        <div className="card">
-          <div className="section-heading compact">
-            <h2>Versions</h2>
-            {file.can_edit && (
+        <Panel
+          title="Versions"
+          action={
+            file.can_edit && (
               <>
-                <button className="btn sm" onClick={() => input.current?.click()}>
-                  <Icon name="upload" size={14} /> Upload new version
-                </button>
+                <Button variant="outline" size="sm" onClick={() => input.current?.click()}>
+                  <Icon name="upload" data-icon="inline-start" /> Upload new version
+                </Button>
                 <input
                   ref={input}
                   type="file"
@@ -629,23 +659,43 @@ export function FileView() {
                   }}
                 />
               </>
-            )}
-          </div>
-          <ul className="timeline">
+            )
+          }
+        >
+          <ol className="flex flex-col divide-y text-sm">
             {file.versions.map((v) => (
-              <li key={v.version}>
-                <a href={`/api/files/${file.id}/download?version=${v.version}`}>Version {v.version}</a> · {bytes(v.size)} · {v.uploaded_by_name} · {dateTime(v.created_at)}
+              <li key={v.version} className="flex flex-wrap items-center gap-2 py-2">
+                <a className="font-medium text-primary hover:underline" href={`/api/files/${file.id}/download?version=${v.version}`}>
+                  Version {v.version}
+                </a>
+                <span className="text-muted-foreground">
+                  · {bytes(v.size)} · {v.uploaded_by_name} · {dateTime(v.created_at)}
+                </span>
               </li>
             ))}
-          </ul>
-        </div>
+          </ol>
+        </Panel>
       )}
       {file.can_edit && (
-        <div className="card form">
-          <h2>File settings</h2>
-          <div className="form-row">
-            <Field label="Label">
-              <input
+        <Panel
+          title="File settings"
+          footer={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              onClick={async () => {
+                await act(() => api.post(`/files/${file.id}/archive`, { archived: !file.archived_at }), file.archived_at ? 'File restored' : 'File archived');
+                file.archived_at ? reload() : navigate('/knowledge?tab=files');
+              }}
+            >
+              {file.archived_at ? 'Restore file' : 'Archive file'}
+            </Button>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Label">
+              <Input
                 defaultValue={file.label}
                 placeholder="e.g. Final, Contract, Brand"
                 onBlur={async (e) => {
@@ -654,35 +704,26 @@ export function FileView() {
                   reload();
                 }}
               />
-            </Field>
-            <Field label="Project">
-              <select
+            </FormField>
+            <FormField label="Project">
+              <NativeSelect
                 value={file.project_id ?? ''}
                 onChange={async (e) => {
                   await act(() => api.patch(`/files/${file.id}`, { projectId: e.target.value || null }), 'File moved');
                   reload();
                 }}
               >
-                <option value="">No project</option>
+                <NativeSelectOption value="">No project</NativeSelectOption>
                 {(projects ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
+                  <NativeSelectOption key={p.id} value={p.id}>
                     {p.name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-            </Field>
+              </NativeSelect>
+            </FormField>
           </div>
-          <button
-            className="btn sm danger-text"
-            onClick={async () => {
-              await act(() => api.post(`/files/${file.id}/archive`, { archived: !file.archived_at }), file.archived_at ? 'File restored' : 'File archived');
-              file.archived_at ? reload() : navigate('/knowledge?tab=files');
-            }}
-          >
-            {file.archived_at ? 'Restore file' : 'Archive file'}
-          </button>
-        </div>
+        </Panel>
       )}
-    </div>
+    </Page>
   );
 }

@@ -15,7 +15,7 @@ test('build a dashboard of charts', async ({ page }) => {
   const open = page.getByRole('region', { name: 'Open tasks', exact: true });
   await expect(open.locator('.big-metric strong')).toHaveText(/^\d+$/);
   await expect(page.getByRole('region', { name: 'Tasks by status' }).getByRole('img')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Created and completed per week' }).locator('polyline')).toHaveCount(2);
+  await expect(page.getByRole('region', { name: 'Created and completed per week' }).locator('.recharts-line-curve')).toHaveCount(2);
 
   // Add a note and a priority chart, then remove a widget.
   await page.getByRole('button', { name: 'Edit', exact: true }).click();

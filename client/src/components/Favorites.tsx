@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { Icon } from './Icon';
-import { useAction } from './ui';
+import { IconButton, useAction } from '@/components/kit';
+import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { cn } from '@/lib/utils';
 
 export type FavoriteKind = 'page' | 'project' | 'channel' | 'goal' | 'dashboard' | 'board';
 export interface Favorite {
@@ -43,37 +45,43 @@ export function FavoriteButton({ kind, id }: { kind: FavoriteKind; id: string })
   const items = useFavorites();
   const on = items.some((f) => f.kind === kind && f.id === id);
   return (
-    <button
-      type="button"
-      className={`icon-btn fav-btn ${on ? 'on' : ''}`}
+    <IconButton
+      label={on ? 'Remove from favorites' : 'Add to favorites'}
+      size="icon-sm"
       aria-pressed={on}
-      aria-label={on ? 'Remove from favorites' : 'Add to favorites'}
-      title={on ? 'Remove from favorites' : 'Add to favorites'}
+      className={cn('align-middle', on ? 'text-warning [&_svg]:fill-current' : 'text-muted-foreground')}
       onClick={async () => {
         const ok = await act(() => api.put('/favorites', { kind, id, on: !on }));
         if (ok) await load(true);
       }}
     >
-      <Icon name="star" size={16} />
-    </button>
+      <Icon name="star" />
+    </IconButton>
   );
 }
 
 const KIND_ICON: Record<FavoriteKind, string> = { page: 'book', project: 'folder', channel: 'hash', goal: 'target', dashboard: 'chart', board: 'whiteboard' };
 
 /** Sidebar section listing the person's favorites. */
-export function FavoritesNav({ onNavigate }: { onNavigate?: () => void } = {}) {
+export function FavoritesNav() {
   const items = useFavorites();
+  const location = useLocation();
   if (!items.length) return null;
   return (
-    <div className="nav-channels" aria-label="Favorites">
-      <p className="nav-label sub">Favorites</p>
-      {items.map((f) => (
-        <NavLink key={`${f.kind}:${f.id}`} to={f.link} onClick={onNavigate} className={({ isActive }) => `nav-channel ${isActive ? 'active' : ''}`}>
-          {f.icon ? <span className="nav-fav-emoji">{f.icon}</span> : f.color ? <span className={`project-dot bg-${f.color}`} /> : <Icon name={KIND_ICON[f.kind]} size={14} />}
-          <span>{f.title}</span>
-        </NavLink>
-      ))}
-    </div>
+    <SidebarGroup aria-label="Favorites" className="group-data-[collapsible=icon]:hidden">
+      <SidebarGroupLabel>Favorites</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((f) => (
+            <SidebarMenuItem key={`${f.kind}:${f.id}`}>
+              <SidebarMenuButton size="sm" isActive={location.pathname === f.link} render={<NavLink to={f.link} />}>
+                {f.icon ? <span className="w-4 text-center">{f.icon}</span> : f.color ? <span className="size-2.5 rounded-full" style={{ background: `var(--c-${f.color})` }} /> : <Icon name={KIND_ICON[f.kind]} />}
+                <span>{f.title}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }

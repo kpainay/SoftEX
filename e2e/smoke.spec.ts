@@ -47,8 +47,8 @@ test('discussion to delivery: message, mention and task', async ({ page }) => {
 test('global search finds knowledge by its content', async ({ page }) => {
   await signIn(page, 'alex@acme.test');
   await page.keyboard.press('Control+k');
-  await page.getByRole('textbox', { name: 'Search' }).fill('economy');
-  await expect(page.getByRole('button', { name: /Travel and expense policy/ })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Search' }).fill('economy');
+  await expect(page.getByRole('option', { name: /Travel and expense policy/ })).toBeVisible();
 });
 
 test('guests only see what was shared with them', async ({ page }) => {

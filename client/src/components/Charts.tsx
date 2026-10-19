@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { Bar, BarChart as RBarChart, CartesianGrid, Cell, LabelList, Line, LineChart as RLineChart, Pie, PieChart, XAxis, YAxis } from 'recharts';
 import { LABEL_COLORS } from '../api';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { cn } from '@/lib/utils';
 
 /**
- * Small dependency-free SVG charts for dashboards. They draw from CSS colour tokens, so they
- * follow light and dark mode, and they carry text alternatives for screen readers.
+ * Dashboard charts on shadcn/ui charts (Recharts). Colours come from the theme's chart and status
+ * tokens, so they follow light and dark mode; every chart carries visible values or a legend with
+ * values, plus a text alternative for screen readers.
  */
 
 export interface SeriesItem {
@@ -13,103 +16,94 @@ export interface SeriesItem {
   color?: string;
 }
 
+/** Status words keep their meaning across every chart (and match the pills). */
 const NAMED: Record<string, string> = {
-  todo: 'var(--muted)',
-  in_progress: 'var(--c-blue)',
-  blocked: 'var(--red)',
-  review: 'var(--c-lilac)',
-  done: 'var(--green)',
-  urgent: 'var(--red)',
-  high: 'var(--c-orange)',
-  medium: 'var(--c-gold)',
-  low: 'var(--c-sky)',
-  on_track: 'var(--green)',
-  at_risk: 'var(--amber)',
-  off_track: 'var(--red)',
+  todo: 'var(--muted-foreground)',
+  in_progress: 'var(--info)',
+  blocked: 'var(--destructive)',
+  review: 'var(--warning)',
+  done: 'var(--success)',
+  urgent: 'var(--destructive)',
+  high: 'var(--warning)',
+  medium: 'var(--chart-4)',
+  low: 'var(--chart-2)',
+  on_track: 'var(--success)',
+  at_risk: 'var(--warning)',
+  off_track: 'var(--destructive)',
 };
+const PALETTE = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
 
-/** A fill for a series item: its own colour name, a known key, or the palette in order. */
+/** A fill for a series item: its own label colour, a known status, or the chart palette in fixed order. */
 export function colorFor(item: { key: string; color?: string }, index: number) {
   if (item.color && (LABEL_COLORS as string[]).includes(item.color)) return `var(--c-${item.color})`;
   if (NAMED[item.key]) return NAMED[item.key];
-  if (item.key === '' || item.key === 'none') return 'var(--line)';
-  return `var(--c-${LABEL_COLORS[index % LABEL_COLORS.length]})`;
+  if (item.key === '' || item.key === 'none') return 'var(--border)';
+  return PALETTE[index % PALETTE.length];
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 1 }));
 
-/** Horizontal bars with labels: easy to read on a phone and with long names. */
+function configFor(items: SeriesItem[]): ChartConfig {
+  return Object.fromEntries(items.map((item, i) => [item.key || `none-${i}`, { label: item.label, color: colorFor(item, i) }]));
+}
+
+/** Horizontal bars with labels: easy to read on a phone and with long names. Click a value to drill in. */
 export function BarChart({ items, unit, onSelect }: { items: SeriesItem[]; unit?: string; onSelect?: (item: SeriesItem) => void }) {
-  const max = Math.max(...items.map((i) => i.value), 1);
+  const data = items.map((item, i) => ({ ...item, id: item.key || `none-${i}`, fill: colorFor(item, i) }));
   return (
-    <ul className="bar-chart" aria-label="Bar chart">
-      {items.map((item, i) => (
-        <li key={item.key || i}>
-          <span className="bar-chart-label" title={item.label}>
-            {item.label}
-          </span>
-          <span className="bar-chart-track" aria-hidden="true">
-            <i style={{ width: `${(item.value / max) * 100}%`, background: colorFor(item, i) }} />
-          </span>
-          <strong className="bar-chart-value">
-            {onSelect ? (
-              <button className="link-btn" onClick={() => onSelect(item)}>
-                {fmt(item.value)}
-              </button>
-            ) : (
-              fmt(item.value)
-            )}
-            {unit && <small className="muted"> {unit}</small>}
-          </strong>
-        </li>
-      ))}
-    </ul>
+    <div className="bar-chart" aria-label={`Bar chart: ${items.map((i) => `${i.label} ${fmt(i.value)}`).join(', ')}`} role="img">
+      <ChartContainer config={configFor(items)} className="aspect-auto w-full" style={{ height: Math.max(80, items.length * 34 + 8) }}>
+        <RBarChart data={data} layout="vertical" margin={{ left: 0, right: 48, top: 4, bottom: 4 }} barCategoryGap={6}>
+          <YAxis dataKey="label" type="category" tickLine={false} axisLine={false} width={110} tickMargin={6} tickFormatter={(v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v)} />
+          <XAxis type="number" hide domain={[0, 'dataMax']} />
+          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel nameKey="id" />} />
+          <Bar
+            dataKey="value"
+            radius={4}
+            minPointSize={2}
+            className={cn(onSelect && 'cursor-pointer')}
+            onClick={onSelect ? (d: { payload?: SeriesItem }) => d.payload && onSelect(items.find((i) => i.key === d.payload!.key) ?? d.payload) : undefined}
+          >
+            {data.map((d) => (
+              <Cell key={d.id} fill={d.fill} />
+            ))}
+            <LabelList dataKey="value" position="right" offset={8} className="fill-foreground font-medium" formatter={(v: unknown) => `${fmt(Number(v))}${unit ? ` ${unit}` : ''}`} />
+          </Bar>
+        </RBarChart>
+      </ChartContainer>
+    </div>
   );
 }
 
 /** A donut with a legend; the centre shows the total. */
 export function DonutChart({ items, label = 'total' }: { items: SeriesItem[]; label?: string }) {
   const total = items.reduce((s, i) => s + i.value, 0);
-  const r = 42;
-  const c = 2 * Math.PI * r;
-  let offset = 0;
+  const data = items.map((item, i) => ({ ...item, id: item.key || `none-${i}`, fill: colorFor(item, i) }));
   return (
-    <div className="donut">
-      <svg viewBox="0 0 120 120" role="img" aria-label={items.map((i) => `${i.label}: ${i.value}`).join(', ')}>
-        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--line)" strokeWidth="16" />
-        {total > 0 &&
-          items.map((item, i) => {
-            if (!item.value) return null;
-            const len = (item.value / total) * c;
-            const seg = (
-              <circle
-                key={item.key || i}
-                cx="60"
-                cy="60"
-                r={r}
-                fill="none"
-                stroke={colorFor(item, i)}
-                strokeWidth="16"
-                strokeDasharray={`${len} ${c - len}`}
-                strokeDashoffset={-offset}
-                transform="rotate(-90 60 60)"
-              />
-            );
-            offset += len;
-            return seg;
-          })}
-        <text x="60" y="58" textAnchor="middle" className="donut-total">
-          {fmt(total)}
-        </text>
-        <text x="60" y="74" textAnchor="middle" className="donut-caption">
-          {label}
-        </text>
-      </svg>
-      <ul className="chart-legend">
-        {items.map((item, i) => (
-          <li key={item.key || i}>
-            <i style={{ background: colorFor(item, i) }} /> {item.label} <strong>{fmt(item.value)}</strong>
-            {total > 0 && <small className="muted"> {Math.round((item.value / total) * 100)}%</small>}
+    <div className="flex flex-wrap items-center gap-4">
+      <div className="relative size-40 shrink-0" role="img" aria-label={items.map((i) => `${i.label}: ${i.value}`).join(', ')}>
+        <ChartContainer config={configFor(items)} className="aspect-square size-40">
+          <PieChart>
+            <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel nameKey="id" />} />
+            <Pie data={total ? data : [{ id: 'empty', value: 1, fill: 'var(--muted)' }]} dataKey="value" nameKey="id" innerRadius={50} outerRadius={72} paddingAngle={total ? 2 : 0} stroke="var(--card)" strokeWidth={2}>
+              {(total ? data : [{ id: 'empty', fill: 'var(--muted)' }]).map((d) => (
+                <Cell key={d.id} fill={d.fill} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ChartContainer>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-semibold tabular-nums">{fmt(total)}</span>
+          <span className="text-xs text-muted-foreground">{label}</span>
+        </div>
+      </div>
+      <ul className="flex min-w-40 flex-1 flex-col gap-1.5 text-sm">
+        {data.map((item) => (
+          <li key={item.id} className="flex items-center gap-2">
+            <i className="size-2.5 shrink-0 rounded-[3px]" style={{ background: item.fill }} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            <strong className="tabular-nums">{fmt(item.value)}</strong>
+            {total > 0 && <span className="w-9 text-right text-xs text-muted-foreground tabular-nums">{Math.round((item.value / total) * 100)}%</span>}
           </li>
         ))}
       </ul>
@@ -117,63 +111,34 @@ export function DonutChart({ items, label = 'total' }: { items: SeriesItem[]; la
   );
 }
 
-/** Lines over weeks, with a dot per point and the values in a hidden table. */
+const shortDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const LINE_COLORS = ['var(--chart-1)', 'var(--chart-3)', 'var(--chart-2)', 'var(--chart-4)'];
+
+/** Lines over weeks, with a crosshair tooltip and each series' total in the legend. */
 export function LineChart({ labels, series }: { labels: string[]; series: { key: string; label: string; values: number[] }[] }) {
-  // Drawn at the container's real width so text and dots keep their shape on any screen.
-  const box = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(600);
-  useEffect(() => {
-    const el = box.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(([entry]) => setW(Math.max(200, Math.round(entry.contentRect.width))));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const H = 180;
-  const pad = { l: 30, r: 10, t: 10, b: 24 };
-  const max = Math.max(1, ...series.flatMap((s) => s.values));
-  const x = (i: number) => pad.l + (labels.length > 1 ? (i / (labels.length - 1)) * (W - pad.l - pad.r) : 0);
-  const y = (v: number) => H - pad.b - (v / max) * (H - pad.t - pad.b);
-  const colors = ['var(--accent)', 'var(--green)', 'var(--c-blue)', 'var(--c-gold)'];
-  const ticks = [0, Math.round(max / 2), max];
-  // Room for about one date every 70px; the last week is always labelled.
-  const step = Math.ceil(labels.length / Math.max(2, Math.floor(W / 70)));
-  const short = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const config: ChartConfig = Object.fromEntries(series.map((s, i) => [s.key, { label: s.label, color: LINE_COLORS[i % LINE_COLORS.length] }]));
+  const data = labels.map((week, i) => ({ week, ...Object.fromEntries(series.map((s) => [s.key, s.values[i] ?? 0])) }));
   return (
-    <div className="line-chart" ref={box}>
-      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={series.map((s) => `${s.label}: ${s.values.join(', ')}`).join('; ')}>
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth="1" />
-            <text x={pad.l - 6} y={y(t) + 4} textAnchor="end" className="axis">
-              {t}
-            </text>
-          </g>
-        ))}
-        {labels.map((l, i) =>
-          (i === labels.length - 1 || (i % step === 0 && labels.length - 1 - i >= step)) ? (
-            <text key={l} x={x(i)} y={H - 6} textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'} className="axis">
-              {short(l)}
-            </text>
-          ) : null,
-        )}
-        {series.map((s, si) => (
-          <g key={s.key}>
-            <polyline fill="none" stroke={colors[si % colors.length]} strokeWidth="2.5" strokeLinejoin="round" points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')} />
-            {s.values.map((v, i) => (
-              <circle key={i} cx={x(i)} cy={y(v)} r="3.5" fill={colors[si % colors.length]}>
-                <title>
-                  {s.label}, week of {short(labels[i])}: {v}
-                </title>
-              </circle>
+    <div className="line-chart flex flex-col gap-2">
+      <div role="img" aria-label={series.map((s) => `${s.label}: ${s.values.join(', ')}`).join('; ')}>
+        <ChartContainer config={config} className="aspect-auto h-48 w-full">
+          <RLineChart data={data} margin={{ left: -16, right: 8, top: 8, bottom: 0 }}>
+            <CartesianGrid vertical={false} />
+            <XAxis dataKey="week" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={shortDate} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} tickMargin={4} />
+            <ChartTooltip content={<ChartTooltipContent labelFormatter={(v) => `Week of ${shortDate(String(v))}`} />} />
+            {series.map((s) => (
+              <Line key={s.key} dataKey={s.key} type="monotone" stroke={`var(--color-${s.key})`} strokeWidth={2} dot={{ r: 3, fill: `var(--color-${s.key})`, strokeWidth: 0 }} activeDot={{ r: 5 }} />
             ))}
-          </g>
-        ))}
-      </svg>
-      <ul className="chart-legend inline">
-        {series.map((s, si) => (
-          <li key={s.key}>
-            <i style={{ background: colors[si % colors.length] }} /> {s.label} <strong>{s.values.reduce((a, b) => a + b, 0)}</strong>
+          </RLineChart>
+        </ChartContainer>
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {series.map((s) => (
+          <li key={s.key} className="flex items-center gap-2">
+            <i className="size-2.5 rounded-[3px]" style={{ background: config[s.key]?.color }} aria-hidden="true" />
+            <span>{s.label}</span>
+            <strong className="tabular-nums">{s.values.reduce((a, b) => a + b, 0)}</strong>
           </li>
         ))}
       </ul>

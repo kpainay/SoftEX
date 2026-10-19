@@ -2,10 +2,16 @@ import { useState } from 'react';
 import { api } from '../api';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { Empty, ErrorState, Field, Loading, Modal, Tabs, useAction } from '../components/ui';
+import { Callout, EmptyState, ErrorState, FormField, Loading, Modal, Page, PageHeader, Pill, TabBar, toneFor, useAction } from '@/components/kit';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { timeAgo } from '../format';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Request {
   id: string;
@@ -42,60 +48,65 @@ export function Requests() {
   };
 
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>Requests & approvals</h1>
-          <p className="muted">Lightweight approvals for access, purchases, leave handoffs and internal support.</p>
-        </div>
-        <button className="btn primary" onClick={() => setCreating(true)}>
-          <Icon name="plus" size={16} /> New request
-        </button>
-      </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'To approve', count: pending }, { id: 'mine', label: 'My requests' }]} />
+    <Page width="narrow">
+      <PageHeader
+        title="Requests & approvals"
+        description="Lightweight approvals for access, purchases, leave handoffs and internal support."
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Icon name="plus" data-icon="inline-start" /> New request
+          </Button>
+        }
+      />
+      <TabBar value={tab} onChange={setTab} tabs={[{ id: 'inbox', label: 'To approve', count: pending }, { id: 'mine', label: 'My requests' }]} />
       {error && <ErrorState error={error} retry={reload} />}
       {!data && !error && <Loading />}
-      {data && !list.length && <Empty icon="inboxCheck" title={tab === 'inbox' ? 'Nothing waiting for you' : 'You have not made any requests'} />}
+      {data && !list.length && <EmptyState icon="inboxCheck" title={tab === 'inbox' ? 'Nothing waiting for you' : 'You have not made any requests'} />}
       {list.map((r) => (
-        <article key={r.id} className={`card request ${r.status}`}>
-          <div className="update-head">
+        <Card key={r.id} size="sm" className={cn(r.status === 'cancelled' && 'opacity-70')}>
+          <CardHeader className="flex flex-wrap items-center gap-2">
             <Avatar user={{ id: r.requester_id, name: r.requester_name, color: r.requester_color }} size="sm" />
-            <strong>{r.title}</strong>
-            <span className="pill">{KIND_LABEL[r.kind]}</span>
-            <span className={`pill req-${r.status}`}>{r.status}</span>
-            <span className="grow" />
-            <small className="muted">{timeAgo(r.created_at)}</small>
-          </div>
-          <p className="muted small">
-            {r.requester_name} → {r.approver_name}
-          </p>
-          {r.details && <p>{r.details}</p>}
-          {r.resolution_note && (
-            <p className="hint-box">
-              <strong>{r.approver_name}:</strong> {r.resolution_note}
+            <CardTitle className="min-w-0 truncate">{r.title}</CardTitle>
+            <Pill>{KIND_LABEL[r.kind]}</Pill>
+            <Pill tone={toneFor(r.status)} className="capitalize">
+              {r.status}
+            </Pill>
+            <span className="ml-auto text-xs text-muted-foreground">{timeAgo(r.created_at)}</span>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm">
+            <p className="text-xs text-muted-foreground">
+              {r.requester_name} → {r.approver_name}
             </p>
+            {r.details && <p className="whitespace-pre-wrap">{r.details}</p>}
+            {r.resolution_note && (
+              <Callout tone="info">
+                <strong>{r.approver_name}:</strong> {r.resolution_note}
+              </Callout>
+            )}
+          </CardContent>
+          {r.status === 'pending' && (r.approver_id === me!.user.id || r.requester_id === me!.user.id) && (
+            <CardFooter className="flex-wrap gap-2">
+              {r.approver_id === me!.user.id && (
+                <>
+                  <Input className="min-w-40 flex-1" placeholder="Optional note" value={note[r.id] ?? ''} onChange={(e) => setNote({ ...note, [r.id]: e.target.value })} aria-label="Note" />
+                  <Button variant="outline" onClick={() => decide(r, 'rejected')}>
+                    Decline
+                  </Button>
+                  <Button onClick={() => decide(r, 'approved')}>Approve</Button>
+                </>
+              )}
+              {r.requester_id === me!.user.id && (
+                <Button variant="outline" size="sm" onClick={() => decide(r, 'cancelled')}>
+                  Cancel request
+                </Button>
+              )}
+            </CardFooter>
           )}
-          {r.status === 'pending' && r.approver_id === me!.user.id && (
-            <div className="request-actions">
-              <input placeholder="Optional note" value={note[r.id] ?? ''} onChange={(e) => setNote({ ...note, [r.id]: e.target.value })} aria-label="Note" />
-              <button className="btn" onClick={() => decide(r, 'rejected')}>
-                Decline
-              </button>
-              <button className="btn primary" onClick={() => decide(r, 'approved')}>
-                Approve
-              </button>
-            </div>
-          )}
-          {r.status === 'pending' && r.requester_id === me!.user.id && (
-            <button className="btn sm" onClick={() => decide(r, 'cancelled')}>
-              Cancel request
-            </button>
-          )}
-        </article>
+        </Card>
       ))}
       <Modal open={creating} onClose={() => setCreating(false)} title="New request">
         <form
-          className="form"
+          className="flex flex-col gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
             const ok = await act(() => api.post('/requests', form), 'Request sent');
@@ -107,40 +118,40 @@ export function Requests() {
             }
           }}
         >
-          <div className="form-row">
-            <Field label="Type">
-              <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+            <FormField label="Type">
+              <NativeSelect value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
                 {Object.entries(KIND_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>
+                  <NativeSelectOption key={k} value={k}>
                     {v}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-            </Field>
-            <Field label="Approver">
-              <select required value={form.approverId} onChange={(e) => setForm({ ...form, approverId: e.target.value })}>
-                <option value="">Choose…</option>
+              </NativeSelect>
+            </FormField>
+            <FormField label="Approver">
+              <NativeSelect required value={form.approverId} onChange={(e) => setForm({ ...form, approverId: e.target.value })}>
+                <NativeSelectOption value="">Choose…</NativeSelectOption>
                 {people
                   .filter((p) => p.id !== me!.user.id && p.role !== 'guest')
                   .map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                       {p.name}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-              </select>
-            </Field>
+              </NativeSelect>
+            </FormField>
           </div>
-          <Field label="What do you need?">
-            <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Figma licence for the design contractor" />
-          </Field>
-          <Field label="Details">
-            <textarea rows={4} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} placeholder="Cost, dates, justification, links to the system of record…" />
-          </Field>
-          <div className="form-actions">
-            <button className="btn primary">Send request</button>
+          <FormField label="What do you need?">
+            <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Figma licence for the design contractor" />
+          </FormField>
+          <FormField label="Details">
+            <Textarea rows={4} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} placeholder="Cost, dates, justification, links to the system of record…" />
+          </FormField>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button type="submit">Send request</Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </Page>
   );
 }

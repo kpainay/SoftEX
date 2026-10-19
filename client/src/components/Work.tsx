@@ -1,31 +1,46 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { ChevronUp } from 'lucide-react';
 import { api, LABEL_COLORS, type CustomField, type FieldType, type Label, type LabelColor, type TimeEntry } from '../api';
 import { duration, localToday, timeAgo } from '../format';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
 import { Icon } from './Icon';
 import { UpgradeNotice, usePlan } from './Plan';
-import { Modal, useAction } from './ui';
+import { DatePicker, IconButton, Modal, Pill, useAction, useConfirm } from '@/components/kit';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label as UILabel } from '@/components/ui/label';
 
 // ---------- Labels ----------
 
 export function LabelChip({ label, onRemove }: { label: Pick<Label, 'name' | 'color'>; onRemove?: () => void }) {
   return (
-    <span className={`label-chip lc-${label.color}`}>
-      {label.name}
+    <Badge
+      variant="outline"
+      className="label-chip max-w-48 gap-1.5 border-transparent bg-[color-mix(in_oklab,var(--lc)_16%,transparent)] text-foreground"
+      style={{ '--lc': `var(--c-${label.color})` } as CSSProperties}
+    >
+      <i className="size-1.5 shrink-0 rounded-full bg-(--lc)" aria-hidden="true" />
+      <span className="truncate">{label.name}</span>
       {onRemove && (
-        <button type="button" aria-label={`Remove label ${label.name}`} onClick={onRemove}>
+        <button type="button" className="-mr-1 rounded-full p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground" aria-label={`Remove label ${label.name}`} onClick={onRemove}>
           <Icon name="x" size={11} />
         </button>
       )}
-    </span>
+    </Badge>
   );
 }
 
 export function LabelChips({ labels }: { labels?: Label[] }) {
   if (!labels?.length) return null;
   return (
-    <span className="label-chips">
+    <span className="inline-flex flex-wrap gap-1">
       {labels.map((l) => (
         <LabelChip key={l.id} label={l} />
       ))}
@@ -48,30 +63,33 @@ export function LabelPicker({ taskId, value, disabled, onChange }: { taskId: str
   const matches = (all ?? []).filter((l) => !q || l.name.toLowerCase().includes(q.toLowerCase()));
   const exact = (all ?? []).some((l) => l.name.toLowerCase() === q.trim().toLowerCase());
   return (
-    <div className="label-picker">
+    <div className="label-picker flex w-full flex-wrap items-center gap-1.5">
       {value.map((l) => (
         <LabelChip key={l.id} label={l} onRemove={disabled ? undefined : () => save(ids.filter((id) => id !== l.id))} />
       ))}
-      {!value.length && disabled && <span className="muted small">None</span>}
+      {!value.length && disabled && <span className="text-muted-foreground text-xs">None</span>}
       {!disabled && (
-        <button type="button" className="link-btn" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Button variant="ghost" size="xs" type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {!open && !value.length && <Icon name="plus" data-icon="inline-start" />}
           {open ? 'Done' : value.length ? 'Edit' : 'Add label'}
-        </button>
+        </Button>
       )}
       {open && (
-        <div className="label-menu">
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find or create a label" aria-label="Find or create a label" />
-          <div className="label-options">
+        <div className="flex w-full flex-col gap-2 rounded-xl border bg-popover p-2 shadow-sm">
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find or create a label" aria-label="Find or create a label" />
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
             {matches.map((l) => (
-              <label key={l.id} className="check-row">
-                <input type="checkbox" checked={ids.includes(l.id)} onChange={(e) => save(e.target.checked ? [...ids, l.id] : ids.filter((id) => id !== l.id))} />
+              <UILabel key={l.id} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 font-normal hover:bg-muted">
+                <Checkbox
+                  checked={ids.includes(l.id)}
+                  onCheckedChange={(checked) => save(checked ? [...ids, l.id] : ids.filter((id) => id !== l.id))} />
                 <LabelChip label={l} />
-              </label>
+              </UILabel>
             ))}
           </div>
           {q.trim() && !exact && (
             <form
-              className="row-gap"
+              className="flex flex-wrap items-center gap-2"
               onSubmit={async (e) => {
                 e.preventDefault();
                 const created = await act(() => api.post<Label>('/labels', { name: q.trim(), color }));
@@ -82,7 +100,7 @@ export function LabelPicker({ taskId, value, disabled, onChange }: { taskId: str
               }}
             >
               <ColorDots value={color} onChange={setColor} />
-              <button className="btn sm">Create “{q.trim()}”</button>
+              <Button variant="outline" size="sm" type="submit">Create “{q.trim()}”</Button>
             </form>
           )}
         </div>
@@ -93,9 +111,18 @@ export function LabelPicker({ taskId, value, disabled, onChange }: { taskId: str
 
 export function ColorDots({ value, onChange }: { value: LabelColor; onChange: (c: LabelColor) => void }) {
   return (
-    <span className="color-dots" role="radiogroup" aria-label="Colour">
+    <span className="inline-flex flex-wrap gap-1.5" role="radiogroup" aria-label="Colour">
       {LABEL_COLORS.map((c) => (
-        <button key={c} type="button" role="radio" aria-checked={value === c} aria-label={c} className={`dot bg-${c} ${value === c ? 'on' : ''}`} onClick={() => onChange(c)} />
+        <button
+          key={c}
+          type="button"
+          role="radio"
+          aria-checked={value === c}
+          aria-label={c}
+          className={cn('size-5 rounded-full ring-offset-2 ring-offset-popover outline-none focus-visible:ring-2 focus-visible:ring-ring', value === c && 'ring-2 ring-foreground')}
+          style={{ background: `var(--c-${c})` }}
+          onClick={() => onChange(c)}
+        />
       ))}
     </span>
   );
@@ -116,10 +143,10 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
 /** Read-only display of a field value (tables, cards). */
 export function FieldValue({ field, value }: { field: CustomField; value: unknown }) {
   const { people } = useSession();
-  if (value === undefined || value === null || value === '') return <span className="muted">—</span>;
+  if (value === undefined || value === null || value === '') return <span className="text-muted-foreground">—</span>;
   switch (field.type) {
     case 'checkbox':
-      return value ? <Icon name="check" size={14} /> : <span className="muted">—</span>;
+      return value ? <Icon name="check" size={14} /> : <span className="text-muted-foreground">—</span>;
     case 'select': {
       const opt = field.options.find((o) => o.label === value);
       return <LabelChip label={{ name: String(value), color: opt?.color ?? 'blue' }} />;
@@ -128,7 +155,7 @@ export function FieldValue({ field, value }: { field: CustomField; value: unknow
       return <span>{people.find((p) => p.id === value)?.name ?? 'Former member'}</span>;
     case 'url':
       return (
-        <a href={String(value)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+        <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-4 hover:underline" onClick={(e) => e.stopPropagation()}>
           {String(value).replace(/^https?:\/\//, '').slice(0, 40)}
         </a>
       );
@@ -145,36 +172,42 @@ export function FieldInput({ field, value, disabled, onSave }: { field: CustomFi
   const label = field.name;
   switch (field.type) {
     case 'checkbox':
-      return <input type="checkbox" checked={!!value} disabled={disabled} aria-label={label} onChange={(e) => onSave(e.target.checked)} />;
+      return (
+        <Checkbox
+          checked={!!value}
+          disabled={disabled}
+          aria-label={label}
+          onCheckedChange={(checked) => onSave(checked)} />
+      );
     case 'select':
       return (
-        <select value={(value as string) ?? ''} disabled={disabled} aria-label={label} onChange={(e) => onSave(e.target.value || null)}>
-          <option value="">—</option>
+        <NativeSelect value={(value as string) ?? ''} disabled={disabled} aria-label={label} onChange={(e) => onSave(e.target.value || null)}>
+          <NativeSelectOption value="">—</NativeSelectOption>
           {field.options.map((o) => (
-            <option key={o.label} value={o.label}>
+            <NativeSelectOption key={o.label} value={o.label}>
               {o.label}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       );
     case 'person':
       return (
-        <select value={(value as string) ?? ''} disabled={disabled} aria-label={label} onChange={(e) => onSave(e.target.value || null)}>
-          <option value="">—</option>
+        <NativeSelect value={(value as string) ?? ''} disabled={disabled} aria-label={label} onChange={(e) => onSave(e.target.value || null)}>
+          <NativeSelectOption value="">—</NativeSelectOption>
           {people.map((p) => (
-            <option key={p.id} value={p.id}>
+            <NativeSelectOption key={p.id} value={p.id}>
               {p.name}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       );
     case 'date':
-      return <input type="date" value={(value as string) ?? ''} disabled={disabled} aria-label={label} onChange={(e) => onSave(e.target.value || null)} />;
+      return <DatePicker value={value as string | null} disabled={disabled} aria-label={label} onChange={(v) => onSave(v)} placeholder="—" />;
     case 'number':
       return (
-        <input
+        <Input
           type="number"
-          className="narrow-input"
+          className="w-32"
           defaultValue={(value as number) ?? ''}
           key={String(value)}
           disabled={disabled}
@@ -187,7 +220,7 @@ export function FieldInput({ field, value, disabled, onSave }: { field: CustomFi
       );
     default:
       return (
-        <input
+        <Input
           type={field.type === 'url' ? 'url' : 'text'}
           defaultValue={(value as string) ?? ''}
           key={String(value)}
@@ -235,8 +268,10 @@ export function TaskFieldRows({ taskId, projectId, values, disabled, onChange }:
 function FieldRow({ field, children }: { field: CustomField; children: React.ReactNode }) {
   return (
     <>
-      <dt title={FIELD_TYPE_LABEL[field.type]}>{field.name}</dt>
-      <dd>{children}</dd>
+      <dt className="truncate pt-1.5 text-sm text-muted-foreground" title={FIELD_TYPE_LABEL[field.type]}>
+        {field.name}
+      </dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-2">{children}</dd>
     </>
   );
 }
@@ -244,6 +279,7 @@ function FieldRow({ field, children }: { field: CustomField; children: React.Rea
 /** Project settings: add, rename, reorder and remove custom fields. */
 export function FieldsManager({ projectId, open, onClose }: { projectId: string; open: boolean; onClose: () => void }) {
   const act = useAction();
+  const confirm = useConfirm();
   const plan = usePlan();
   const { data: fields, reload } = useProjectFields(open ? projectId : null);
   const [name, setName] = useState('');
@@ -255,11 +291,12 @@ export function FieldsManager({ projectId, open, onClose }: { projectId: string;
         <UpgradeNotice feature="fields" />
       ) : (
         <>
-          <p className="muted">Fields show on every task in this project and as columns in the table view.</p>
-          <ul className="field-list">
+          <p className="text-muted-foreground">Fields show on every task in this project and as columns in the table view.</p>
+          <ul className="my-3 flex flex-col divide-y rounded-xl border">
             {fields?.map((f, i) => (
-              <li key={f.id}>
-                <input
+              <li key={f.id} className="flex flex-wrap items-center gap-2 p-2">
+                <Input
+                  className="w-auto min-w-0 flex-1 basis-40"
                   defaultValue={f.name}
                   aria-label="Field name"
                   onBlur={async (e) => {
@@ -267,11 +304,11 @@ export function FieldsManager({ projectId, open, onClose }: { projectId: string;
                     reload();
                   }}
                 />
-                <span className="pill">{FIELD_TYPE_LABEL[f.type]}</span>
-                {f.type === 'select' && <small className="muted">{f.options.map((o) => o.label).join(', ')}</small>}
-                <span className="grow" />
-                <button
-                  className="icon-btn xs"
+                <Pill>{FIELD_TYPE_LABEL[f.type]}</Pill>
+                {f.type === 'select' && <small className="text-muted-foreground">{f.options.map((o) => o.label).join(', ')}</small>}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label={`Move ${f.name} up`}
                   disabled={i === 0}
                   onClick={async () => {
@@ -281,27 +318,26 @@ export function FieldsManager({ projectId, open, onClose }: { projectId: string;
                       for (const [position, id] of order.entries()) await api.patch(`/fields/${id}`, { position });
                     });
                     reload();
-                  }}
-                >
-                  <Icon name="chevronLeft" size={12} />
-                </button>
-                <button
-                  className="icon-btn xs"
+                  }}>
+                  <ChevronUp />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label={`Delete ${f.name}`}
                   onClick={async () => {
-                    if (!confirm(`Delete the “${f.name}” field and its values on every task?`)) return;
+                    if (!(await confirm({ title: `Delete the “${f.name}” field?`, description: 'Its values on every task are removed too.', confirmLabel: 'Delete field', destructive: true }))) return;
                     await act(() => api.del(`/fields/${f.id}`));
                     reload();
-                  }}
-                >
+                  }}>
                   <Icon name="trash" size={13} />
-                </button>
+                </Button>
               </li>
             ))}
-            {fields && !fields.length && <li className="muted">No fields yet.</li>}
+            {fields && !fields.length && <li className="p-3 text-sm text-muted-foreground">No fields yet.</li>}
           </ul>
           <form
-            className="stack"
+            className="flex flex-col gap-3"
             onSubmit={async (e) => {
               e.preventDefault();
               const opts = options
@@ -316,21 +352,21 @@ export function FieldsManager({ projectId, open, onClose }: { projectId: string;
               reload();
             }}
           >
-            <div className="row-gap">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New field name" aria-label="New field name" required maxLength={60} />
-              <select value={type} onChange={(e) => setType(e.target.value as FieldType)} aria-label="Field type">
+            <div className="flex flex-wrap items-center gap-2">
+              <Input className="w-auto min-w-0 flex-1 basis-48" value={name} onChange={(e) => setName(e.target.value)} placeholder="New field name" aria-label="New field name" required maxLength={60} />
+              <NativeSelect value={type} onChange={(e) => setType(e.target.value as FieldType)} aria-label="Field type">
                 {(Object.keys(FIELD_TYPE_LABEL) as FieldType[]).map((t) => (
-                  <option key={t} value={t}>
+                  <NativeSelectOption key={t} value={t}>
                     {FIELD_TYPE_LABEL[t]}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
-            {type === 'select' && <input value={options} onChange={(e) => setOptions(e.target.value)} placeholder="Options, separated by commas" aria-label="Dropdown options" required />}
-            <div className="form-actions">
-              <button className="btn primary sm" disabled={!name.trim()}>
+            {type === 'select' && <Input value={options} onChange={(e) => setOptions(e.target.value)} placeholder="Options, separated by commas" aria-label="Dropdown options" required />}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button size="sm" disabled={!name.trim()} type="submit">
                 Add field
-              </button>
+              </Button>
             </div>
           </form>
         </>
@@ -374,49 +410,51 @@ export function TimeTracker({ taskId, estimateHours, canLog }: { taskId: string;
   };
   const pct = estimateHours ? Math.min(100, Math.round((data.total_minutes / (estimateHours * 60)) * 100)) : null;
   return (
-    <section className="detail-section">
-      <div className="section-title">
-        <h3>
-          Time {data.total_minutes > 0 && <small className="muted">{duration(data.total_minutes)} logged{estimateHours ? ` of ${estimateHours}h` : ''}</small>}
+    <section className="flex flex-col gap-2">
+      <Separator />
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+        <h3 className="flex items-baseline gap-2 text-sm font-semibold">
+          Time {data.total_minutes > 0 && <span className="text-xs font-normal text-muted-foreground">{duration(data.total_minutes)} logged{estimateHours ? ` of ${estimateHours}h` : ''}</span>}
         </h3>
         {canLog && available && (
-          <span className="row-gap">
+          <span className="flex flex-wrap items-center gap-1">
             {data.running ? (
-              <button
-                className="btn sm timer-on"
+              <Button
+                variant="outline"
+                size="xs"
+                className="text-destructive"
                 onClick={async () => {
                   await act(() => api.post('/time/stop'));
                   changed();
                 }}
               >
-                <span className="rec-dot" /> {elapsed} Stop
-              </button>
+                <span className="size-2 animate-pulse rounded-full bg-destructive" /> <span className="tabular-nums">{elapsed}</span> Stop
+              </Button>
             ) : (
-              <button
-                className="btn sm"
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={async () => {
                   await act(() => api.post(`/tasks/${taskId}/time/start`));
                   changed();
                 }}
               >
-                <Icon name="play" size={13} /> Start timer
-              </button>
+                <Icon name="play" data-icon="inline-start" /> Start timer
+              </Button>
             )}
-            <button className="link-btn" onClick={() => setAdding((a) => !a)}>
+            <Button variant="ghost" size="xs" onClick={() => setAdding((a) => !a)}>
               {adding ? 'Cancel' : 'Log time'}
-            </button>
+            </Button>
           </span>
         )}
       </div>
       {pct !== null && data.total_minutes > 0 && (
-        <div className={`progress ${pct >= 100 ? 'over' : ''}`} aria-label={`${pct}% of estimate`}>
-          <i style={{ width: `${pct}%` }} />
-        </div>
+        <Progress value={pct} aria-label={`${pct}% of estimate`} className={cn(pct >= 100 && '[&_[data-slot=progress-indicator]]:bg-destructive')} />
       )}
       {!available && canLog && <UpgradeNotice feature="fields" compact />}
       {adding && (
         <form
-          className="row-gap wrap"
+          className="flex flex-wrap items-center gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             const minutes = Math.round(Number(hours) * 60);
@@ -429,29 +467,31 @@ export function TimeTracker({ taskId, estimateHours, canLog }: { taskId: string;
             changed();
           }}
         >
-          <input type="number" min={0} max={24} step={0.25} className="narrow-input" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="hours" aria-label="Hours" required />
-          <input type="date" value={date} max={localToday()} onChange={(e) => setDate(e.target.value)} aria-label="Date" />
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Note" maxLength={500} className="grow" />
-          <button className="btn primary sm">Save time</button>
+          <Input type="number" min={0} max={24} step={0.25} className="w-24" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="hours" aria-label="Hours" required />
+          <DatePicker value={date} max={localToday()} clearable={false} onChange={(v) => v && setDate(v)} aria-label="Date" />
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" aria-label="Note" maxLength={500} className="min-w-40 flex-1" />
+          <Button size="sm" type="submit">
+            Save time
+          </Button>
         </form>
       )}
       {data.entries.slice(0, 8).map((e) => (
-        <div key={e.id} className="mini-task">
-          <strong>{e.running ? elapsed || 'Running' : duration(e.minutes)}</strong>
+        <div key={e.id} className="flex flex-wrap items-center gap-2 text-sm">
+          <strong className="font-semibold tabular-nums">{e.running ? elapsed || 'Running' : duration(e.minutes)}</strong>
           <span>{e.user?.name}</span>
-          {e.note && <span className="muted">— {e.note}</span>}
-          <small className="muted">{timeAgo(e.started_at)}</small>
+          {e.note && <span className="text-muted-foreground">— {e.note}</span>}
+          <span className="text-xs text-muted-foreground">{timeAgo(e.started_at)}</span>
           {(e.user?.id === me?.user.id || me?.role === 'admin' || me?.role === 'owner') && !e.running && (
-            <button
-              className="icon-btn xs"
-              aria-label="Remove time entry"
+            <IconButton
+              label="Remove time entry"
+              size="icon-xs"
               onClick={async () => {
                 await act(() => api.del(`/time/${e.id}`));
                 changed();
               }}
             >
-              <Icon name="x" size={12} />
-            </button>
+              <Icon name="x" />
+            </IconButton>
           )}
         </div>
       ))}

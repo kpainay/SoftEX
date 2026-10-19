@@ -5,7 +5,14 @@ import { toIso, toLocalInput } from '../format';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
 import { Icon } from './Icon';
-import { Field, Modal, PeoplePicker, useAction } from './ui';
+import { FormField, Modal, PeoplePicker, useAction, Callout, ColorSwatches, DatePicker, DateTimePicker } from '@/components/kit';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from '@/components/ui/item';
 
 type Kind = 'task' | 'project' | 'message' | 'meeting' | 'page';
 
@@ -31,17 +38,19 @@ export function QuickCreate({ open, kind, onClose }: { open: boolean; kind?: Kin
   return (
     <Modal open={open} onClose={onClose} eyebrow="QUICK CREATE" title={current ? titles[current] : 'What would you like to start?'} wide={current === 'project' || current === 'meeting'}>
       {!current && (
-        <div className="create-options">
+        <ItemGroup className="grid gap-2 sm:grid-cols-2">
           {options.map((o) => (
-            <button key={o.id} onClick={() => setCurrent(o.id)}>
-              <span>
+            <Item key={o.id} variant="outline" render={<button type="button" onClick={() => setCurrent(o.id)} />} className="text-left hover:bg-muted">
+              <ItemMedia variant="icon" className="size-8 rounded-lg bg-accent text-accent-foreground">
                 <Icon name={o.icon} />
-              </span>
-              <b>{o.label}</b>
-              <small>{o.hint}</small>
-            </button>
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{o.label}</ItemTitle>
+                <ItemDescription>{o.hint}</ItemDescription>
+              </ItemContent>
+            </Item>
           ))}
-        </div>
+        </ItemGroup>
       )}
       {current === 'task' && <NewTaskForm onDone={onClose} />}
       {current === 'project' && <NewProjectForm onDone={onClose} />}
@@ -96,57 +105,57 @@ export function NewTaskForm({
     if (task) onDone(task);
   };
   return (
-    <form onSubmit={submit} className="form">
-      <Field label="Title">
-        <input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" maxLength={300} />
-      </Field>
-      <div className="form-row">
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <FormField label="Title">
+        <Input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" maxLength={300} />
+      </FormField>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
         {!fixedProject && (
-          <Field label="Project">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">Personal (no project)</option>
+          <FormField label="Project">
+            <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <NativeSelectOption value="">Personal (no project)</NativeSelectOption>
               {(projects ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
+                <NativeSelectOption key={p.id} value={p.id}>
                   {p.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </Field>
+            </NativeSelect>
+          </FormField>
         )}
-        <Field label="Owner">
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            <option value="">Unassigned</option>
+        <FormField label="Owner">
+          <NativeSelect value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+            <NativeSelectOption value="">Unassigned</NativeSelectOption>
             {people.map((p) => (
-              <option key={p.id} value={p.id}>
+              <NativeSelectOption key={p.id} value={p.id}>
                 {p.id === me!.user.id ? `${p.name} (me)` : p.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-        </Field>
+          </NativeSelect>
+        </FormField>
       </div>
-      <div className="form-row">
-        <Field label="Due date">
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </Field>
-        <Field label="Priority">
-          <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </Field>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+        <FormField label="Due date">
+          <DatePicker value={dueDate} onChange={(v) => setDueDate(v ?? '')} placeholder="No due date" />
+        </FormField>
+        <FormField label="Priority">
+          <NativeSelect value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <NativeSelectOption value="low">Low</NativeSelectOption>
+            <NativeSelectOption value="medium">Medium</NativeSelectOption>
+            <NativeSelectOption value="high">High</NativeSelectOption>
+            <NativeSelectOption value="urgent">Urgent</NativeSelectOption>
+          </NativeSelect>
+        </FormField>
       </div>
-      <Field label="Description (optional)">
-        <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </Field>
-      <div className="form-actions">
-        <button type="button" className="btn" onClick={() => onDone()}>
+      <FormField label="Description (optional)">
+        <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </FormField>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" type="button" onClick={() => onDone()}>
           Cancel
-        </button>
-        <button className="btn primary" disabled={busy || !title.trim()}>
+        </Button>
+        <Button disabled={busy || !title.trim()} type="submit">
           Create task
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -175,51 +184,47 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
     }
   };
   return (
-    <form onSubmit={submit} className="form">
-      <Field label="Name">
-        <input autoFocus required minLength={2} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Website relaunch" />
-      </Field>
-      <Field label="Description">
-        <textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What outcome is this project driving?" />
-      </Field>
-      <div className="form-row">
-        <Field label="Template">
-          <select value={template} onChange={(e) => setTemplate(e.target.value)}>
-            <option value="blank">Blank project</option>
-            <option value="product_launch">Product launch</option>
-            <option value="client_onboarding">Client onboarding</option>
-            <option value="weekly_ops">Weekly operations</option>
-          </select>
-        </Field>
-        <Field label="Visibility">
-          <select value={visibility} onChange={(e) => setVisibility(e.target.value as 'workspace' | 'private')}>
-            <option value="workspace">Everyone in the workspace</option>
-            <option value="private">Private to members</option>
-          </select>
-        </Field>
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <FormField label="Name">
+        <Input autoFocus required minLength={2} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Website relaunch" />
+      </FormField>
+      <FormField label="Description">
+        <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What outcome is this project driving?" />
+      </FormField>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+        <FormField label="Template">
+          <NativeSelect value={template} onChange={(e) => setTemplate(e.target.value)}>
+            <NativeSelectOption value="blank">Blank project</NativeSelectOption>
+            <NativeSelectOption value="product_launch">Product launch</NativeSelectOption>
+            <NativeSelectOption value="client_onboarding">Client onboarding</NativeSelectOption>
+            <NativeSelectOption value="weekly_ops">Weekly operations</NativeSelectOption>
+          </NativeSelect>
+        </FormField>
+        <FormField label="Visibility">
+          <NativeSelect value={visibility} onChange={(e) => setVisibility(e.target.value as 'workspace' | 'private')}>
+            <NativeSelectOption value="workspace">Everyone in the workspace</NativeSelectOption>
+            <NativeSelectOption value="private">Private to members</NativeSelectOption>
+          </NativeSelect>
+        </FormField>
       </div>
-      <div className="form-row">
-        <Field label="Target date">
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </Field>
-        <Field label="Colour">
-          <div className="color-row">
-            {['purple', 'blue', 'green', 'coral', 'gold', 'sky', 'mint', 'orange'].map((c) => (
-              <button type="button" key={c} className={`swatch bg-${c} ${color === c ? 'active' : ''}`} onClick={() => setColor(c)} aria-label={c} aria-pressed={color === c} />
-            ))}
-          </div>
-        </Field>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+        <FormField label="Target date">
+          <DatePicker value={dueDate} onChange={(v) => setDueDate(v ?? '')} placeholder="No target date" />
+        </FormField>
+        <FormField label="Colour">
+          <ColorSwatches colors={['purple', 'blue', 'green', 'coral', 'gold', 'sky', 'mint', 'orange']} value={color} onChange={setColor} />
+        </FormField>
       </div>
-      <Field label="Members" hint="A project channel is created automatically for these members.">
+      <FormField label="Members" hint="A project channel is created automatically for these members.">
         <PeoplePicker people={people} value={memberIds} onChange={setMemberIds} exclude={[me!.user.id]} />
-      </Field>
-      <div className="form-actions">
-        <button type="button" className="btn" onClick={onDone}>
+      </FormField>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" type="button" onClick={onDone}>
           Cancel
-        </button>
-        <button className="btn primary" disabled={name.trim().length < 2}>
+        </Button>
+        <Button disabled={name.trim().length < 2} type="submit">
           Create project
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -239,17 +244,17 @@ function NewMessageForm({ onDone }: { onDone: () => void }) {
     }
   };
   return (
-    <form onSubmit={submit} className="form">
-      <Field label="To" hint="Pick one person for a direct message, or several for a group conversation.">
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <FormField label="To" hint="Pick one person for a direct message, or several for a group conversation.">
         <PeoplePicker people={people} value={ids} onChange={setIds} exclude={[me!.user.id]} placeholder="Type a name…" />
-      </Field>
-      <div className="form-actions">
-        <button type="button" className="btn" onClick={onDone}>
+      </FormField>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" type="button" onClick={onDone}>
           Cancel
-        </button>
-        <button className="btn primary" disabled={!ids.length}>
+        </Button>
+        <Button disabled={!ids.length} type="submit">
           Open conversation
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -296,65 +301,65 @@ export function NewMeetingForm({ onDone, projectId: fixedProject, channelId }: {
   };
   const selectedZones = [...new Set(people.filter((p) => ids.includes(p.id) && p.timezone !== zone).map((p) => p.timezone))];
   return (
-    <form onSubmit={submit} className="form">
-      <Field label="Title">
-        <input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Weekly product sync" />
-      </Field>
-      <div className="form-row">
-        <Field label={`Starts (${zone})`}>
-          <input type="datetime-local" required value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-        </Field>
-        <Field label="Duration">
-          <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <FormField label="Title">
+        <Input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Weekly product sync" />
+      </FormField>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+        <FormField label={`Starts (${zone})`}>
+          <DateTimePicker value={startsAt} onChange={(v) => v && setStartsAt(v)} aria-label="Starts" />
+        </FormField>
+        <FormField label="Duration">
+          <NativeSelect value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
             {[15, 30, 45, 60, 90, 120].map((d) => (
-              <option key={d} value={d}>
+              <NativeSelectOption key={d} value={d}>
                 {d} minutes
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-        </Field>
+          </NativeSelect>
+        </FormField>
       </div>
       {selectedZones.length > 0 && startsAt && (
-        <p className="hint-box">
-          <Icon name="clock" size={15} /> For participants elsewhere:{' '}
+        <Callout tone="info">
+          For participants elsewhere:{' '}
           {selectedZones
             .map((tz) => `${new Date(toIso(startsAt)).toLocaleTimeString(undefined, { timeZone: tz, hour: 'numeric', minute: '2-digit' })} in ${tz}`)
             .join(' · ')}
-        </p>
+        </Callout>
       )}
-      <Field label="Participants">
+      <FormField label="Participants">
         <PeoplePicker people={people} value={ids} onChange={setIds} exclude={[me!.user.id]} />
-      </Field>
+      </FormField>
       {!fixedProject && (
-        <Field label="Project (optional)">
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">None</option>
+        <FormField label="Project (optional)">
+          <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <NativeSelectOption value="">None</NativeSelectOption>
             {(projects ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
+              <NativeSelectOption key={p.id} value={p.id}>
                 {p.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-        </Field>
+          </NativeSelect>
+        </FormField>
       )}
-      <Field label="Agenda">
-        <textarea rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} placeholder={'1. Updates\n2. Decisions needed\n3. Next steps'} />
-      </Field>
-      <div className="form-row">
-        <Field label="Room or location (optional)">
-          <input value={location} onChange={(e) => setLocation(e.target.value)} />
-        </Field>
-        <label className="check-inline field">
-          <input type="checkbox" checked={video} onChange={(e) => setVideo(e.target.checked)} /> Add a video link
-        </label>
+      <FormField label="Agenda">
+        <Textarea rows={3} value={agenda} onChange={(e) => setAgenda(e.target.value)} placeholder={'1. Updates\n2. Decisions needed\n3. Next steps'} />
+      </FormField>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+        <FormField label="Room or location (optional)">
+          <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+        </FormField>
+        <Label className="self-end pb-2">
+          <Checkbox checked={video} onCheckedChange={(checked) => setVideo(checked)} /> Add a video link
+        </Label>
       </div>
-      <div className="form-actions">
-        <button type="button" className="btn" onClick={onDone}>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" type="button" onClick={onDone}>
           Cancel
-        </button>
-        <button className="btn primary" disabled={!title.trim()}>
+        </Button>
+        <Button disabled={!title.trim()} type="submit">
           Schedule
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -375,27 +380,27 @@ function NewPageForm({ onDone }: { onDone: () => void }) {
     }
   };
   return (
-    <form onSubmit={submit} className="form">
-      <Field label="Title">
-        <input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Expense policy" />
-      </Field>
-      <Field label="Where does it belong?">
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          <option value="">Company knowledge (whole workspace)</option>
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <FormField label="Title">
+        <Input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Expense policy" />
+      </FormField>
+      <FormField label="Where does it belong?">
+        <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <NativeSelectOption value="">Company knowledge (whole workspace)</NativeSelectOption>
           {(projects ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
+            <NativeSelectOption key={p.id} value={p.id}>
               Project: {p.name}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-      </Field>
-      <div className="form-actions">
-        <button type="button" className="btn" onClick={onDone}>
+        </NativeSelect>
+      </FormField>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" type="button" onClick={onDone}>
           Cancel
-        </button>
-        <button className="btn primary" disabled={!title.trim()}>
+        </Button>
+        <Button disabled={!title.trim()} type="submit">
           Create and edit
-        </button>
+        </Button>
       </div>
     </form>
   );

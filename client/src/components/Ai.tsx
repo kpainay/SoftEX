@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Sparkles } from 'lucide-react';
 import { api } from '../api';
 import { useSession } from '../session';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
-import { useAction } from './ui';
+import { DatePicker, useAction } from '@/components/kit';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Checkbox } from '@/components/ui/checkbox';
 
 /** True when AI assistance is available and switched on for this workspace. */
 export function useAiEnabled() {
@@ -11,25 +18,43 @@ export function useAiEnabled() {
   return !!me?.workspace.ai_enabled && !!me?.workspace.ai_available && !!me?.workspace.plan?.features.includes('ai');
 }
 
+/** The frame every AI output sits in: a clear label, the content, and who can see it. */
+function AiBox({ title, children, footer, ...props }: { title: ReactNode; children: ReactNode; footer?: ReactNode; role?: string; 'aria-label'?: string }) {
+  return (
+    <Card size="sm" className="gap-3 bg-accent/40 ring-primary/15" {...props}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-xs font-semibold tracking-wide text-primary uppercase">
+          <Sparkles className="size-3.5" /> {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-sm">{children}</CardContent>
+      {footer && <CardFooter className="flex-wrap gap-2">{footer}</CardFooter>}
+    </Card>
+  );
+}
+
 export function AiDraft({ text, onUse, useLabel }: { text: string; onUse?: () => void; useLabel?: string }) {
   return (
-    <div className="ai-box" role="region" aria-label="AI draft">
-      <header>
-        <Icon name="spark" size={14} /> AI draft — check it before relying on it
-      </header>
+    <AiBox
+      title="AI draft — check it before relying on it"
+      role="region"
+      aria-label="AI draft"
+      footer={
+        <>
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">Only visible to you. Generated from content you have access to.</span>
+          <Button variant="outline" size="sm" onClick={() => navigator.clipboard?.writeText(text)}>
+            Copy
+          </Button>
+          {onUse && (
+            <Button size="sm" onClick={onUse}>
+              {useLabel ?? 'Use'}
+            </Button>
+          )}
+        </>
+      }
+    >
       <Markdown text={text} />
-      <footer className="row-gap wrap">
-        <span className="grow">Only visible to you. Generated from content you have access to.</span>
-        <button className="btn sm" onClick={() => navigator.clipboard?.writeText(text)}>
-          Copy
-        </button>
-        {onUse && (
-          <button className="btn sm primary" onClick={onUse}>
-            {useLabel ?? 'Use'}
-          </button>
-        )}
-      </footer>
-    </div>
+    </AiBox>
   );
 }
 
@@ -50,106 +75,106 @@ export function ThreadAi({ messageId, excluded }: { messageId: string; excluded:
   const [summary, setSummary] = useState<string | null>(null);
   const [suggested, setSuggested] = useState<{ project_id: string | null; source_message_id: string; suggestions: (Suggestion & { pick: boolean })[] } | null>(null);
   if (!enabled) return null;
-  if (excluded) return <p className="muted small pad">AI assistance is turned off for this conversation.</p>;
+  if (excluded) return <p className="block p-3 text-xs text-muted-foreground">AI assistance is turned off for this conversation.</p>;
   return (
-    <div className="thread-ai">
-      <div className="row-gap wrap">
-        <button
-          className="btn sm"
+    <div className="flex flex-col gap-3 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
           disabled={!!busy}
           onClick={async () => {
             setBusy('summary');
             const res = await act(() => api.post<{ summary: string }>(`/ai/threads/${messageId}/summary`));
             setBusy(null);
             if (res) setSummary(res.summary);
-          }}
-        >
-          <Icon name="spark" size={14} /> {busy === 'summary' ? 'Summarizing…' : 'Summarize thread'}
-        </button>
-        <button
-          className="btn sm"
+          }}>
+          {busy === 'summary' ? <Spinner data-icon="inline-start" /> : <Icon name="spark" data-icon="inline-start" />} {busy === 'summary' ? 'Summarizing…' : 'Summarize thread'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           disabled={!!busy}
           onClick={async () => {
             setBusy('tasks');
             const res = await act(() => api.post<{ project_id: string | null; source_message_id: string; suggestions: Suggestion[] }>(`/ai/threads/${messageId}/suggest-tasks`));
             setBusy(null);
             if (res) setSuggested({ ...res, suggestions: res.suggestions.map((s) => ({ ...s, pick: true })) });
-          }}
-        >
-          <Icon name="task" size={14} /> {busy === 'tasks' ? 'Looking…' : 'Suggest tasks'}
-        </button>
+          }}>
+          {busy === 'tasks' ? <Spinner data-icon="inline-start" /> : <Icon name="task" data-icon="inline-start" />} {busy === 'tasks' ? 'Looking…' : 'Suggest tasks'}
+        </Button>
       </div>
       {summary && <AiDraft text={summary} />}
       {suggested && (
-        <div className="ai-box">
-          <header>
-            <Icon name="spark" size={14} /> Suggested tasks — review before creating
-          </header>
-          {!suggested.suggestions.length && <p className="muted">No clear follow-ups found.</p>}
+        <AiBox
+          title="Suggested tasks — review before creating"
+          footer={
+            <>
+              <span className="min-w-0 flex-1" />
+              <Button variant="outline" size="sm" onClick={() => setSuggested(null)}>
+                Dismiss
+              </Button>
+              <Button
+                size="sm"
+                disabled={!suggested.suggestions.some((s) => s.pick)}
+                onClick={async () => {
+                  let created = 0;
+                  for (const s of suggested.suggestions.filter((x) => x.pick)) {
+                    const ok = await act(() =>
+                      api.post('/tasks', { title: s.title, ownerId: s.owner_id, dueDate: s.due_date, projectId: suggested.project_id, sourceMessageId: suggested.source_message_id }),
+                    );
+                    if (ok) created += 1;
+                  }
+                  if (created) {
+                    setSuggested(null);
+                    await act(async () => undefined, `${created} task${created > 1 ? 's' : ''} created`);
+                  }
+                }}
+              >
+                Create selected
+              </Button>
+            </>
+          }
+        >
+          {!suggested.suggestions.length && <p className="text-muted-foreground">No clear follow-ups found.</p>}
           {suggested.suggestions.map((s, i) => (
-            <div key={i} className="suggestion">
-              <input
-                type="checkbox"
+            <div key={i} className="flex items-start gap-3">
+              <Checkbox
                 checked={s.pick}
                 aria-label={`Create ${s.title}`}
-                onChange={(e) => setSuggested({ ...suggested, suggestions: suggested.suggestions.map((x, j) => (j === i ? { ...x, pick: e.target.checked } : x)) })}
-              />
-              <div className="grow">
-                <input
+                onCheckedChange={(checked) => setSuggested({ ...suggested, suggestions: suggested.suggestions.map((x, j) => (j === i ? { ...x, pick: checked } : x)) })} />
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <Input
                   value={s.title}
                   aria-label="Task title"
                   onChange={(e) => setSuggested({ ...suggested, suggestions: suggested.suggestions.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)) })}
                 />
-                <div className="row-gap wrap">
-                  <select
+                <div className="flex flex-wrap items-center gap-2">
+                  <NativeSelect
                     value={s.owner_id ?? ''}
                     aria-label="Owner"
                     onChange={(e) => setSuggested({ ...suggested, suggestions: suggested.suggestions.map((x, j) => (j === i ? { ...x, owner_id: e.target.value || null } : x)) })}
                   >
-                    <option value="">Unassigned</option>
+                    <NativeSelectOption value="">Unassigned</NativeSelectOption>
                     {people.map((p) => (
-                      <option key={p.id} value={p.id}>
+                      <NativeSelectOption key={p.id} value={p.id}>
                         {p.name}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
-                  <input
-                    type="date"
-                    value={s.due_date ?? ''}
+                  </NativeSelect>
+                  <DatePicker
+                    size="sm"
+                    value={s.due_date}
                     aria-label="Due date"
-                    onChange={(e) => setSuggested({ ...suggested, suggestions: suggested.suggestions.map((x, j) => (j === i ? { ...x, due_date: e.target.value || null } : x)) })}
+                    placeholder="No due date"
+                    onChange={(v) => setSuggested({ ...suggested, suggestions: suggested.suggestions.map((x, j) => (j === i ? { ...x, due_date: v } : x)) })}
                   />
                 </div>
-                <small className="muted">{s.reason}</small>
+                <small className="text-muted-foreground">{s.reason}</small>
               </div>
             </div>
           ))}
-          <footer className="row-gap">
-            <span className="grow" />
-            <button className="btn sm" onClick={() => setSuggested(null)}>
-              Dismiss
-            </button>
-            <button
-              className="btn sm primary"
-              disabled={!suggested.suggestions.some((s) => s.pick)}
-              onClick={async () => {
-                let created = 0;
-                for (const s of suggested.suggestions.filter((x) => x.pick)) {
-                  const ok = await act(() =>
-                    api.post('/tasks', { title: s.title, ownerId: s.owner_id, dueDate: s.due_date, projectId: suggested.project_id, sourceMessageId: suggested.source_message_id }),
-                  );
-                  if (ok) created += 1;
-                }
-                if (created) {
-                  setSuggested(null);
-                  await act(async () => undefined, `${created} task${created > 1 ? 's' : ''} created`);
-                }
-              }}
-            >
-              Create selected
-            </button>
-          </footer>
-        </div>
+        </AiBox>
       )}
     </div>
   );

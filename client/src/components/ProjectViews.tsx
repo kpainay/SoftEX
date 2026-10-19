@@ -5,7 +5,14 @@ import { useSession } from '../session';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { FieldInput, FieldValue, LabelChips } from './Work';
-import { useAction } from './ui';
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
+import { DatePicker, IconButton, useAction } from '@/components/kit';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 
 const STATUSES: TaskStatus[] = ['todo', 'in_progress', 'blocked', 'review', 'done'];
 
@@ -63,86 +70,80 @@ export function TaskTable({
     return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
   });
   const header = (key: SortKey, label: string) => (
-    <th key={key} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-      <button className="th-sort" onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }))}>
-        {label} {sort.key === key && <Icon name={sort.dir === 1 ? 'chevronDown' : 'chevronRight'} size={12} />}
-      </button>
-    </th>
+    <TableHead key={key} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+      <Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground" onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }))}>
+        {label} {sort.key === key && (sort.dir === 1 ? <ChevronDown data-icon="inline-end" /> : <ChevronUp data-icon="inline-end" />)}
+      </Button>
+    </TableHead>
   );
+  const cell = 'w-full min-w-28 border-transparent bg-transparent shadow-none hover:border-input';
 
   return (
-    <div className="table-wrap card">
-      <table className="task-table">
-        <thead>
-          <tr>
+    <Card className="py-0">
+      <Table className="min-w-[56rem]">
+        <TableHeader>
+          <TableRow>
             {header('title', 'Task')}
             {header('status', 'Status')}
             {header('owner', 'Owner')}
             {header('due_date', 'Due')}
             {header('priority', 'Priority')}
-            <th>Labels</th>
-            <th>Time</th>
+            <TableHead>Labels</TableHead>
+            <TableHead>Time</TableHead>
             {fields.map((f) => header(`f:${f.id}`, f.name))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((t) => (
-            <tr key={t.id} className={t.status === 'done' ? 'is-done' : ''}>
-              <td className="cell-title">
-                <button className="link-btn" onClick={() => onOpen(t.id)}>
+            <TableRow key={t.id} className={cn(t.status === 'done' && 'text-muted-foreground')}>
+              <TableCell className="max-w-72">
+                <Button variant="link" size="inline" className={cn('max-w-full justify-start truncate text-foreground', t.status === 'done' && 'line-through')} onClick={() => onOpen(t.id)}>
                   {t.title}
-                </button>
-              </td>
-              <td>
-                <select className={`cell-select status-${t.status}`} value={t.status} disabled={!canEdit} onChange={(e) => patch(t, { status: e.target.value })} aria-label={`Status of ${t.title}`}>
+                </Button>
+              </TableCell>
+              <TableCell>
+                <NativeSelect size="sm" className={cell} value={t.status} disabled={!canEdit} onChange={(e) => patch(t, { status: e.target.value })} aria-label={`Status of ${t.title}`}>
                   {STATUSES.map((s) => (
-                    <option key={s} value={s}>
+                    <NativeSelectOption key={s} value={s}>
                       {STATUS_LABEL[s]}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
-              </td>
-              <td>
-                <select className="cell-select" value={t.owner?.id ?? ''} disabled={!canEdit} onChange={(e) => patch(t, { ownerId: e.target.value || null })} aria-label={`Owner of ${t.title}`}>
-                  <option value="">Unassigned</option>
+                </NativeSelect>
+              </TableCell>
+              <TableCell>
+                <NativeSelect size="sm" className={cell} value={t.owner?.id ?? ''} disabled={!canEdit} onChange={(e) => patch(t, { ownerId: e.target.value || null })} aria-label={`Owner of ${t.title}`}>
+                  <NativeSelectOption value="">Unassigned</NativeSelectOption>
                   {people.map((p) => (
-                    <option key={p.id} value={p.id}>
+                    <NativeSelectOption key={p.id} value={p.id}>
                       {p.name}
-                    </option>
+                    </NativeSelectOption>
                   ))}
-                </select>
-              </td>
-              <td>
-                <input
-                  type="date"
-                  className={`cell-input ${t.overdue ? 'overdue' : ''}`}
-                  value={t.due_date ?? ''}
-                  disabled={!canEdit}
-                  onChange={(e) => patch(t, { dueDate: e.target.value || null })}
-                  aria-label={`Due date of ${t.title}`}
-                />
-              </td>
-              <td>
-                <select className={`cell-select prio-${t.priority}`} value={t.priority} disabled={!canEdit} onChange={(e) => patch(t, { priority: e.target.value })} aria-label={`Priority of ${t.title}`}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </td>
-              <td>
+                </NativeSelect>
+              </TableCell>
+              <TableCell className={cn(t.overdue && '[&_button]:text-destructive')}>
+                <DatePicker size="sm" value={t.due_date} disabled={!canEdit} clearable={false} placeholder="—" onChange={(v) => patch(t, { dueDate: v })} aria-label={`Due date of ${t.title}`} />
+              </TableCell>
+              <TableCell>
+                <NativeSelect size="sm" className={cn(cell, (t.priority === 'urgent' || t.priority === 'high') && '[&_select]:font-medium [&_select]:text-destructive')} value={t.priority} disabled={!canEdit} onChange={(e) => patch(t, { priority: e.target.value })} aria-label={`Priority of ${t.title}`}>
+                  <NativeSelectOption value="low">Low</NativeSelectOption>
+                  <NativeSelectOption value="medium">Medium</NativeSelectOption>
+                  <NativeSelectOption value="high">High</NativeSelectOption>
+                  <NativeSelectOption value="urgent">Urgent</NativeSelectOption>
+                </NativeSelect>
+              </TableCell>
+              <TableCell>
                 <LabelChips labels={t.labels} />
-              </td>
-              <td className="muted">{t.time_minutes ? duration(t.time_minutes) : '—'}</td>
+              </TableCell>
+              <TableCell className="text-muted-foreground tabular-nums">{t.time_minutes ? duration(t.time_minutes) : '—'}</TableCell>
               {fields.map((f) => (
-                <td key={f.id}>{canEdit ? <FieldInput field={f} value={t.fields?.[f.id]} onSave={(v) => setField(t, f, v)} /> : <FieldValue field={f} value={t.fields?.[f.id]} />}</td>
+                <TableCell key={f.id}>{canEdit ? <FieldInput field={f} value={t.fields?.[f.id]} onSave={(v) => setField(t, f, v)} /> : <FieldValue field={f} value={t.fields?.[f.id]} />}</TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-      {!rows.length && <p className="muted pad">No tasks match.</p>}
-    </div>
+        </TableBody>
+      </Table>
+      {!rows.length && <p className="p-6 text-center text-sm text-muted-foreground">No tasks match.</p>}
+    </Card>
   );
 }
 
@@ -171,75 +172,87 @@ export function TaskCalendar({ tasks, canEdit, onOpen, onChanged }: { tasks: Tas
     if (updated) onChanged({ ...task, ...updated });
   };
 
+  const chip = (t: Task) =>
+    cn(
+      'flex w-full min-w-0 items-center gap-1 rounded-md border-l-2 bg-muted px-1.5 py-0.5 text-left text-xs hover:bg-accent',
+      t.status === 'done' ? 'border-success text-muted-foreground line-through' : t.status === 'blocked' ? 'border-destructive' : t.status === 'in_progress' ? 'border-info' : 'border-border',
+      t.overdue && 'text-destructive',
+    );
   return (
-    <div className="calendar card">
-      <div className="calendar-head">
-        <button className="icon-btn" aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>
+    <Card className="gap-3">
+      <CardHeader className="flex flex-wrap items-center gap-2">
+        <IconButton label="Previous month" size="icon-sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>
           <Icon name="chevronLeft" />
-        </button>
-        <h3>{month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
-        <button className="icon-btn" aria-label="Next month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>
+        </IconButton>
+        <h3 className="min-w-40 text-center font-heading text-base font-semibold">{month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
+        <IconButton label="Next month" size="icon-sm" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>
           <Icon name="chevronRight" />
-        </button>
-        <button className="btn sm" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>
+        </IconButton>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>
           Today
-        </button>
-      </div>
-      <div className="calendar-grid" role="grid">
-        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-          <div key={d} className="calendar-dow" role="columnheader">
-            {d}
-          </div>
-        ))}
-        {days.map((d) => {
-          const key = iso(d);
-          const items = byDay.get(key) ?? [];
-          return (
-            <div
-              key={key}
-              role="gridcell"
-              aria-label={d.toDateString()}
-              className={`calendar-day ${d.getMonth() !== month.getMonth() ? 'other' : ''} ${key === today ? 'today' : ''}`}
-              onDragOver={(e) => canEdit && dragged && e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragged) reschedule(dragged, key);
-                setDragged(null);
-              }}
-            >
-              <span className="calendar-date">{d.getDate()}</span>
-              {items.slice(0, 4).map((t) => (
-                <button
-                  key={t.id}
-                  className={`calendar-task status-${t.status} ${t.overdue ? 'overdue' : ''}`}
-                  draggable={canEdit}
-                  onDragStart={() => setDragged(t.id)}
-                  onClick={() => onOpen(t.id)}
-                  title={`${t.title} · ${STATUS_LABEL[t.status]}${t.owner ? ` · ${t.owner.name}` : ''}`}
-                >
-                  {t.owner && <Avatar user={t.owner} size="xs" />}
-                  <span>{t.title}</span>
+        </Button>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <div className="grid min-w-[42rem] grid-cols-7 overflow-hidden rounded-xl border bg-border [gap:1px]" role="grid">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+            <div key={d} className="bg-muted px-2 py-1.5 text-xs font-medium text-muted-foreground" role="columnheader">
+              {d}
+            </div>
+          ))}
+          {days.map((d) => {
+            const key = iso(d);
+            const items = byDay.get(key) ?? [];
+            const other = d.getMonth() !== month.getMonth();
+            return (
+              <div
+                key={key}
+                role="gridcell"
+                aria-label={d.toDateString()}
+                className={cn('flex min-h-24 flex-col gap-1 bg-card p-1.5', other && 'bg-muted/40 text-muted-foreground', dragged && canEdit && 'hover:bg-accent/50')}
+                onDragOver={(e) => canEdit && dragged && e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragged) reschedule(dragged, key);
+                  setDragged(null);
+                }}
+              >
+                <span className={cn('flex size-6 items-center justify-center rounded-full text-xs', key === today && 'bg-primary font-semibold text-primary-foreground')}>{d.getDate()}</span>
+                {items.slice(0, 4).map((t) => (
+                  <button
+                    key={t.id}
+                    className={chip(t)}
+                    draggable={canEdit}
+                    onDragStart={() => setDragged(t.id)}
+                    onClick={() => onOpen(t.id)}
+                    title={`${t.title} · ${STATUS_LABEL[t.status]}${t.owner ? ` · ${t.owner.name}` : ''}`}
+                  >
+                    {t.owner && <Avatar user={t.owner} size="xs" className="size-4 text-[8px]" />}
+                    <span className="truncate">{t.title}</span>
+                  </button>
+                ))}
+                {items.length > 4 && <span className="px-1 text-xs text-muted-foreground">+{items.length - 4} more</span>}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+      {undated.length > 0 && (
+        <CardFooter>
+          <Collapsible className="flex w-full flex-col gap-2">
+            <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="self-start" />}>
+              <ChevronRight data-icon="inline-start" className="transition-transform in-data-[panel-open]:rotate-90" />
+              {undated.length} open task{undated.length === 1 ? '' : 's'} without a due date {canEdit && <span className="text-muted-foreground">— drag one onto a day</span>}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-wrap gap-2">
+              {undated.map((t) => (
+                <button key={t.id} className={cn(chip(t), 'w-auto max-w-64')} draggable={canEdit} onDragStart={() => setDragged(t.id)} onClick={() => onOpen(t.id)}>
+                  <span className="truncate">{t.title}</span> {t.due_date && <span>{dueLabel(t.due_date)}</span>}
                 </button>
               ))}
-              {items.length > 4 && <small className="muted">+{items.length - 4} more</small>}
-            </div>
-          );
-        })}
-      </div>
-      {undated.length > 0 && (
-        <details className="calendar-undated">
-          <summary>
-            {undated.length} open task{undated.length === 1 ? '' : 's'} without a due date {canEdit && <small className="muted">— drag one onto a day</small>}
-          </summary>
-          <div className="row-gap wrap">
-            {undated.map((t) => (
-              <button key={t.id} className="calendar-task" draggable={canEdit} onDragStart={() => setDragged(t.id)} onClick={() => onOpen(t.id)}>
-                <span>{t.title}</span> {t.due_date && <small>{dueLabel(t.due_date)}</small>}
-              </button>
-            ))}
-          </div>
-        </details>
+            </CollapsibleContent>
+          </Collapsible>
+        </CardFooter>
       )}
-    </div>
+    </Card>
   );
 }

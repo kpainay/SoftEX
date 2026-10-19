@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { usePublicPricing } from './Pricing';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Page, PageHeader, SearchField } from '@/components/kit';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Kbd } from '@/components/ui/kbd';
 
 interface Topic {
   id: string;
@@ -146,58 +151,67 @@ export function Help() {
   const topics = TOPICS.map((t) => ({ ...t, items: t.items.filter((i) => !term || `${t.title} ${i.q} ${text(i.a)}`.toLowerCase().includes(term)) })).filter((t) => t.items.length);
   const contact = pricing?.support_email ?? pricing?.company.email;
   return (
-    <div className="page narrow">
-      <div className="page-head">
-        <div>
-          <h1>Help</h1>
-          <p className="muted">How to get the most out of Küü, one topic at a time.</p>
-        </div>
-      </div>
-      <input className="filter help-filter" placeholder="Search help…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search help" />
-      <nav className="help-topics" aria-label="Help topics">
+    <Page width="narrow">
+      <PageHeader title="Help" description="How to get the most out of Küü, one topic at a time." />
+      <SearchField className="max-w-none" placeholder="Search help…" value={q} onChange={setQ} aria-label="Search help" />
+      <nav className="flex flex-wrap gap-1.5" aria-label="Help topics">
         {TOPICS.map((t) => (
-          <a key={t.id} href={`#help-${t.id}`}>
-            <Icon name={t.icon} size={15} /> {t.title}
+          <a key={t.id} href={`#help-${t.id}`} className={buttonVariants({ variant: 'outline', size: 'sm', className: 'rounded-full' })}>
+            <Icon name={t.icon} data-icon="inline-start" /> {t.title}
           </a>
         ))}
       </nav>
       {!topics.length && (
-        <p className="muted">
+        <p className="text-sm text-muted-foreground">
           Nothing in help matches “{q}”.{' '}
-          <button className="link-btn" onClick={() => openSearch(q)}>
+          <Button variant="link" size="inline" onClick={() => openSearch(q)}>
             Search your workspace instead
-          </button>
+          </Button>
         </p>
       )}
       {topics.map((t) => (
-        <section key={t.id} id={`help-${t.id}`} className="card help-topic">
-          <h2>
-            <Icon name={t.icon} size={18} /> {t.title}
-          </h2>
-          {t.items.map((i) => (
-            <details key={i.q} open={!!term}>
-              <summary>{i.q}</summary>
-              <p>{i.a}</p>
-            </details>
-          ))}
-        </section>
+        <Card key={t.id} id={`help-${t.id}`} className="scroll-mt-20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Icon name={t.icon} size={18} className="text-primary" /> {t.title}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Accordion multiple key={term ? `open-${term}` : 'closed'} defaultValue={term ? t.items.map((i) => i.q) : []}>
+              {t.items.map((i) => (
+                <AccordionItem key={i.q} value={i.q}>
+                  <AccordionTrigger>{i.q}</AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-muted-foreground">{i.a}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </CardContent>
+        </Card>
       ))}
-      <section className="card help-topic">
-        <h2>
-          <Icon name="help" size={18} /> Still stuck?
-        </h2>
-        <p className="muted">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Icon name="help" size={18} className="text-primary" /> Still stuck?
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
           Ask your workspace admin, or{' '}
           {contact ? (
             <>
-              email us at <a href={`mailto:${contact}`}>{contact}</a>.
+              email us at{' '}
+              <a className="text-primary hover:underline" href={`mailto:${contact}`}>
+                {contact}
+              </a>
+              .
             </>
           ) : (
             'contact whoever runs your Küü server.'
           )}{' '}
-          Messages and pages support <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code>, lists, <code>&gt; quotes</code>, links and <code>@mentions</code>.
-        </p>
-      </section>
-    </div>
+          Messages and pages support <Kbd>**bold**</Kbd>, <Kbd>*italic*</Kbd>, <Kbd>`code`</Kbd>, lists, <Kbd>&gt; quotes</Kbd>, links and <Kbd>@mentions</Kbd>.
+        </CardContent>
+      </Card>
+    </Page>
   );
 }

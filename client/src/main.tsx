@@ -3,18 +3,18 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { registerServiceWorker } from './pwa';
-import { ToastProvider } from './components/ui';
+import { AppProviders } from '@/components/kit';
 import { SessionProvider } from './session';
-import './styles.css';
+import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <ToastProvider>
+      <AppProviders>
         <SessionProvider>
           <App />
         </SessionProvider>
-      </ToastProvider>
+      </AppProviders>
     </BrowserRouter>
   </StrictMode>,
 );

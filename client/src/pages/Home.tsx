@@ -5,11 +5,19 @@ import { Avatar, AvatarStack } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { TaskRow } from '../components/TaskDrawer';
-import { ErrorState, Field, HealthPill, Loading, Modal, useAction } from '../components/ui';
+import { ErrorState, FormField, Loading, Modal, Page, PageHeader, Panel, SwitchField, useAction } from '@/components/kit';
+import { ProjectCard } from '../components/ProjectCard';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 import { plainMentions, timeAgo, timeOf } from '../format';
 import { useApi, useRealtime } from '../hooks';
 import { useSession } from '../session';
 import { GroupCount } from './Inbox';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
 
 interface HomeData {
   since: string;
@@ -97,281 +105,219 @@ export function Home() {
   };
   const show = (id: Section) => !hidden.includes(id);
 
+  const nudge = 'h-7 gap-1.5 rounded-full px-3 text-xs';
+  const viewAll = (to: string, label: string) => (
+    <Link to={to} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+      {label} <Icon name="arrow" data-icon="inline-end" />
+    </Link>
+  );
+
   return (
-    <div className="page home-page">
-      <div className="welcome">
-        <div>
-          <p className="eyebrow">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</p>
-          <h1>
+    <Page width="full" className="max-w-7xl">
+      <PageHeader
+        eyebrow={new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+        title={
+          <>
             {greeting}, {first} <span aria-hidden="true">👋</span>
-          </h1>
-          <p className="muted">
+          </>
+        }
+        description={
+          <>
             {data.counts.open_tasks} open task{data.counts.open_tasks === 1 ? '' : 's'}
             {data.counts.overdue ? `, ${data.counts.overdue} overdue` : ''} · {data.meetings.length} meeting{data.meetings.length === 1 ? '' : 's'} coming up ·{' '}
             {data.counts.unread} unread
-          </p>
-        </div>
-        <div className="welcome-actions">
-          <button className="btn" onClick={() => setTuning(true)}>
-            <Icon name="settings" size={16} /> Customize
-          </button>
-          <button className="btn primary" onClick={() => openCreate()}>
-            <Icon name="plus" size={16} /> Create new
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setTuning(true)}>
+              <Icon name="settings" data-icon="inline-start" /> Customize
+            </Button>
+            <Button onClick={() => openCreate()}>
+              <Icon name="plus" data-icon="inline-start" /> Create new
+            </Button>
+          </>
+        }
+      />
 
-      <div className="nudges">
+      <div className="-mt-2 flex flex-wrap gap-2">
         {data.onboarding.total > 0 && data.onboarding.done < data.onboarding.total && (
-          <Link to="/settings?tab=onboarding" className="nudge">
-            <Icon name="flag" size={16} /> Onboarding: {data.onboarding.done} of {data.onboarding.total} steps done
-          </Link>
+          <Badge variant="brand" className={nudge} render={<Link to="/settings?tab=onboarding" />}>
+            <Icon name="flag" /> Onboarding: {data.onboarding.done} of {data.onboarding.total} steps done
+          </Badge>
         )}
         {data.pending_approvals > 0 && (
-          <Link to="/requests" className="nudge warn">
-            <Icon name="inboxCheck" size={16} /> {data.pending_approvals} request{data.pending_approvals > 1 ? 's' : ''} waiting for your approval
-          </Link>
+          <Badge variant="warning" className={nudge} render={<Link to="/requests" />}>
+            <Icon name="inboxCheck" /> {data.pending_approvals} request{data.pending_approvals > 1 ? 's' : ''} waiting for your approval
+          </Badge>
         )}
         {!data.checked_in_today && me!.role !== 'guest' && (
-          <button className="nudge" onClick={() => setCheckin(true)}>
-            <Icon name="target" size={16} /> Share today’s check-in
-          </button>
+          <Badge variant="brand" className={cn(nudge, 'cursor-pointer')} render={<button type="button" onClick={() => setCheckin(true)} />}>
+            <Icon name="target" /> Share today’s check-in
+          </Badge>
         )}
         {data.reviews_due.map((p) => (
-          <Link key={p.id} to={`/knowledge/${p.id}`} className="nudge warn">
-            <Icon name="book" size={16} /> “{p.title}” is due for review
-          </Link>
+          <Badge key={p.id} variant="warning" className={nudge} render={<Link to={`/knowledge/${p.id}`} />}>
+            <Icon name="book" /> “{p.title}” is due for review
+          </Badge>
         ))}
       </div>
 
       {data.setup && <SetupGuide steps={data.setup} />}
 
-      <div className="dashboard-grid">
-        <div className="main-column">
-          <article className="card">
-            <div className="section-heading">
-              <div>
-                <h2>Today’s focus</h2>
-                <p>{data.focus.length ? `${data.focus.length} task${data.focus.length > 1 ? 's' : ''} need your attention` : 'Nothing due today. Nice.'}</p>
-              </div>
-              <Link to="/my-work">
-                View all <Icon name="arrow" size={15} />
-              </Link>
-            </div>
-            <div className="task-list">
-              {data.focus.map((t) => (
-                <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => complete(t, d)} />
-              ))}
-            </div>
-            <button className="add-task" onClick={() => openCreate('task')}>
-              <Icon name="plus" size={16} /> Add a task
-            </button>
-          </article>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <Panel
+            title="Today’s focus"
+            description={data.focus.length ? `${data.focus.length} task${data.focus.length > 1 ? 's' : ''} need your attention` : 'Nothing due today. Nice.'}
+            action={viewAll('/my-work', 'View all')}
+            contentClassName="flex flex-col"
+          >
+            {data.focus.map((t) => (
+              <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => complete(t, d)} />
+            ))}
+            <Button variant="ghost" className="mt-1 justify-start text-muted-foreground" onClick={() => openCreate('task')}>
+              <Icon name="plus" data-icon="inline-start" /> Add a task
+            </Button>
+          </Panel>
 
           {data.blocked.length > 0 && (
-            <article className="card attention">
-              <div className="section-heading">
-                <div>
-                  <h2>
-                    <Icon name="alert" size={18} /> Blocked
-                  </h2>
-                  <p>Work that cannot move until something changes</p>
-                </div>
-              </div>
-              <div className="task-list">
-                {data.blocked.map((t) => (
-                  <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} />
-                ))}
-              </div>
-            </article>
+            <Panel
+              className="ring-warning/40"
+              title={
+                <span className="flex items-center gap-2">
+                  <Icon name="alert" size={18} className="text-warning" /> Blocked
+                </span>
+              }
+              description="Work that cannot move until something changes"
+              contentClassName="flex flex-col"
+            >
+              {data.blocked.map((t) => (
+                <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} />
+              ))}
+            </Panel>
           )}
 
           {show('upnext') && data.up_next.length > 0 && (
-            <article className="card">
-              <div className="section-heading">
-                <div>
-                  <h2>Up next</h2>
-                  <p>Your next open tasks</p>
-                </div>
-              </div>
-              <div className="task-list">
-                {data.up_next.map((t) => (
-                  <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => complete(t, d)} />
-                ))}
-              </div>
-            </article>
+            <Panel title="Up next" description="Your next open tasks" contentClassName="flex flex-col">
+              {data.up_next.map((t) => (
+                <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => complete(t, d)} />
+              ))}
+            </Panel>
           )}
 
           {show('projects') && (
-            <article className="card">
-              <div className="section-heading">
-                <div>
-                  <h2>Active projects</h2>
-                  <p>Projects you are part of</p>
-                </div>
-                <Link to="/projects">
-                  All projects <Icon name="arrow" size={15} />
-                </Link>
-              </div>
+            <Panel title="Active projects" description="Projects you are part of" action={viewAll('/projects', 'All projects')}>
               {data.projects.length ? (
-                <div className="project-grid">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {data.projects.map((p) => (
-                    <Link key={p.id} to={`/projects/${p.id}`} className="project-card">
-                      <div className="project-top">
-                        <span className={`project-icon bg-${p.color}`}>
-                          <Icon name="folder" />
-                        </span>
-                      </div>
-                      <h3>{p.name}</h3>
-                      <p>
-                        {p.member_count} member{p.member_count === 1 ? '' : 's'}
-                      </p>
-                      <div className="progress-label">
-                        <span>Progress</span>
-                        <b>{p.progress}%</b>
-                      </div>
-                      <div className={`progress fg-${p.color}`}>
-                        <i style={{ width: `${p.progress}%` }} />
-                      </div>
-                      <div className="project-footer">
-                        <AvatarStack users={p.members} total={p.member_count} />
-                        <HealthPill health={p.health} />
-                      </div>
-                    </Link>
+                    <ProjectCard key={p.id} project={p} />
                   ))}
                 </div>
               ) : (
-                <p className="muted">
+                <p className="text-sm text-muted-foreground">
                   You are not in any projects yet.{' '}
                   {me!.role !== 'guest' && (
-                    <button className="link-btn" onClick={() => openCreate('project')}>
+                    <Button variant="link" size="inline" onClick={() => openCreate('project')}>
                       Start one
-                    </button>
+                    </Button>
                   )}
                 </p>
               )}
-            </article>
+            </Panel>
           )}
         </div>
 
-        <aside className="right-column">
-          <article className="card">
-            <div className="section-heading compact">
-              <div>
-                <h2>Meetings</h2>
-                <p>Next 36 hours</p>
-              </div>
-            </div>
+        <aside className="flex flex-col gap-4">
+          <Panel title="Meetings" description="Next 36 hours" contentClassName="flex flex-col gap-1" footer={viewAll('/meetings', 'Open meetings')}>
             {data.meetings.map((m) => (
-              <Link key={m.id} to={`/meetings/${m.id}`} className="meeting">
-                <div className="time">
-                  <strong>{timeOf(m.starts_at).replace(/\s?[AP]M/i, '')}</strong>
-                  <small>{timeOf(m.starts_at).match(/[AP]M/i)?.[0] ?? ''}</small>
+              <Link key={m.id} to={`/meetings/${m.id}`} className="-mx-2 flex items-stretch gap-3 rounded-xl p-2 transition-colors hover:bg-muted/60">
+                <div className="flex w-12 shrink-0 flex-col items-end">
+                  <strong className="text-sm font-semibold tabular-nums">{timeOf(m.starts_at).replace(/\s?[AP]M/i, '')}</strong>
+                  <span className="text-xs text-muted-foreground">{timeOf(m.starts_at).match(/[AP]M/i)?.[0] ?? ''}</span>
                 </div>
-                <div className={`meeting-line ${m.started_at ? 'live' : ''}`} />
-                <div>
-                  <h3>{m.title}</h3>
-                  <p>
-                    <Icon name={m.video_url ? 'video' : 'calendar'} size={14} />
+                <span className={cn('w-1 shrink-0 rounded-full bg-primary', m.started_at && 'animate-pulse bg-destructive')} />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <h3 className="truncate text-sm font-semibold">{m.title}</h3>
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Icon name={m.video_url ? 'video' : 'calendar'} size={13} />
                     {m.started_at ? 'Live now' : new Date(m.starts_at).toDateString() === new Date().toDateString() ? 'Today' : 'Tomorrow'} · {m.duration_min} min
                   </p>
                   <AvatarStack users={m.participants} />
                 </div>
               </Link>
             ))}
-            {!data.meetings.length && <p className="muted">No meetings coming up.</p>}
-            <Link className="card-link" to="/meetings">
-              Open meetings <Icon name="arrow" size={15} />
-            </Link>
-          </article>
+            {!data.meetings.length && <p className="text-sm text-muted-foreground">No meetings coming up.</p>}
+          </Panel>
 
-          <article className="card">
-            <div className="section-heading compact">
-              <div>
-                <h2>Mentions & messages</h2>
-                <p>Unread</p>
-              </div>
-            </div>
+          <Panel title="Mentions & messages" description="Unread" contentClassName="flex flex-col gap-1">
             {data.mentions.map((n) => (
-              <Link key={n.id} to={n.link} className="activity" onClick={() => api.post(`/notifications/${n.id}/read`)}>
+              <Link key={n.id} to={n.link} className="-mx-2 flex gap-2.5 rounded-xl p-2 transition-colors hover:bg-muted/60" onClick={() => api.post(`/notifications/${n.id}/read`)}>
                 <Avatar user={{ name: n.actor_name ?? '?', color: n.actor_color }} size="sm" />
-                <div>
+                <div className="flex min-w-0 flex-col gap-0.5 text-sm">
                   <p>
                     {n.title}
                     <GroupCount n={n} />
                   </p>
-                  {n.body && <small>“{plainMentions(n.body).slice(0, 90)}”</small>}
-                  <time>{timeAgo(n.created_at)}</time>
+                  {n.body && <span className="line-clamp-2 text-xs text-muted-foreground">“{plainMentions(n.body).slice(0, 90)}”</span>}
+                  <time className="text-xs text-muted-foreground">{timeAgo(n.created_at)}</time>
                 </div>
               </Link>
             ))}
-            {!data.mentions.length && <p className="muted">You are all caught up.</p>}
-          </article>
+            {!data.mentions.length && <p className="text-sm text-muted-foreground">You are all caught up.</p>}
+          </Panel>
 
           {show('decisions') && (
-            <article className="card">
-              <div className="section-heading compact">
-                <div>
-                  <h2>Recent decisions</h2>
-                  <p>Across your projects</p>
-                </div>
-                <Link to="/decisions">All</Link>
-              </div>
+            <Panel title="Recent decisions" description="Across your projects" action={viewAll('/decisions', 'All')} contentClassName="flex flex-col gap-3">
               {data.decisions.map((d) => (
-                <div key={d.id} className="activity">
-                  <span className="activity-icon decision">
+                <div key={d.id} className="flex gap-2.5">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
                     <Icon name="gavel" size={15} />
                   </span>
-                  <div>
-                    <p>
-                      <strong>{d.title}</strong>
-                    </p>
-                    <small>
-                      {d.decided_by_name} · {d.project_name ?? 'Workspace'}
-                    </small>
-                    <time>{timeAgo(d.created_at)}</time>
+                  <div className="flex min-w-0 flex-col gap-0.5 text-sm">
+                    <strong className="font-semibold">{d.title}</strong>
+                    <span className="text-xs text-muted-foreground">
+                      {d.decided_by_name} · {d.project_name ?? 'Workspace'} · {timeAgo(d.created_at)}
+                    </span>
                   </div>
                 </div>
               ))}
-              {!data.decisions.length && <p className="muted">No decisions recorded yet.</p>}
-            </article>
+              {!data.decisions.length && <p className="text-sm text-muted-foreground">No decisions recorded yet.</p>}
+            </Panel>
           )}
 
           {show('changes') && (
-            <article className="card">
-              <div className="section-heading compact">
-                <div>
-                  <h2>What changed</h2>
-                  <p>{data.first_visit ? 'Recent activity in your workspace' : `Since you last checked · ${timeAgo(data.since)}`}</p>
-                </div>
-              </div>
+            <Panel
+              title="What changed"
+              description={data.first_visit ? 'Recent activity in your workspace' : `Since you last checked · ${timeAgo(data.since)}`}
+              contentClassName="flex flex-col gap-1"
+            >
               {data.changes.map((a) => (
-                <Link key={a.id} to={a.link || '#'} className="activity">
+                <Link key={a.id} to={a.link || '#'} className="-mx-2 flex gap-2.5 rounded-xl p-2 transition-colors hover:bg-muted/60">
                   <Avatar user={{ id: a.actor_id, name: a.actor_name, color: a.actor_color }} size="sm" />
-                  <div>
+                  <div className="flex min-w-0 flex-col gap-0.5 text-sm">
                     <p>
-                      <strong>{a.actor_name.split(' ')[0]}</strong> {a.summary}
+                      <strong className="font-semibold">{a.actor_name.split(' ')[0]}</strong> {a.summary}
                     </p>
-                    <time>{timeAgo(a.created_at)}</time>
+                    <time className="text-xs text-muted-foreground">{timeAgo(a.created_at)}</time>
                   </div>
                 </Link>
               ))}
-              {!data.changes.length && <p className="muted">Nothing new since your last visit.</p>}
-            </article>
+              {!data.changes.length && <p className="text-sm text-muted-foreground">Nothing new since your last visit.</p>}
+            </Panel>
           )}
         </aside>
       </div>
 
-      <Modal open={tuning} onClose={() => setTuning(false)} title="Customize Home" eyebrow="YOUR VIEW">
-        <p className="muted">Choose what Home shows. Today’s focus, blocked work, meetings and unread mentions always stay visible.</p>
-        {OPTIONAL.map((o) => (
-          <label key={o.id} className="check-row">
-            <input type="checkbox" checked={!hidden.includes(o.id)} onChange={() => toggleSection(o.id)} /> {o.label}
-          </label>
-        ))}
+      <Modal open={tuning} onClose={() => setTuning(false)} title="Customize Home" eyebrow="Your view" description="Choose what Home shows. Today’s focus, blocked work, meetings and unread mentions always stay visible.">
+        <div className="flex flex-col gap-4 py-1">
+          {OPTIONAL.map((o) => (
+            <SwitchField key={o.id} label={o.label} checked={!hidden.includes(o.id)} onCheckedChange={() => toggleSection(o.id)} />
+          ))}
+        </div>
       </Modal>
       <CheckinModal open={checkin} onClose={() => setCheckin(false)} onDone={reload} />
-    </div>
+    </Page>
   );
 }
 
@@ -380,9 +326,9 @@ export function CheckinModal({ open, onClose, onDone, projectId }: { open: boole
   const { data: projects } = useApi<Project[]>(open && !projectId ? '/projects' : null);
   const [form, setForm] = useState({ projectId: projectId ?? '', done: '', next: '', blockers: '' });
   return (
-    <Modal open={open} onClose={onClose} title="Daily check-in" eyebrow="ASYNC UPDATE">
+    <Modal open={open} onClose={onClose} title="Daily check-in" eyebrow="Async update">
       <form
-        className="form"
+        className="flex flex-col gap-4"
         onSubmit={async (e) => {
           e.preventDefault();
           const ok = await act(() => api.post('/checkins', { ...form, projectId: form.projectId || null }), 'Check-in shared');
@@ -394,33 +340,33 @@ export function CheckinModal({ open, onClose, onDone, projectId }: { open: boole
         }}
       >
         {!projectId && (
-          <Field label="Project">
-            <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
-              <option value="">General</option>
+          <FormField label="Project">
+            <NativeSelect value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
+              <NativeSelectOption value="">General</NativeSelectOption>
               {(projects ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
+                <NativeSelectOption key={p.id} value={p.id}>
                   {p.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </Field>
+            </NativeSelect>
+          </FormField>
         )}
-        <Field label="What did you get done?">
-          <textarea rows={2} value={form.done} onChange={(e) => setForm({ ...form, done: e.target.value })} />
-        </Field>
-        <Field label="What are you working on next?">
-          <textarea rows={2} value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} />
-        </Field>
-        <Field label="Anything blocking you?" hint="Blockers notify the project owner.">
-          <textarea rows={2} value={form.blockers} onChange={(e) => setForm({ ...form, blockers: e.target.value })} />
-        </Field>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <FormField label="What did you get done?">
+          <Textarea rows={2} value={form.done} onChange={(e) => setForm({ ...form, done: e.target.value })} />
+        </FormField>
+        <FormField label="What are you working on next?">
+          <Textarea rows={2} value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} />
+        </FormField>
+        <FormField label="Anything blocking you?" hint="Blockers notify the project owner.">
+          <Textarea rows={2} value={form.blockers} onChange={(e) => setForm({ ...form, blockers: e.target.value })} />
+        </FormField>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" disabled={!form.done && !form.next && !form.blockers}>
+          </Button>
+          <Button disabled={!form.done && !form.next && !form.blockers} type="submit">
             Share check-in
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -465,53 +411,59 @@ function SetupGuide({ steps }: { steps: { id: SetupStepId; done: boolean }[] }) 
     setHidden(true);
   };
   return (
-    <section className="card setup-guide" aria-label="Get started">
-      <div className="section-heading">
-        <div>
-          <h2>Get {me?.workspace.name} ready</h2>
-          <p>
-            {done} of {steps.length} done — a few minutes now saves your team a lot of time later.
-          </p>
-        </div>
-        <button className="btn sm" onClick={hide}>
-          Hide
-        </button>
-      </div>
-      <div className="setup-progress" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={done} aria-label="Setup progress">
-        <i style={{ width: `${(done / steps.length) * 100}%` }} />
-      </div>
-      <ol className="setup-steps">
-        {steps.map((s) => {
-          const step = SETUP_STEPS[s.id];
-          const primary = s.id === next;
-          return (
-            <li key={s.id} className={s.done ? 'done' : primary ? 'next' : ''}>
-              <span className="setup-check" aria-hidden="true">
-                {s.done ? <Icon name="check" size={14} /> : null}
-              </span>
-              <div className="grow">
-                <strong>{step.title}</strong>
-                {!s.done && <small className="muted">{step.text}</small>}
-              </div>
-              {!s.done &&
-                (step.to ? (
-                  <Link className={`btn sm ${primary ? 'primary' : ''}`} to={step.to}>
-                    {step.cta}
-                  </Link>
-                ) : step.create ? (
-                  <button className={`btn sm ${primary ? 'primary' : ''}`} onClick={() => openCreate(step.create)}>
-                    {step.cta}
-                  </button>
-                ) : (
-                  <button className={`btn sm ${primary ? 'primary' : ''}`} onClick={() => act(() => api.post('/me/verify-email/resend'), 'Confirmation email sent')}>
-                    {step.cta}
-                  </button>
-                ))}
-              <span className="sr-only">{s.done ? 'Done' : 'Not done yet'}</span>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+    <Card aria-label="Get started" role="region" className="ring-primary/20">
+      <CardHeader>
+        <CardTitle className="text-base">Get {me?.workspace.name} ready</CardTitle>
+        <CardDescription>
+          {done} of {steps.length} done — a few minutes now saves your team a lot of time later.
+        </CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={hide}>
+            Hide
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Progress value={(done / steps.length) * 100} aria-label="Setup progress" />
+        <ol className="flex flex-col divide-y">
+          {steps.map((s) => {
+            const step = SETUP_STEPS[s.id];
+            const primary = s.id === next;
+            return (
+              <li key={s.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                <span
+                  className={cn(
+                    'flex size-6 shrink-0 items-center justify-center rounded-full border',
+                    s.done ? 'border-success bg-success text-white' : primary ? 'border-primary' : 'border-border',
+                  )}
+                  aria-hidden="true"
+                >
+                  {s.done ? <Icon name="check" size={14} /> : null}
+                </span>
+                <div className="flex min-w-0 flex-1 basis-48 flex-col">
+                  <strong className={cn('text-sm font-medium', s.done && 'text-muted-foreground line-through')}>{step.title}</strong>
+                  {!s.done && <span className="text-xs text-muted-foreground">{step.text}</span>}
+                </div>
+                {!s.done &&
+                  (step.to ? (
+                    <Link to={step.to} className={buttonVariants({ variant: primary ? 'default' : 'outline', size: 'sm' })}>
+                      {step.cta}
+                    </Link>
+                  ) : step.create ? (
+                    <Button size="sm" variant={primary ? 'default' : 'outline'} onClick={() => openCreate(step.create)}>
+                      {step.cta}
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant={primary ? 'default' : 'outline'} onClick={() => act(() => api.post('/me/verify-email/resend'), 'Confirmation email sent')}>
+                      {step.cta}
+                    </Button>
+                  ))}
+                <span className="sr-only">{s.done ? 'Done' : 'Not done yet'}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </CardContent>
+    </Card>
   );
 }

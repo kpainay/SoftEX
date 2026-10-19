@@ -4,7 +4,13 @@ import { bytes as fmtBytes, timeAgo } from '../format';
 import { useApi, useRealtime } from '../hooks';
 import { Icon } from './Icon';
 import { UpgradeNotice } from './Plan';
-import { Field, Modal, useAction, useToast } from './ui';
+import { Callout, CheckboxField, FormField, Modal, Pill, Segmented, useAction, useConfirm, useToast } from '@/components/kit';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
+import { cn } from '@/lib/utils';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Input } from '@/components/ui/input';
 
 interface Recording {
   id: string;
@@ -84,6 +90,7 @@ interface Session {
 /** Record the meeting, show live captions, and list recordings with their transcripts. */
 export function MeetingRecordings({ meetingId, meetingTitle }: { meetingId: string; meetingTitle: string }) {
   const act = useAction();
+  const confirm = useConfirm();
   const toast = useToast();
   const { data, reload } = useApi<RecordingsInfo>(`/meetings/${meetingId}/recordings`);
   const [asking, setAsking] = useState(false);
@@ -276,64 +283,75 @@ export function MeetingRecordings({ meetingId, meetingTitle }: { meetingId: stri
   const othersRecording = data.recordings.filter((r) => r.status === 'recording' && r.id !== session?.recordingId);
   if (!data.recordings.length && !data.can_record) return null;
 
+  const recDot = <span className="size-2 shrink-0 animate-pulse rounded-full bg-destructive" aria-hidden="true" />;
   return (
-    <article className="card" id="recordings">
-      <div className="section-heading compact">
-        <h2>Recording & transcript</h2>
+    <Card id="recordings">
+      <CardHeader>
+        <CardTitle>Recording & transcript</CardTitle>
         {data.can_record && data.available && !session && (
-          <button className="btn sm" onClick={() => setAsking(true)} disabled={saving}>
-            <span className="rec-dot" /> {saving ? 'Saving…' : 'Record'}
-          </button>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={() => setAsking(true)} disabled={saving}>
+              {saving ? <Spinner data-icon="inline-start" /> : <span className="size-2 rounded-full bg-destructive" aria-hidden="true" />} {saving ? 'Saving…' : 'Record'}
+            </Button>
+          </CardAction>
         )}
-      </div>
-      {!data.available && data.can_record && <UpgradeNotice feature="recordings" compact />}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {!data.available && data.can_record && <UpgradeNotice feature="recordings" compact />}
 
-      {othersRecording.map((r) => (
-        <p key={r.id} className="hint-box warn recording-banner" role="status">
-          <span className="rec-dot" /> {r.started_by?.name} is recording this meeting.
-        </p>
-      ))}
+        {othersRecording.map((r) => (
+          <Callout tone="warning" key={r.id}>
+            {r.started_by?.name} is recording this meeting.
+          </Callout>
+        ))}
 
-      {session && (
-        <div className="recording-live" role="status">
-          <span className="rec-dot" />
-          <strong>Recording {clock(elapsed)}</strong>
-          <small className="muted">{fmtBytes(session.bytes)}</small>
-          <span className="grow" />
-          {data.server_transcription && (
-            <label className="check-inline small">
-              <input type="checkbox" checked={transcribe} onChange={(e) => setTranscribe(e.target.checked)} /> Transcribe after saving
-            </label>
-          )}
-          <button className="btn sm" onClick={() => confirm('Discard this recording?') && void stop(false)}>
-            Discard
-          </button>
-          <button className="btn primary sm" onClick={() => void stop(true)}>
-            Stop and save
-          </button>
-        </div>
-      )}
+        {session && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2" role="status">
+            {recDot}
+            <strong className="font-semibold tabular-nums">Recording {clock(elapsed)}</strong>
+            <span className="text-xs text-muted-foreground">{fmtBytes(session.bytes)}</span>
+            <span className="min-w-0 flex-1" />
+            {data.server_transcription && <CheckboxField label="Transcribe after saving" checked={transcribe} onCheckedChange={setTranscribe} className="w-auto" />}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                if (await confirm({ title: 'Discard this recording?', description: 'Nothing recorded so far is kept.', confirmLabel: 'Discard', destructive: true })) void stop(false);
+              }}
+            >
+              Discard
+            </Button>
+            <Button size="sm" onClick={() => void stop(true)}>
+              Stop and save
+            </Button>
+          </div>
+        )}
 
-      {(session || captions.length > 0 || interim) && (
-        <div className="captions" aria-live="polite" aria-label="Live captions">
-          {captions.slice(-6).map((c) => (
-            <p key={c.id}>
-              {c.speaker_name && <strong>{c.speaker_name}: </strong>}
-              {c.text}
-            </p>
+        {(session || captions.length > 0 || interim) && (
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-xl bg-muted p-3 text-sm" aria-live="polite" aria-label="Live captions">
+            {captions.slice(-6).map((c) => (
+              <p key={c.id}>
+                {c.speaker_name && <strong className="font-semibold">{c.speaker_name}: </strong>}
+                {c.text}
+              </p>
+            ))}
+            {session && pendingSegments.current.slice(-3).map((c, i) => <p key={`p${i}`}>{c.text}</p>)}
+            {interim && <p className="text-muted-foreground">{interim}</p>}
+            {session && !session.recognition && (
+              <p className="text-xs text-muted-foreground">Live captions aren’t available in this browser{data.server_transcription ? '; the server can transcribe the recording afterwards' : ''}.</p>
+            )}
+          </div>
+        )}
+
+        {data.recordings
+          .filter((r) => r.status === 'ready')
+          .map((r) => (
+            <RecordingItem key={r.id} rec={r} serverTranscription={data.server_transcription} onChange={reload} meetingTitle={meetingTitle} />
           ))}
-          {session && pendingSegments.current.slice(-3).map((c, i) => <p key={`p${i}`}>{c.text}</p>)}
-          {interim && <p className="muted">{interim}</p>}
-          {session && !session.recognition && <p className="muted small">Live captions aren’t available in this browser{data.server_transcription ? '; the server can transcribe the recording afterwards' : ''}.</p>}
-        </div>
-      )}
-
-      {data.recordings.filter((r) => r.status === 'ready').map((r) => (
-        <RecordingItem key={r.id} rec={r} serverTranscription={data.server_transcription} onChange={reload} meetingTitle={meetingTitle} />
-      ))}
-      {!data.recordings.some((r) => r.status === 'ready') && !session && data.can_record && data.available && (
-        <p className="muted small">Record the meeting from this device (your microphone, or your screen and microphone), with live captions where the browser supports them.</p>
-      )}
+        {!data.recordings.some((r) => r.status === 'ready') && !session && data.can_record && data.available && (
+          <p className="text-sm text-muted-foreground">Record the meeting from this device (your microphone, or your screen and microphone), with live captions where the browser supports them.</p>
+        )}
+      </CardContent>
 
       {asking && (
         <StartRecording
@@ -345,7 +363,7 @@ export function MeetingRecordings({ meetingId, meetingTitle }: { meetingId: stri
           }}
         />
       )}
-    </article>
+    </Card>
   );
 }
 
@@ -358,52 +376,70 @@ function StartRecording({ serverTranscription, onClose, onStart }: { serverTrans
   return (
     <Modal open onClose={onClose} title="Record this meeting">
       <form
-        className="stack"
+        className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           onStart(kind, language, captions);
         }}
       >
-        <div className="segmented" role="group" aria-label="What to record">
-          <button type="button" className={kind === 'audio' ? 'active' : ''} onClick={() => setKind('audio')}>
-            <Icon name="mic" size={14} /> Sound only
-          </button>
-          {canScreen && (
-            <button type="button" className={kind === 'screen' ? 'active' : ''} onClick={() => setKind('screen')}>
-              <Icon name="video" size={14} /> Screen and sound
-            </button>
-          )}
-        </div>
-        <p className="muted small">
+        <Segmented
+          aria-label="What to record"
+          value={kind}
+          onChange={setKind}
+          options={[
+            {
+              value: 'audio',
+              label: (
+                <>
+                  <Icon name="mic" /> Sound only
+                </>
+              ),
+            },
+            ...(canScreen
+              ? [
+                  {
+                    value: 'screen' as const,
+                    label: (
+                      <>
+                        <Icon name="video" /> Screen and sound
+                      </>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+        />
+        <p className="text-xs text-muted-foreground">
           {kind === 'audio'
             ? 'Records your microphone — ideal for a meeting in one room, or on speakerphone. Small files, even on a slow connection.'
             : 'Choose the video call’s tab or window, and tick “share audio” so everyone’s voices are included.'}
         </p>
-        <Field label="Language spoken">
-          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-            <option value="en-US">English</option>
-            <option value="en-GB">English (UK)</option>
-            <option value="fr-FR">French</option>
-            <option value="ar-SA">Arabic</option>
-            <option value="es-ES">Spanish</option>
-            <option value="pt-PT">Portuguese</option>
-          </select>
-        </Field>
-        <label className="check-inline">
-          <input type="checkbox" checked={captions} disabled={!SpeechRecognitionCtor()} onChange={(e) => setCaptions(e.target.checked)} /> Live captions
-          {!SpeechRecognitionCtor() && <small className="muted"> (not available in this browser{serverTranscription ? ' — the server can transcribe afterwards' : ''})</small>}
-        </label>
-        <label className="check-inline consent">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} required /> Everyone in this meeting knows it is being recorded and agrees.
-        </label>
-        <p className="muted small">People invited to the meeting are notified, and anyone viewing it in Küü sees that it is being recorded.</p>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <FormField label="Language spoken">
+          <NativeSelect value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <NativeSelectOption value="en-US">English</NativeSelectOption>
+            <NativeSelectOption value="en-GB">English (UK)</NativeSelectOption>
+            <NativeSelectOption value="fr-FR">French</NativeSelectOption>
+            <NativeSelectOption value="ar-SA">Arabic</NativeSelectOption>
+            <NativeSelectOption value="es-ES">Spanish</NativeSelectOption>
+            <NativeSelectOption value="pt-PT">Portuguese</NativeSelectOption>
+          </NativeSelect>
+        </FormField>
+        <CheckboxField
+          label="Live captions"
+          description={!SpeechRecognitionCtor() ? `Not available in this browser${serverTranscription ? ' — the server can transcribe afterwards' : ''}` : undefined}
+          checked={captions}
+          disabled={!SpeechRecognitionCtor()}
+          onCheckedChange={setCaptions}
+        />
+        <CheckboxField label="Everyone in this meeting knows it is being recorded and agrees." checked={consent} onCheckedChange={setConsent} required />
+        <p className="text-xs text-muted-foreground">People invited to the meeting are notified, and anyone viewing it in Küü sees that it is being recorded.</p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" disabled={!consent}>
-            <span className="rec-dot" /> Start recording
-          </button>
+          </Button>
+          <Button disabled={!consent} type="submit">
+            <span className="size-2 rounded-full bg-current" aria-hidden="true" /> Start recording
+          </Button>
         </div>
       </form>
     </Modal>
@@ -412,6 +448,7 @@ function StartRecording({ serverTranscription, onClose, onStart }: { serverTrans
 
 function RecordingItem({ rec, serverTranscription, onChange, meetingTitle }: { rec: Recording; serverTranscription: boolean; onChange: () => void; meetingTitle: string }) {
   const act = useAction();
+  const confirm = useConfirm();
   const player = useRef<HTMLMediaElement | null>(null);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -442,76 +479,83 @@ function RecordingItem({ rec, serverTranscription, onChange, meetingTitle }: { r
   };
   const media = rec.media_url ?? '';
   return (
-    <div className="recording-item">
-      <div className="row-gap wrap">
-        <Icon name={rec.kind === 'screen' ? 'video' : 'mic'} size={16} />
-        <strong>{clock(rec.duration_sec * 1000)}</strong>
-        <small className="muted">
+    <div className="recording-item flex flex-col gap-3 rounded-xl border p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Icon name={rec.kind === 'screen' ? 'video' : 'mic'} size={16} className="text-muted-foreground" />
+        <strong className="font-semibold tabular-nums">{clock(rec.duration_sec * 1000)}</strong>
+        <span className="text-xs text-muted-foreground">
           by {rec.started_by?.name} · {timeAgo(rec.started_at)} · {fmtBytes(rec.size)}
-        </small>
-        <span className="grow" />
-        <span className={`pill ${rec.transcript_status === 'failed' ? 'status-blocked' : rec.transcript_status === 'done' ? 'status-done' : ''}`} title={rec.transcript_error ?? undefined}>
-          {statusText[rec.transcript_status]}
         </span>
+        <span className="min-w-0 flex-1" />
+        <Pill tone={rec.transcript_status === 'failed' ? 'danger' : rec.transcript_status === 'done' ? 'success' : 'neutral'} title={rec.transcript_error ?? undefined}>
+          {statusText[rec.transcript_status]}
+        </Pill>
       </div>
       {rec.kind === 'screen' ? (
-        <video ref={(el) => void (player.current = el)} className="recording-player" controls preload="metadata" src={media} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} />
+        <video ref={(el) => void (player.current = el)} className="max-h-96 w-full rounded-lg bg-black" controls preload="metadata" src={media} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} />
       ) : (
-        <audio ref={(el) => void (player.current = el)} className="recording-player" controls preload="metadata" src={media} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} />
+        <audio ref={(el) => void (player.current = el)} className="w-full" controls preload="metadata" src={media} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)} />
       )}
-      <div className="row-gap wrap">
+      <div className="flex flex-wrap items-center gap-2">
         {(rec.segment_count > 0 || rec.transcript_status === 'done') && (
-          <button className="btn sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-            <Icon name="transcript" size={14} /> {open ? 'Hide transcript' : 'Transcript'}
-          </button>
+          <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+            <Icon name="transcript" data-icon="inline-start" /> {open ? 'Hide transcript' : 'Transcript'}
+          </Button>
         )}
         {serverTranscription && !['queued', 'processing'].includes(rec.transcript_status) && (
-          <button
-            className="btn sm"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={async () => {
               if (await act(() => api.post(`/recordings/${rec.id}/transcribe`), 'Transcription started')) onChange();
             }}
           >
             {rec.transcript_status === 'done' ? 'Transcribe again' : 'Transcribe'}
-          </button>
+          </Button>
         )}
-        <a className="btn sm" href={`${media}?download=1`}>
-          <Icon name="download" size={14} /> Download
+        <a href={`${media}?download=1`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          <Icon name="download" data-icon="inline-start" />
+          Download
         </a>
         {rec.can_delete && (
-          <button
-            className="btn sm danger-text"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive"
             onClick={async () => {
-              if (!confirm('Delete this recording and its transcript? This cannot be undone.')) return;
+              if (!(await confirm({ title: 'Delete this recording?', description: 'Its transcript is deleted too. This cannot be undone.', confirmLabel: 'Delete recording', destructive: true }))) return;
               if (await act(() => api.del(`/recordings/${rec.id}`), 'Recording deleted')) onChange();
             }}
           >
-            <Icon name="trash" size={14} /> Delete
-          </button>
+            <Icon name="trash" data-icon="inline-start" /> Delete
+          </Button>
         )}
       </div>
       {open && transcript && (
-        <div className="transcript">
-          <div className="row-gap">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the transcript" aria-label="Search the transcript" className="grow" />
-            <button className="btn sm" onClick={download}>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the transcript" aria-label="Search the transcript" className="min-w-0 flex-1" />
+            <Button variant="outline" size="sm" onClick={download}>
               Save as text
-            </button>
+            </Button>
           </div>
-          <small className="muted">{transcript.source === 'server' ? 'Full transcript' : 'Live captions from the recording device'} · may contain recognition mistakes</small>
-          <ol className="transcript-lines">
-            {shown.map((s) => (
-              <li key={s.id} className={now >= s.start_ms && now < (s.end_ms ?? s.start_ms) + 500 ? 'current' : ''}>
-                <button className="link-btn ts" onClick={() => seek(s.start_ms)} aria-label={`Play from ${clock(s.start_ms)}`}>
-                  {clock(s.start_ms)}
-                </button>
-                <span>
-                  {s.speaker_name && <strong>{s.speaker_name}: </strong>}
-                  {s.text}
-                </span>
-              </li>
-            ))}
-            {!shown.length && <li className="muted">{q ? 'No matches.' : 'Nothing was transcribed.'}</li>}
+          <p className="text-xs text-muted-foreground">{transcript.source === 'server' ? 'Full transcript' : 'Live captions from the recording device'} · may contain recognition mistakes</p>
+          <ol className="flex max-h-80 flex-col gap-0.5 overflow-y-auto text-sm">
+            {shown.map((s) => {
+              const current = now >= s.start_ms && now < (s.end_ms ?? s.start_ms) + 500;
+              return (
+                <li key={s.id} className={cn('flex gap-3 rounded-lg px-2 py-1', current && 'bg-accent')}>
+                  <Button variant="link" size="inline" className="shrink-0 font-mono text-xs tabular-nums" onClick={() => seek(s.start_ms)} aria-label={`Play from ${clock(s.start_ms)}`}>
+                    {clock(s.start_ms)}
+                  </Button>
+                  <span>
+                    {s.speaker_name && <strong className="font-semibold">{s.speaker_name}: </strong>}
+                    {s.text}
+                  </span>
+                </li>
+              );
+            })}
+            {!shown.length && <li className="px-2 text-muted-foreground">{q ? 'No matches.' : 'Nothing was transcribed.'}</li>}
           </ol>
         </div>
       )}

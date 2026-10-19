@@ -16,6 +16,7 @@ test('phones never scroll sideways, and long tab rows scroll on their own', asyn
 });
 
 test('every screen size fits: no sideways scroll, and the message box keeps its send button inside', async ({ page }) => {
+  test.slow(); // Reloads the app on every screen at several widths.
   const noErrors = trackErrors(page);
   await signIn(page, 'alex@acme.test');
   const { projectId, generalId } = await page.evaluate(async () => ({
@@ -67,6 +68,7 @@ test('owners of a new workspace get a setup guide', async ({ page }) => {
 });
 
 test('long titles, names and links fit on an iPhone-sized screen', async ({ page }) => {
+  test.slow(); // Reloads the app on every screen at several widths.
   const noErrors = trackErrors(page);
   await emulateSafariButtons(page);
   await signIn(page, 'alex@acme.test');
@@ -98,7 +100,7 @@ test('long titles, names and links fit on an iPhone-sized screen', async ({ page
     // Long task titles wrap inside their card instead of running past it.
     await page.goto('/');
     const title = page.locator('.task-body strong').filter({ hasText: 'Send the final version' }).first();
-    const [titleBox, cardBox] = await Promise.all([title.boundingBox(), title.locator('xpath=ancestor::article[1]').boundingBox()]);
+    const [titleBox, cardBox] = await Promise.all([title.boundingBox(), title.locator('xpath=ancestor::*[@data-slot="card"][1]').boundingBox()]);
     expect(titleBox!.x + titleBox!.width, `task title inside its card at ${width}px`).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
     // The task drawer shows the whole title.
     await title.click();

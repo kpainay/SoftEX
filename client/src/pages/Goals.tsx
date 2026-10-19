@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { dateLabel } from '../format';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type Project, type UserRef } from '../api';
@@ -6,9 +6,19 @@ import { Avatar } from '../components/Avatar';
 import { FavoriteButton } from '../components/Favorites';
 import { Icon } from '../components/Icon';
 import { UpgradeNotice, usePlan } from '../components/Plan';
-import { Empty, ErrorState, Field, HealthPill, Loading, Modal, Tabs, useAction } from '../components/ui';
+import { DatePicker, EmptyState, ErrorState, FormField, HealthPill, IconButton, Loading, Modal, Page, PageHeader, Pill, Segmented, StatCard, StatGrid, TabBar, useAction, useConfirm } from '@/components/kit';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FieldLegend, FieldSet } from '@/components/ui/field';
+import { Progress as UIProgress } from '@/components/ui/progress';
 import { useApi } from '../hooks';
 import { useSession } from '../session';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 type GoalStatus = 'on_track' | 'at_risk' | 'off_track' | 'done';
 interface KeyResult {
@@ -42,16 +52,19 @@ const STATUS_LABEL: Record<GoalStatus, string> = { on_track: 'On track', at_risk
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
 function GoalStatusPill({ status }: { status: GoalStatus }) {
-  return status === 'done' ? <span className="pill status-done">Achieved</span> : <HealthPill health={status} />;
+  return status === 'done' ? <Pill tone="success">Achieved</Pill> : <HealthPill health={status} />;
 }
 
-function Progress({ value, big = false }: { value: number; big?: boolean }) {
-  return (
-    <div className={`progress ${big ? 'big' : ''}`} role="progressbar" aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
-      <i style={{ width: pct(Math.min(1, Math.max(0, value))) }} />
-    </div>
-  );
+function Progress({ value, className }: { value: number; className?: string }) {
+  return <UIProgress value={Math.round(Math.min(1, Math.max(0, value)) * 100)} className={className} aria-label="Progress" />;
 }
+
+const SectionTitle = ({ children, action }: { children: ReactNode; action?: ReactNode }) => (
+  <CardHeader>
+    <CardTitle>{children}</CardTitle>
+    {action && <CardAction>{action}</CardAction>}
+  </CardHeader>
+);
 
 /** Company and team goals with measurable key results (Asana Goals, Monday OKRs, ClickUp Goals). */
 export function Goals() {
@@ -63,10 +76,10 @@ export function Goals() {
   const readOnly = !plan.has('goals');
   if (readOnly && data && !data.length && tab === 'active') {
     return (
-      <div className="page">
-        <h1>Goals</h1>
+      <Page>
+        <PageHeader title="Goals" />
         <UpgradeNotice feature="goals" />
-      </div>
+      </Page>
     );
   }
   const ids = new Set(data?.map((g) => g.id));
@@ -74,43 +87,47 @@ export function Goals() {
   const children = (id: string) => (data ?? []).filter((g) => g.parent_id === id);
   const counts = (data ?? []).reduce<Record<string, number>>((acc, g) => ({ ...acc, [g.status]: (acc[g.status] ?? 0) + 1 }), {});
 
-  const renderGoal = (g: Goal, depth: number): React.ReactNode => (
-    <div key={g.id}>
-      <Link to={`/goals/${g.id}`} className="goal-row" style={{ paddingLeft: 12 + depth * 22 }}>
-        <Icon name={depth ? 'chevronRight' : 'target'} size={16} />
-        <span className="goal-title">
-          <strong>{g.title}</strong>
-          <small className="muted">
+  const renderGoal = (g: Goal, depth: number): ReactNode => (
+    <div key={g.id} className="flex flex-col">
+      <Link
+        to={`/goals/${g.id}`}
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-muted/60 sm:grid-cols-[auto_minmax(0,1fr)_10rem_auto_auto]"
+        style={{ paddingLeft: 12 + depth * 22 }}
+      >
+        <Icon name={depth ? 'chevronRight' : 'target'} size={16} className="text-muted-foreground" />
+        <span className="flex min-w-0 flex-col">
+          <strong className="truncate text-sm font-semibold">{g.title}</strong>
+          <span className="text-xs text-muted-foreground">
             {g.key_results.length} key result{g.key_results.length === 1 ? '' : 's'}
             {g.due_date && <> · due {dateLabel(g.due_date)}</>}
-          </small>
+          </span>
         </span>
-        <span className="goal-progress">
-          <Progress value={g.progress} />
-          <small>{pct(g.progress)}</small>
+        <span className="flex items-center gap-2 max-sm:hidden">
+          <Progress value={g.progress} className="flex-1" />
+          <span className="w-9 text-right text-xs tabular-nums">{pct(g.progress)}</span>
         </span>
         <GoalStatusPill status={g.status} />
-        <Avatar user={g.owner} size="sm" />
+        <Avatar user={g.owner} size="sm" className="max-sm:hidden" />
       </Link>
       {children(g.id).map((c) => renderGoal(c, depth + 1))}
     </div>
   );
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Goals</h1>
-          <p className="muted">What the organisation is aiming for this season, how far along it is, and the projects that get it there.</p>
-        </div>
-        {!readOnly && (
-          <button className="btn primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={16} /> New goal
-          </button>
-        )}
-      </div>
+    <Page>
+      <PageHeader
+        title="Goals"
+        description="What the organisation is aiming for this season, how far along it is, and the projects that get it there."
+        actions={
+          !readOnly && (
+            <Button onClick={() => setCreating(true)}>
+              <Icon name="plus" data-icon="inline-start" /> New goal
+            </Button>
+          )
+        }
+      />
       {readOnly && <UpgradeNotice feature="goals" compact readOnly />}
-      <Tabs
+      <TabBar
         value={tab}
         onChange={setTab}
         tabs={[
@@ -123,32 +140,30 @@ export function Goals() {
       ) : !data ? (
         <Loading />
       ) : !data.length ? (
-        <Empty
+        <EmptyState
           icon="target"
           title={tab === 'active' ? 'No goals yet' : 'Nothing archived'}
           action={
             tab === 'active' &&
             !readOnly && (
-              <button className="btn primary" onClick={() => setCreating(true)}>
-                <Icon name="plus" size={16} /> New goal
-              </button>
+              <Button onClick={() => setCreating(true)}>
+                <Icon name="plus" data-icon="inline-start" /> New goal
+              </Button>
             )
           }
         >
           {tab === 'active' && 'Set a goal, add key results you can measure, and link the projects that move it.'}
-        </Empty>
+        </EmptyState>
       ) : (
         <>
           {tab === 'active' && (
-            <div className="summary-pills">
+            <StatGrid>
               {(['on_track', 'at_risk', 'off_track', 'done'] as GoalStatus[]).map((s) => (
-                <span key={s} className="pill">
-                  {counts[s] ?? 0} {STATUS_LABEL[s].toLowerCase()}
-                </span>
+                <StatCard key={s} label={STATUS_LABEL[s]} value={counts[s] ?? 0} tone={s === 'done' || s === 'on_track' ? 'success' : s === 'at_risk' ? 'warning' : 'danger'} />
               ))}
-            </div>
+            </StatGrid>
           )}
-          <div className="card goal-list">{roots.map((g) => renderGoal(g, 0))}</div>
+          <Card className="gap-0 px-1.5 py-1.5">{roots.map((g) => renderGoal(g, 0))}</Card>
         </>
       )}
       {creating && (
@@ -161,7 +176,7 @@ export function Goals() {
           }}
         />
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -178,7 +193,7 @@ function GoalForm({ goal, goals, onClose, onSaved }: { goal?: Goal; goals: Goal[
   return (
     <Modal open onClose={onClose} title={goal ? 'Edit goal' : 'New goal'}>
       <form
-        className="stack"
+        className="flex flex-col gap-3"
         onSubmit={async (e) => {
           e.preventDefault();
           const body = { title, description, ownerId, dueDate: dueDate || null, parentId: parentId || null, projectIds };
@@ -186,57 +201,58 @@ function GoalForm({ goal, goals, onClose, onSaved }: { goal?: Goal; goals: Goal[
           if (saved) onSaved(saved);
         }}
       >
-        <Field label="Goal">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} placeholder="Reach 5,000 active customers this year" autoFocus />
-        </Field>
-        <Field label="Why it matters">
-          <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} />
-        </Field>
-        <div className="grid-2">
-          <Field label="Owner">
-            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+        <FormField label="Goal">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} placeholder="Reach 5,000 active customers this year" autoFocus />
+        </FormField>
+        <FormField label="Why it matters">
+          <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={5000} />
+        </FormField>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Owner">
+            <NativeSelect value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
               {people.map((p) => (
-                <option key={p.id} value={p.id}>
+                <NativeSelectOption key={p.id} value={p.id}>
                   {p.name}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-          </Field>
-          <Field label="Due">
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </Field>
+            </NativeSelect>
+          </FormField>
+          <FormField label="Due">
+            <DatePicker value={dueDate} onChange={(v) => setDueDate(v ?? '')} placeholder="No due date" />
+          </FormField>
         </div>
-        <Field label="Part of" hint="Nest team goals under a company goal.">
-          <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
-            <option value="">Top-level goal</option>
+        <FormField label="Part of" hint="Nest team goals under a company goal.">
+          <NativeSelect value={parentId} onChange={(e) => setParentId(e.target.value)}>
+            <NativeSelectOption value="">Top-level goal</NativeSelectOption>
             {goals
               .filter((g) => g.id !== goal?.id)
               .map((g) => (
-                <option key={g.id} value={g.id}>
+                <NativeSelectOption key={g.id} value={g.id}>
                   {g.title}
-                </option>
+                </NativeSelectOption>
               ))}
-          </select>
-        </Field>
-        <Field label="Supporting projects">
-          <div className="chips-select">
+          </NativeSelect>
+        </FormField>
+        <FieldSet className="gap-2">
+          <FieldLegend variant="label">Supporting projects</FieldLegend>
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-xl border p-1.5">
             {(projects ?? [])
               .filter((p) => !p.archived_at)
               .map((p) => (
-                <label key={p.id} className="check-inline">
-                  <input type="checkbox" checked={projectIds.includes(p.id)} onChange={(e) => setProjectIds(e.target.checked ? [...projectIds, p.id] : projectIds.filter((x) => x !== p.id))} />
-                  <span className={`project-dot bg-${p.color}`} /> {p.name}
-                </label>
+                <Label key={p.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 font-normal hover:bg-muted">
+                  <Checkbox checked={projectIds.includes(p.id)} onCheckedChange={(checked) => setProjectIds(checked ? [...projectIds, p.id] : projectIds.filter((x) => x !== p.id))} />
+                  <span className="size-2 rounded-full" style={{ background: `var(--c-${p.color})` }} /> {p.name}
+                </Label>
               ))}
           </div>
-        </Field>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        </FieldSet>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" disabled={!title.trim()}>
+          </Button>
+          <Button disabled={!title.trim()} type="submit">
             {goal ? 'Save' : 'Create goal'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -246,6 +262,7 @@ function GoalForm({ goal, goals, onClose, onSaved }: { goal?: Goal; goals: Goal[
 export function GoalDetail() {
   const { id } = useParams();
   const act = useAction();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const { data: goal, error, reload, setData } = useApi<Goal>(`/goals/${id}`);
   const { data: all } = useApi<Goal[]>('/goals');
@@ -262,110 +279,124 @@ export function GoalDetail() {
   };
 
   return (
-    <div className="page narrow">
-      <p className="eyebrow">
-        <Link to="/goals">Goals</Link>
-        {parent && (
-          <>
-            {' '}
-            / <Link to={`/goals/${parent.id}`}>{parent.title}</Link>
-          </>
-        )}
-      </p>
-      <div className="page-head">
-        <div className="grow">
-          <h1>
-            {goal.title} <FavoriteButton kind="goal" id={goal.id} />
-          </h1>
-          <div className="project-meta">
-            <GoalStatusPill status={goal.status} />
-            <span>
-              Owner: <strong>{goal.owner?.name}</strong>
-            </span>
-            {goal.due_date && <span>Due {dateLabel(goal.due_date)}</span>}
-            {goal.archived_at && <span className="pill">Archived</span>}
-          </div>
-        </div>
-        {goal.can_edit && (
-          <button className="btn" onClick={() => setEditing(true)}>
-            <Icon name="edit" size={15} /> Edit
-          </button>
-        )}
-      </div>
-
-      <section className="card pad stack">
-        <div className="row-gap">
-          <strong className="big-number">{pct(goal.progress)}</strong>
-          <div className="grow">
-            <Progress value={goal.progress} big />
-          </div>
-        </div>
-        {goal.can_edit && (
-          <div className="segmented" role="group" aria-label="Status">
-            {(['on_track', 'at_risk', 'off_track', 'done'] as GoalStatus[]).map((s) => (
-              <button key={s} className={goal.status === s ? 'active' : ''} onClick={() => update({ status: s })}>
-                {STATUS_LABEL[s]}
-              </button>
-            ))}
-          </div>
-        )}
-        {goal.description && <p className="pre-wrap">{goal.description}</p>}
-      </section>
-
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Key results</h3>
-          {goal.can_edit && (
-            <button className="link-btn" onClick={() => setAddingKr(true)}>
-              Add
-            </button>
+    <Page width="narrow">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink render={<Link to="/goals" />}>Goals</BreadcrumbLink>
+          </BreadcrumbItem>
+          {parent && (
+            <>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link to={`/goals/${parent.id}`} />}>{parent.title}</BreadcrumbLink>
+              </BreadcrumbItem>
+            </>
           )}
+        </BreadcrumbList>
+      </Breadcrumb>
+      <PageHeader
+        title={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {goal.title} <FavoriteButton kind="goal" id={goal.id} />
+          </span>
+        }
+        actions={
+          goal.can_edit && (
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              <Icon name="edit" data-icon="inline-start" /> Edit
+            </Button>
+          )
+        }
+      >
+        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+          <GoalStatusPill status={goal.status} />
+          <span>
+            Owner: <strong className="text-foreground">{goal.owner?.name}</strong>
+          </span>
+          {goal.due_date && <span>Due {dateLabel(goal.due_date)}</span>}
+          {goal.archived_at && <Pill>Archived</Pill>}
         </div>
-        {!goal.key_results.length && <p className="muted">No key results yet. {goal.projects.length ? 'Progress follows the linked projects’ tasks.' : ''}</p>}
-        {goal.key_results.map((kr) => (
-          <KeyResultRow key={kr.id} kr={kr} canEdit={goal.can_edit} onChanged={reload} />
-        ))}
-      </section>
+      </PageHeader>
 
-      <section className="detail-section">
-        <div className="section-title">
-          <h3>Supporting projects</h3>
-        </div>
-        {!goal.projects.length && <p className="muted">No linked projects.</p>}
-        {goal.projects.map((p) => (
-          <Link key={p.id} to={`/projects/${p.id}`} className="mini-task">
-            <span className={`project-dot bg-${p.color}`} /> {p.name} <HealthPill health={p.health} />
-          </Link>
-        ))}
-      </section>
-
-      {subGoals.length > 0 && (
-        <section className="detail-section">
-          <div className="section-title">
-            <h3>Sub-goals</h3>
+      <Card>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <strong className="big-number font-heading text-4xl font-semibold tabular-nums">{pct(goal.progress)}</strong>
+            <Progress value={goal.progress} className="h-2.5 flex-1" />
           </div>
-          {subGoals.map((g) => (
-            <Link key={g.id} to={`/goals/${g.id}`} className="mini-task">
-              <Icon name="target" size={14} /> {g.title} <small className="muted">{pct(g.progress)}</small> <GoalStatusPill status={g.status} />
+          {goal.can_edit && (
+            <Segmented
+              aria-label="Status"
+              value={goal.status}
+              onChange={(s) => update({ status: s })}
+              options={(['on_track', 'at_risk', 'off_track', 'done'] as GoalStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
+            />
+          )}
+          {goal.description && <p className="text-sm whitespace-pre-wrap">{goal.description}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <SectionTitle
+          action={
+            goal.can_edit && (
+              <Button variant="ghost" size="sm" onClick={() => setAddingKr(true)}>
+                Add
+              </Button>
+            )
+          }
+        >
+          Key results
+        </SectionTitle>
+        <CardContent className="flex flex-col gap-1">
+          {!goal.key_results.length && <p className="text-sm text-muted-foreground">No key results yet. {goal.projects.length ? 'Progress follows the linked projects’ tasks.' : ''}</p>}
+          {goal.key_results.map((kr) => (
+            <KeyResultRow key={kr.id} kr={kr} canEdit={goal.can_edit} onChanged={reload} />
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <SectionTitle>Supporting projects</SectionTitle>
+        <CardContent className="flex flex-col gap-1">
+          {!goal.projects.length && <p className="text-sm text-muted-foreground">No linked projects.</p>}
+          {goal.projects.map((p) => (
+            <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
+              <span className="size-2 rounded-full" style={{ background: `var(--c-${p.color})` }} /> <span className="min-w-0 flex-1 truncate">{p.name}</span> <HealthPill health={p.health} />
             </Link>
           ))}
-        </section>
+        </CardContent>
+      </Card>
+
+      {subGoals.length > 0 && (
+        <Card>
+          <SectionTitle>Sub-goals</SectionTitle>
+          <CardContent className="flex flex-col gap-1">
+            {subGoals.map((g) => (
+              <Link key={g.id} to={`/goals/${g.id}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted">
+                <Icon name="target" size={14} className="text-muted-foreground" /> <span className="min-w-0 flex-1 truncate">{g.title}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{pct(g.progress)}</span> <GoalStatusPill status={g.status} />
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {goal.can_edit && (
-        <div className="row-gap">
-          <button className="btn" onClick={() => update({ archived: !goal.archived_at })}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => update({ archived: !goal.archived_at })}>
             {goal.archived_at ? 'Restore' : 'Archive'}
-          </button>
-          <button
-            className="btn danger-text"
+          </Button>
+          <Button
+            variant="destructive"
             onClick={async () => {
-              if (!confirm('Delete this goal and its key results?')) return;
+              if (!(await confirm({ title: 'Delete this goal?', description: 'Its key results are deleted too.', confirmLabel: 'Delete goal', destructive: true }))) return;
               if (await act(() => api.del(`/goals/${goal.id}`), 'Goal deleted')) navigate('/goals');
             }}
           >
-            <Icon name="trash" size={15} /> Delete
-          </button>
+            <Icon name="trash" data-icon="inline-start" /> Delete
+          </Button>
         </div>
       )}
 
@@ -380,35 +411,54 @@ export function GoalDetail() {
           }}
         />
       )}
-      {addingKr && <KeyResultForm goalId={goal.id} projects={projects ?? []} onClose={() => setAddingKr(false)} onSaved={(g) => { setData(g); setAddingKr(false); }} />}
-    </div>
+      {addingKr && (
+        <KeyResultForm
+          goalId={goal.id}
+          projects={projects ?? []}
+          onClose={() => setAddingKr(false)}
+          onSaved={(g) => {
+            setData(g);
+            setAddingKr(false);
+          }}
+        />
+      )}
+    </Page>
   );
 }
 
 function KeyResultRow({ kr, canEdit, onChanged }: { kr: KeyResult; canEdit: boolean; onChanged: () => void }) {
   const act = useAction();
+  const confirm = useConfirm();
   const fmt = (n: number) => `${Number(n).toLocaleString()}${kr.unit ? ` ${kr.unit}` : ''}`;
   return (
-    <div className="kr-row">
-      <div className="grow">
-        <strong>{kr.title}</strong>
-        <small className="muted">
+    <div className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-muted/50">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <strong className="text-sm font-semibold">{kr.title}</strong>
+        <span className="text-xs text-muted-foreground">
           {kr.kind === 'tasks' ? (
             <>
-              {kr.current_value} of {kr.target_value} tasks done {kr.project && <>in <Link to={`/projects/${kr.project.id}`}>{kr.project.name}</Link></>}
+              {kr.current_value} of {kr.target_value} tasks done{' '}
+              {kr.project && (
+                <>
+                  in{' '}
+                  <Link className="text-primary hover:underline" to={`/projects/${kr.project.id}`}>
+                    {kr.project.name}
+                  </Link>
+                </>
+              )}
             </>
           ) : (
             <>
               {fmt(kr.current_value)} of {fmt(kr.target_value)} (from {fmt(kr.start_value)})
             </>
           )}
-        </small>
+        </span>
         <Progress value={kr.progress} />
       </div>
       {kr.kind === 'number' && (
-        <input
+        <Input
           type="number"
-          className="narrow-input"
+          className="w-24"
           defaultValue={kr.current_value}
           key={kr.current_value}
           aria-label={`Current value of ${kr.title}`}
@@ -421,19 +471,19 @@ function KeyResultRow({ kr, canEdit, onChanged }: { kr: KeyResult; canEdit: bool
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
       )}
-      <strong className="kr-pct">{pct(kr.progress)}</strong>
+      <strong className="w-10 text-right text-sm tabular-nums">{pct(kr.progress)}</strong>
       {canEdit && (
-        <button
-          className="icon-btn xs"
-          aria-label={`Delete ${kr.title}`}
+        <IconButton
+          label={`Delete ${kr.title}`}
+          size="icon-xs"
           onClick={async () => {
-            if (!confirm('Delete this key result?')) return;
+            if (!(await confirm({ title: 'Delete this key result?', confirmLabel: 'Delete', destructive: true }))) return;
             await act(() => api.del(`/key-results/${kr.id}`));
             onChanged();
           }}
         >
-          <Icon name="x" size={12} />
-        </button>
+          <Icon name="x" />
+        </IconButton>
       )}
     </div>
   );
@@ -450,7 +500,7 @@ function KeyResultForm({ goalId, projects, onClose, onSaved }: { goalId: string;
   return (
     <Modal open onClose={onClose} title="New key result">
       <form
-        className="stack"
+        className="flex flex-col gap-3"
         onSubmit={async (e) => {
           e.preventDefault();
           const body = kind === 'tasks' ? { title, kind, projectId } : { title, kind, startValue: Number(start), targetValue: Number(target), unit };
@@ -458,50 +508,51 @@ function KeyResultForm({ goalId, projects, onClose, onSaved }: { goalId: string;
           if (g) onSaved(g);
         }}
       >
-        <Field label="Key result">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} placeholder="Sign 40 new schools" autoFocus />
-        </Field>
-        <div className="segmented" role="group" aria-label="Measured by">
-          <button type="button" className={kind === 'number' ? 'active' : ''} onClick={() => setKind('number')}>
-            A number
-          </button>
-          <button type="button" className={kind === 'tasks' ? 'active' : ''} onClick={() => setKind('tasks')}>
-            Tasks done in a project
-          </button>
-        </div>
+        <FormField label="Key result">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} placeholder="Sign 40 new schools" autoFocus />
+        </FormField>
+        <Segmented
+          aria-label="Measured by"
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'number', label: 'A number' },
+            { value: 'tasks', label: 'Tasks done in a project' },
+          ]}
+        />
         {kind === 'number' ? (
-          <div className="grid-3">
-            <Field label="Start">
-              <input type="number" value={start} onChange={(e) => setStart(e.target.value)} required />
-            </Field>
-            <Field label="Target">
-              <input type="number" value={target} onChange={(e) => setTarget(e.target.value)} required />
-            </Field>
-            <Field label="Unit">
-              <input value={unit} onChange={(e) => setUnit(e.target.value)} maxLength={20} placeholder="schools, %, US$" />
-            </Field>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FormField label="Start">
+              <Input type="number" value={start} onChange={(e) => setStart(e.target.value)} required />
+            </FormField>
+            <FormField label="Target">
+              <Input type="number" value={target} onChange={(e) => setTarget(e.target.value)} required />
+            </FormField>
+            <FormField label="Unit">
+              <Input value={unit} onChange={(e) => setUnit(e.target.value)} maxLength={20} placeholder="schools, %, US$" />
+            </FormField>
           </div>
         ) : (
-          <Field label="Project">
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
-              <option value="">Choose a project…</option>
+          <FormField label="Project">
+            <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
+              <NativeSelectOption value="">Choose a project…</NativeSelectOption>
               {projects
                 .filter((p) => !p.archived_at)
                 .map((p) => (
-                  <option key={p.id} value={p.id}>
+                  <NativeSelectOption key={p.id} value={p.id}>
                     {p.name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-            </select>
-          </Field>
+            </NativeSelect>
+          </FormField>
         )}
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" disabled={!title.trim()}>
+          </Button>
+          <Button disabled={!title.trim()} type="submit">
             Add
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

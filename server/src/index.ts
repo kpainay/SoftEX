@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { restoreOnStartup } from './backup.js';
 import { ephemeralStorageProblem } from './persistence.js';
-import { LocalFileStore, S3FileStore, type S3Settings } from './storage.js';
+import { GcsFileStore, LocalFileStore, S3FileStore, type FileStore, type S3Settings } from './storage.js';
+
+// Cloud Run sets K_SERVICE on every instance.
+const onCloudRun = !!process.env.K_SERVICE;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');

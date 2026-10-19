@@ -111,7 +111,7 @@ test('an intake form takes responses from people without an account', async ({ p
   await page.getByRole('button', { name: 'New form' }).click();
   const title = `Design request ${run()}`;
   await page.getByLabel('Title').fill(title);
-  await page.getByLabel('Anyone with the link can respond').check();
+  await page.getByRole('checkbox', { name: 'Anyone with the link can respond' }).check();
   await page.getByRole('button', { name: 'Save form' }).click();
   const card = page.locator('.form-card', { hasText: title });
   await expect(card.getByText('Public link', { exact: true })).toBeVisible();

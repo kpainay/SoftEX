@@ -6,7 +6,13 @@ import { useApi } from '../hooks';
 import { useSession } from '../session';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
-import { Field, Modal, useAction } from './ui';
+import { CheckboxField, FormField, IconButton, Modal, notify, useAction } from '@/components/kit';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 // ---------- Polls ----------
 
@@ -28,51 +34,61 @@ export function PollCard({ poll, authorId, onChange }: { poll: Poll; authorId?: 
     if (updated) onChange(updated);
   };
   return (
-    <div className={`poll ${poll.closed ? 'closed' : ''}`} role="group" aria-label={`Poll: ${poll.question}`}>
-      <div className="poll-head">
-        <Icon name="poll" size={16} />
-        <strong>{poll.question}</strong>
-      </div>
-      <small className="muted">
-        {poll.closed ? 'Poll closed' : poll.multiple ? 'Choose any' : 'Choose one'}
-        {poll.anonymous && ' · anonymous'} · {poll.voters} voter{poll.voters === 1 ? '' : 's'}
-      </small>
-      {poll.options.map((o, i) => {
-        const share = total ? Math.round((o.votes / total) * 100) : 0;
-        const mine = poll.my_votes.includes(i);
-        return (
-          <button
-            key={i}
-            className={`poll-option ${mine ? 'mine' : ''}`}
-            onClick={() => vote(i)}
-            disabled={poll.closed || busy}
-            aria-pressed={mine}
-            title={o.voters.length ? o.voters.join(', ') : undefined}
-          >
-            <i style={{ width: voted || poll.closed ? `${share}%` : 0 }} />
-            <span className="poll-label">
-              {mine && <Icon name="check" size={13} />} {o.label}
-            </span>
-            {(voted || poll.closed) && (
-              <span className="poll-count">
-                {o.votes} · {share}%
+    <Card size="sm" className={cn('poll my-1 max-w-md gap-3', poll.closed && 'opacity-80')} role="group" aria-label={`Poll: ${poll.question}`}>
+      <CardHeader>
+        <CardTitle className="flex items-start gap-2">
+          <Icon name="poll" size={16} className="mt-0.5 shrink-0 text-primary" />
+          {poll.question}
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {poll.closed ? 'Poll closed' : poll.multiple ? 'Choose any' : 'Choose one'}
+          {poll.anonymous && ' · anonymous'} · {poll.voters} voter{poll.voters === 1 ? '' : 's'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1.5">
+        {poll.options.map((o, i) => {
+          const share = total ? Math.round((o.votes / total) * 100) : 0;
+          const mine = poll.my_votes.includes(i);
+          return (
+            <button
+              key={i}
+              className={cn(
+                'relative flex min-h-9 items-center gap-2 overflow-hidden rounded-xl border px-3 text-left text-sm transition-colors hover:bg-muted/60 disabled:cursor-default disabled:hover:bg-transparent',
+                mine && 'border-primary/50',
+              )}
+              onClick={() => vote(i)}
+              disabled={poll.closed || busy}
+              aria-pressed={mine}
+              title={o.voters.length ? o.voters.join(', ') : undefined}
+            >
+              <i className={cn('absolute inset-y-0 left-0 transition-[width] duration-300', mine ? 'bg-primary/15' : 'bg-muted')} style={{ width: voted || poll.closed ? `${share}%` : 0 }} />
+              <span className="relative flex min-w-0 flex-1 items-center gap-1.5">
+                {mine && <Icon name="check" size={13} className="text-primary" />} {o.label}
               </span>
-            )}
-          </button>
-        );
-      })}
+              {(voted || poll.closed) && (
+                <span className="relative text-xs text-muted-foreground tabular-nums">
+                  {o.votes} · {share}%
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </CardContent>
       {canClose && (
-        <button
-          className="link-btn small"
-          onClick={async () => {
-            const res = await act(() => api.post<{ closed: boolean }>(`/polls/${poll.id}/close`));
-            if (res) onChange({ ...poll, closed: res.closed });
-          }}
-        >
-          {poll.closed ? 'Reopen poll' : 'Close poll'}
-        </button>
+        <CardFooter>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={async () => {
+              const res = await act(() => api.post<{ closed: boolean }>(`/polls/${poll.id}/close`));
+              if (res) onChange({ ...poll, closed: res.closed });
+            }}
+          >
+            {poll.closed ? 'Reopen poll' : 'Close poll'}
+          </Button>
+        </CardFooter>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -86,7 +102,7 @@ export function PollModal({ open, onClose, channelId, parentId, onSent }: { open
   return (
     <Modal open={open} onClose={onClose} title="Create a poll">
       <form
-        className="stack"
+        className="flex flex-col gap-3"
         onSubmit={async (e) => {
           e.preventDefault();
           const ok = await act(() => api.post(`/channels/${channelId}/polls`, { question, options: clean, multiple, anonymous, parentId }));
@@ -97,37 +113,42 @@ export function PollModal({ open, onClose, channelId, parentId, onSent }: { open
           onClose();
         }}
       >
-        <Field label="Question">
-          <input value={question} onChange={(e) => setQuestion(e.target.value)} required maxLength={300} placeholder="Where should we hold the staff retreat?" autoFocus />
-        </Field>
+        <FormField label="Question">
+          <Input value={question} onChange={(e) => setQuestion(e.target.value)} required maxLength={300} placeholder="Where should we hold the staff retreat?" autoFocus />
+        </FormField>
         {options.map((o, i) => (
-          <div key={i} className="row-gap">
-            <input className="grow" value={o} onChange={(e) => setOptions(options.map((x, j) => (j === i ? e.target.value : x)))} placeholder={`Option ${i + 1}`} aria-label={`Option ${i + 1}`} maxLength={120} />
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <Input className="min-w-0 flex-1" value={o} onChange={(e) => setOptions(options.map((x, j) => (j === i ? e.target.value : x)))} placeholder={`Option ${i + 1}`} aria-label={`Option ${i + 1}`} maxLength={120} />
             {options.length > 2 && (
-              <button type="button" className="icon-btn xs" aria-label={`Remove option ${i + 1}`} onClick={() => setOptions(options.filter((_, j) => j !== i))}>
-                <Icon name="x" size={12} />
-              </button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                type="button"
+                aria-label={`Remove option ${i + 1}`}
+                onClick={() => setOptions(options.filter((_, j) => j !== i))}>
+                <Icon name="x" />
+              </Button>
             )}
           </div>
         ))}
         {options.length < 10 && (
-          <button type="button" className="btn sm" onClick={() => setOptions([...options, ''])}>
-            <Icon name="plus" size={14} /> Add option
-          </button>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => setOptions([...options, ''])}>
+            <Icon name="plus" data-icon="inline-start" /> Add option
+          </Button>
         )}
-        <label className="check-inline">
-          <input type="checkbox" checked={multiple} onChange={(e) => setMultiple(e.target.checked)} /> Allow more than one choice
-        </label>
-        <label className="check-inline">
-          <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} /> Anonymous — hide who voted for what
-        </label>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <CheckboxField label="Allow more than one choice" checked={multiple} onCheckedChange={setMultiple} />
+        <CheckboxField label="Anonymous — hide who voted for what" checked={anonymous} onCheckedChange={setAnonymous} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
             Cancel
-          </button>
-          <button className="btn primary" disabled={!question.trim() || clean.length < 2}>
+          </Button>
+          <Button disabled={!question.trim() || clean.length < 2} type="submit">
             Post poll
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -139,19 +160,22 @@ export function PollModal({ open, onClose, channelId, parentId, onSent }: { open
 export type Forwarded = ForwardedMessage;
 
 export function ForwardedQuote({ f }: { f: Forwarded }) {
-  if (f.deleted) return <blockquote className="forwarded muted">Forwarded message was deleted.</blockquote>;
+  if (f.deleted) return <blockquote className="forwarded my-1 border-l-2 pl-3 text-sm text-muted-foreground">Forwarded message was deleted.</blockquote>;
   return (
-    <blockquote className="forwarded">
-      <small className="muted">
-        <Icon name="forward" size={12} /> Forwarded from <strong>{f.user?.name}</strong>
+    <blockquote className="forwarded my-1 flex flex-col gap-1 border-l-2 border-primary/40 pl-3">
+      <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+        <Icon name="forward" size={12} /> Forwarded from <strong className="font-medium text-foreground">{f.user?.name}</strong>
         {f.channel_name && (
           <>
             {' '}
-            in <Link to={`/channels/${f.channel_id}?message=${f.id}`}>#{f.channel_name}</Link>
+            in{' '}
+            <Link className="text-primary hover:underline" to={`/channels/${f.channel_id}?message=${f.id}`}>
+              #{f.channel_name}
+            </Link>
           </>
         )}{' '}
         · {timeAgo(f.created_at)}
-      </small>
+      </span>
       <Markdown text={f.body ?? ''} compact />
     </blockquote>
   );
@@ -176,36 +200,36 @@ export function ForwardModal({ message, onClose }: { message: Message | null; on
     <Modal open={!!message} onClose={onClose} title="Forward message">
       {message && (
         <form
-          className="stack"
+          className="flex flex-col gap-3"
           onSubmit={async (e) => {
             e.preventDefault();
             const ok = await act(() => api.post(`/messages/${message.id}/forward`, { channelId: target, comment }), 'Message forwarded');
             if (ok) onClose();
           }}
         >
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a channel or conversation" aria-label="Find a channel" />
-          <div className="forward-targets" role="radiogroup" aria-label="Forward to">
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a channel or conversation" aria-label="Find a channel" />
+          <RadioGroup value={target} onValueChange={(v) => setTarget(v as string)} aria-label="Forward to" className="forward-targets max-h-60 gap-1 overflow-y-auto rounded-xl border p-1">
             {options.slice(0, 30).map((c) => (
-              <label key={c.id} className={`check-row ${target === c.id ? 'on' : ''}`}>
-                <input type="radio" name="forward-target" checked={target === c.id} onChange={() => setTarget(c.id)} />
-                <Icon name={c.kind === 'dm' ? 'chat' : c.kind === 'private' ? 'lock' : 'hash'} size={14} /> {label(c)}
-              </label>
+              <Label key={c.id} className={cn('flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 font-normal hover:bg-muted', target === c.id && 'bg-accent')}>
+                <RadioGroupItem value={c.id} />
+                <Icon name={c.kind === 'dm' ? 'chat' : c.kind === 'private' ? 'lock' : 'hash'} size={14} className="text-muted-foreground" /> <span className="truncate">{label(c)}</span>
+              </Label>
             ))}
-          </div>
-          <Field label="Add a note (optional)">
-            <input value={comment} onChange={(e) => setComment(e.target.value)} maxLength={10000} />
-          </Field>
-          <blockquote className="forwarded">
-            <small className="muted">{message.user?.name}</small>
+          </RadioGroup>
+          <FormField label="Add a note (optional)">
+            <Input value={comment} onChange={(e) => setComment(e.target.value)} maxLength={10000} />
+          </FormField>
+          <blockquote className="flex flex-col gap-1 rounded-xl border-l-2 border-primary/40 bg-muted/50 py-2 pr-3 pl-3">
+            <span className="text-xs text-muted-foreground">{message.user?.name}</span>
             <Markdown text={message.body} compact />
           </blockquote>
-          <div className="form-actions">
-            <button type="button" className="btn" onClick={onClose}>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" type="button" onClick={onClose}>
               Cancel
-            </button>
-            <button className="btn primary" disabled={!target}>
+            </Button>
+            <Button disabled={!target} type="submit">
               Forward
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -252,7 +276,7 @@ export function VoiceNoteButton({ onRecorded, disabled }: { onRecorded: (file: F
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      alert('Küü needs permission to use your microphone to record a voice note.');
+      notify('Küü needs permission to use your microphone to record a voice note.', 'error');
       return;
     }
     const recorder = new MediaRecorder(stream, { mimeType: type.mime });
@@ -274,29 +298,32 @@ export function VoiceNoteButton({ onRecorded, disabled }: { onRecorded: (file: F
   if (recording) {
     const s = Math.floor((Date.now() - recording.started) / 1000);
     return (
-      <span className="voice-recording">
-        <span className="rec-dot" /> {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
-        <button
-          className="btn sm"
+      <span className="flex items-center gap-2 text-sm">
+        <span className="size-2 animate-pulse rounded-full bg-destructive" aria-hidden="true" />
+        <span className="tabular-nums" aria-label="Recording time">
+          {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => {
             recording.recorder.onstop = () => {
               recording.recorder.stream.getTracks().forEach((t) => t.stop());
               setRecording(null);
             };
             recording.recorder.stop();
-          }}
-        >
+          }}>
           Cancel
-        </button>
-        <button className="btn primary sm" onClick={() => recording.recorder.stop()}>
+        </Button>
+        <Button size="sm" onClick={() => recording.recorder.stop()}>
           Done
-        </button>
+        </Button>
       </span>
     );
   }
   return (
-    <button className="icon-btn xs" onClick={start} disabled={disabled} aria-label="Record a voice note" title="Record a voice note">
-      <Icon name="mic" size={16} />
-    </button>
+    <IconButton label="Record a voice note" size="icon-sm" onClick={start} disabled={disabled}>
+      <Icon name="mic" />
+    </IconButton>
   );
 }

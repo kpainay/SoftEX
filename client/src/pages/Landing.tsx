@@ -4,6 +4,11 @@ import { Icon } from '../components/Icon';
 import { usd } from '../components/Plan';
 import { ProductDemo } from '../components/ProductDemo';
 import { PublicPage } from '../components/Public';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Badge } from '@/components/ui/badge';
+import { buttonVariants } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import '../landing.css';
 import { usePublicPricing } from './Pricing';
 
@@ -120,7 +125,9 @@ const spotlight = (e: React.PointerEvent<HTMLElement>) => {
   card.style.setProperty('--my', `${e.clientY - r.top}px`);
 };
 
-const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
+const stagger = (i: number) => (({
+  '--i': i
+}) as CSSProperties);
 
 /** Public home page for the hosted service. */
 export function Landing() {
@@ -150,11 +157,11 @@ export function Landing() {
             it, and what was decided.
           </p>
           <div className="hero-ctas">
-            <Link className="btn primary lg shine" to="/register">
-              Start your free {trialDays}-day trial <Icon name="arrow" size={16} />
+            <Link className={buttonVariants({ size: 'lg', className: 'shine h-11 px-5' })} to="/register">
+              Start your free {trialDays}-day trial <Icon name="arrow" data-icon="inline-end" />
             </Link>
-            <a className="btn lg ghost-lg" href="#tour">
-              <Icon name="play" size={15} /> See it in action
+            <a className={buttonVariants({ variant: 'outline', size: 'lg', className: 'h-11 px-5' })} href="#tour">
+              <Icon name="play" data-icon="inline-start" /> See it in action
             </a>
           </div>
           <ul className="hero-points">
@@ -175,7 +182,7 @@ export function Landing() {
         </section>
 
         <section className="marquee" aria-label="What Küü replaces">
-          <p className="muted">One workspace instead of scattered tools</p>
+          <p className="text-muted-foreground">One workspace instead of scattered tools</p>
           <div className="marquee-track">
             <div className="marquee-row">
               {[...REPLACES, ...REPLACES].map((t, i) => (
@@ -215,30 +222,32 @@ export function Landing() {
         </section>
 
         <section id="features" className="public-section">
-          <p className="eyebrow center" data-reveal>
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase mx-auto mt-3 block text-center" data-reveal>
             FEATURES
           </p>
-          <h2 className="center" data-reveal>
+          <h2 className="mx-auto mt-3 block text-center" data-reveal>
             Everything a busy team needs, in one place
           </h2>
           <div className="feature-grid" onPointerMove={spotlight}>
             {FEATURES.map((f, i) => (
-              <div key={f.title} className="feature-card spot" data-reveal style={stagger(i % 4)}>
-                <span className="feature-icon">
-                  <Icon name={f.icon} size={20} />
-                </span>
-                <h3>{f.title}</h3>
-                <p className="muted">{f.text}</p>
-              </div>
+              <Card key={f.title} className="spot" data-reveal style={stagger(i % 4)}>
+                <CardHeader>
+                  <span className="mb-2 flex size-10 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+                    <Icon name={f.icon} size={20} />
+                  </span>
+                  <CardTitle>{f.title}</CardTitle>
+                  <CardDescription>{f.text}</CardDescription>
+                </CardHeader>
+              </Card>
             ))}
           </div>
         </section>
 
         <section className="public-section why">
           <div data-reveal>
-            <p className="eyebrow">MADE FOR REAL-WORLD TEAMS</p>
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">MADE FOR REAL-WORLD TEAMS</p>
             <h2>Fast on any phone, fair on any budget</h2>
-            <p className="muted">
+            <p className="text-muted-foreground">
               Küü costs a fraction of the big global tools, you pay the way you already pay for everything else, and it stays usable when the network doesn’t.
             </p>
           </div>
@@ -248,20 +257,22 @@ export function Landing() {
               ['send', 'Pay the way you pay', 'Mobile money or bank transfer, monthly or yearly. One flat price per workspace, not per person.'],
               ['users', 'From 3 people to 300', 'Start free with a small team. Add departments, partner guests, single sign-on and more as you grow.'],
             ].map(([icon, title, text], i) => (
-              <div key={title} className="card spot" data-reveal style={stagger(i)}>
-                <Icon name={icon} size={20} />
-                <h3>{title}</h3>
-                <p className="muted">{text}</p>
-              </div>
+              <Card key={title} className="spot" data-reveal style={stagger(i)}>
+                <CardHeader>
+                  <Icon name={icon} size={20} className="mb-2 text-primary" />
+                  <CardTitle>{title}</CardTitle>
+                  <CardDescription>{text}</CardDescription>
+                </CardHeader>
+              </Card>
             ))}
           </div>
         </section>
 
         <section className="public-section">
-          <p className="eyebrow center" data-reveal>
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase mx-auto mt-3 block text-center" data-reveal>
             HOW IT WORKS
           </p>
-          <h2 className="center" data-reveal>
+          <h2 className="mx-auto mt-3 block text-center" data-reveal>
             Up and running in an afternoon
           </h2>
           <ol className="how-steps flow" data-reveal>
@@ -273,7 +284,7 @@ export function Landing() {
               <li key={title} style={stagger(i)}>
                 <b>{i + 1}</b>
                 <h3>{title}</h3>
-                <p className="muted">{text}</p>
+                <p className="text-muted-foreground">{text}</p>
               </li>
             ))}
           </ol>
@@ -281,41 +292,50 @@ export function Landing() {
 
         {teaser.every(Boolean) && (
           <section className="public-section price-teaser">
-            <h2 className="center" data-reveal>
+            <h2 className="mx-auto mt-3 block text-center" data-reveal>
               One flat price per workspace
             </h2>
-            <p className="center muted" data-reveal>
+            <p className="mx-auto mt-3 block text-center text-muted-foreground" data-reveal>
               Free for up to 5 members. New workspaces try every Organization feature free for {trialDays} days.
             </p>
             <div className="teaser-grid" onPointerMove={spotlight}>
               {teaser.map((p, i) => (
-                <div key={p!.id} className={`card spot lift ${p!.id === 'team' ? 'featured' : ''}`} data-reveal style={stagger(i)}>
-                  <h3>{p!.name}</h3>
-                  <p className="plan-price">
-                    <strong>{usd(p!.price ?? 0)}</strong> <span className="muted">per workspace / month</span>
-                  </p>
-                  <p className="muted small">Up to {p!.member_limit} members</p>
-                  <p className="muted">{p!.tagline}</p>
-                </div>
+                <Card key={p!.id} className={cn('spot lift', p!.id === 'team' && 'ring-2 ring-primary')} data-reveal style={stagger(i)}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="text-lg">{p!.name}</CardTitle>
+                      {p!.id === 'team' && <Badge>Popular</Badge>}
+                    </div>
+                    <p className="flex items-baseline gap-1.5">
+                      <strong className="font-heading text-3xl font-semibold">{usd(p!.price ?? 0)}</strong> <span className="text-sm text-muted-foreground">per workspace / month</span>
+                    </p>
+                    <CardDescription className="text-xs">Up to {p!.member_limit} members</CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-sm text-muted-foreground">{p!.tagline}</CardContent>
+                </Card>
               ))}
             </div>
-            <p className="center">
-              More than 50 people? We'll quote for you. <Link to="/pricing">Compare plans in detail →</Link>
+            <p className="mx-auto mt-3 block text-center">
+              More than 50 people? We'll quote for you.{' '}
+              <Link className="font-medium text-primary hover:underline" to="/pricing">
+                Compare plans in detail →
+              </Link>
             </p>
           </section>
         )}
 
-        <section id="faq" className="public-section pricing-faq faq-anim" data-reveal>
+        <section id="faq" className="public-section mx-auto w-full max-w-3xl" data-reveal>
           <h2>Questions</h2>
-          {FAQ.map(([q, a]) => (
-            <details key={q}>
-              <summary>
-                {q}
-                <Icon name="plus" size={16} />
-              </summary>
-              <p>{a}</p>
-            </details>
-          ))}
+          <Accordion>
+            {FAQ.map(([q, a]) => (
+              <AccordionItem key={q} value={q}>
+                <AccordionTrigger className="text-base">{q}</AccordionTrigger>
+                <AccordionContent>
+                  <p className="text-muted-foreground">{a}</p>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </section>
 
         <section className="final-cta final-anim" data-reveal>
@@ -325,8 +345,8 @@ export function Landing() {
           </div>
           <h2>Give your team one place to work.</h2>
           <p>Free for {trialDays} days. Free forever for teams of up to 5.</p>
-          <Link className="btn lg shine" to="/register">
-            Create your workspace <Icon name="arrow" size={16} />
+          <Link className={buttonVariants({ variant: 'secondary', size: 'lg', className: 'shine h-11 px-5' })} to="/register">
+            Create your workspace <Icon name="arrow" data-icon="inline-end" />
           </Link>
         </section>
       </div>

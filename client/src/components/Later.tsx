@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { api } from '../api';
 import { dateTime } from '../format';
 import { Icon } from './Icon';
-import { Field, Modal, useAction } from './ui';
+import { DateTimePicker, FormField, Modal, useAction } from '@/components/kit';
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@/components/ui/item';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 /** Quick choices for "later": in 20 minutes, in an hour, this evening, tomorrow morning, next Monday. */
 export function laterPresets(from = new Date()) {
@@ -66,32 +69,34 @@ export function WhenModal({
   return (
     <Modal open={open} onClose={onClose} title={title} eyebrow={eyebrow}>
       {withNote && (
-        <Field label="Note (optional)">
-          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="What should you remember?" />
-        </Field>
+        <FormField label="Note (optional)">
+          <Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="What should you remember?" />
+        </FormField>
       )}
-      <div className="later-presets">
+      <ItemGroup className="later-presets my-3 grid gap-2 sm:grid-cols-2">
         {laterPresets().map((p) => (
-          <button key={p.label} className="later-preset" disabled={busy} onClick={() => pick(p.date)}>
-            <strong>{p.label}</strong>
-            <small className="muted">{dateTime(p.date.toISOString())}</small>
-          </button>
+          <Item key={p.label} variant="outline" size="sm" className="hover:bg-muted" render={<button type="button" disabled={busy} onClick={() => pick(p.date)} />}>
+            <ItemContent>
+              <ItemTitle>{p.label}</ItemTitle>
+              <ItemDescription>{dateTime(p.date.toISOString())}</ItemDescription>
+            </ItemContent>
+          </Item>
         ))}
-      </div>
+      </ItemGroup>
       <form
-        className="row-gap wrap later-custom"
+        className="flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           const d = new Date(custom);
           if (!Number.isNaN(d.getTime())) pick(d);
         }}
       >
-        <Field label="Or pick a date and time">
-          <input type="datetime-local" value={custom} onChange={(e) => setCustom(e.target.value)} required />
-        </Field>
-        <button className="btn primary" disabled={busy}>
+        <FormField label="Or pick a date and time" className="w-auto">
+          <DateTimePicker value={custom} onChange={(v) => v && setCustom(v)} />
+        </FormField>
+        <Button disabled={busy} type="submit">
           {confirmLabel}
-        </button>
+        </Button>
       </form>
     </Modal>
   );
@@ -122,9 +127,9 @@ export function RemindButton({ taskId, messageId, label = 'Remind me' }: { taskI
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className="btn sm" onClick={() => setOpen(true)}>
-        <Icon name="clock" size={14} /> {label}
-      </button>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Icon name="clock" data-icon="inline-start" /> {label}
+      </Button>
       <RemindModal open={open} onClose={() => setOpen(false)} taskId={taskId} messageId={messageId} />
     </>
   );

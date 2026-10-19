@@ -21,8 +21,8 @@ test('record a meeting and play it back', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Record this meeting' });
   const start = dialog.getByRole('button', { name: 'Start recording' });
   await expect(start).toBeDisabled();
-  await dialog.getByLabel('Live captions').uncheck();
-  await dialog.getByLabel(/Everyone in this meeting knows/).check();
+  await dialog.getByRole('checkbox', { name: 'Live captions' }).uncheck();
+  await dialog.getByRole('checkbox', { name: /Everyone in this meeting knows/ }).check();
   await start.click();
 
   await expect(section.getByText(/^Recording \d+:\d\d$/)).toBeVisible();
@@ -36,8 +36,8 @@ test('record a meeting and play it back', async ({ page }) => {
   await expect.poll(async () => item.locator('audio').evaluate((a: HTMLAudioElement) => a.readyState)).toBeGreaterThan(0);
   await expect(item.getByRole('link', { name: 'Download' })).toBeVisible();
 
-  page.once('dialog', (d) => d.accept());
   await item.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('alertdialog', { name: 'Delete this recording?' }).getByRole('button', { name: 'Delete recording' }).click();
   await expect(page.getByText('Recording deleted')).toBeVisible();
   noErrors();
 });

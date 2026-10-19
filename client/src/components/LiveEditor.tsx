@@ -2,9 +2,16 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useLiveDoc, useYText, type Peer, type SaveStatus } from '../collab';
 import { useRealtime } from '../hooks';
-import { Avatar } from './Avatar';
+import { AvatarStack } from './Avatar';
 import { Markdown } from './Markdown';
-import { Loading, useAction } from './ui';
+import { Loading, useAction } from '@/components/kit';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
   connecting: 'Connecting…',
@@ -18,13 +25,9 @@ export function PeerList({ peers, label = 'Also editing' }: { peers: Peer[]; lab
   const people = [...new Map(peers.map((p) => [p.user.id, p.user])).values()];
   if (!people.length) return null;
   return (
-    <span className="peer-list" aria-label={`${label}: ${people.map((p) => p.name).join(', ')}`}>
-      <small className="muted">{label}</small>
-      {people.map((u) => (
-        <span key={u.id} className="peer" title={u.name}>
-          <Avatar user={u} size="xs" />
-        </span>
-      ))}
+    <span className="inline-flex items-center gap-2" aria-label={`${label}: ${people.map((p) => p.name).join(', ')}`}>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <AvatarStack users={people} max={5} />
     </span>
   );
 }
@@ -55,56 +58,56 @@ export function LiveEditor({
   const track = (field: 'title' | 'body') => (e: { currentTarget: HTMLInputElement | HTMLTextAreaElement }) =>
     live.setPresence({ selection: { field, start: e.currentTarget.selectionStart ?? 0, end: e.currentTarget.selectionEnd ?? 0 } });
 
+  const dot = live.status === 'offline' ? 'bg-destructive' : live.status === 'saved' ? 'bg-success' : 'animate-pulse bg-warning';
   return (
-    <div className="editor card">
-      <div className="live-bar">
-        <span className={`live-status ${live.status}`} role="status">
-          <i /> {STATUS_TEXT[live.status]}
-        </span>
+    <Card className="editor">
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+        <Badge variant="outline" role="status" className={cn('gap-1.5', live.status === 'offline' && 'text-destructive')}>
+          <i className={cn('size-1.5 rounded-full', dot)} aria-hidden="true" /> {STATUS_TEXT[live.status]}
+        </Badge>
         <PeerList peers={peers} />
-      </div>
-      <input
-        ref={title.ref}
-        className="title-input"
-        value={title.value}
-        onChange={(e) => title.onChange(e.target.value)}
-        onSelect={track('title')}
-        readOnly={!live.canEdit}
-        aria-label="Page title"
-      />
-      {others('title').length > 0 && <PeerList peers={others('title')} label="In the title" />}
-      <div className="segmented" role="group">
-        <button className={!preview ? 'active' : ''} onClick={() => setPreview(false)}>
-          Write
-        </button>
-        <button className={preview ? 'active' : ''} onClick={() => setPreview(true)}>
-          Preview
-        </button>
-      </div>
-      {preview ? (
-        <Markdown text={body.value} />
-      ) : (
-        <textarea
-          ref={body.ref}
-          className="page-editor"
-          value={body.value}
-          onChange={(e) => body.onChange(e.target.value)}
-          onSelect={track('body')}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Input
+          ref={title.ref}
+          className="h-11 font-heading text-xl font-semibold md:text-xl"
+          value={title.value}
+          onChange={(e) => title.onChange(e.target.value)}
+          onSelect={track('title')}
           readOnly={!live.canEdit}
-          rows={20}
-          aria-label="Page content"
-          placeholder={'# Heading\n\nWrite with **Markdown**. Link tasks and discussions by pasting their Küü links.\n\n- [ ] Checklists work too'}
+          aria-label="Page title"
         />
-      )}
-      <p className="muted small">
-        Everyone editing sees each other’s changes as they type. Readers see the last saved version until someone saves.
-      </p>
-      <div className="form-actions">
-        <button className="btn" onClick={onClose}>
+        {others('title').length > 0 && <PeerList peers={others('title')} label="In the title" />}
+        <Tabs value={preview ? 'preview' : 'write'} onValueChange={(v) => setPreview(v === 'preview')}>
+          <TabsList>
+            <TabsTrigger value="write">Write</TabsTrigger>
+            <TabsTrigger value="preview">Preview</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {preview ? (
+          <div className="min-h-64 rounded-xl border p-4">
+            <Markdown text={body.value} />
+          </div>
+        ) : (
+          <Textarea
+            ref={body.ref}
+            className="min-h-96 font-mono text-sm leading-relaxed"
+            value={body.value}
+            onChange={(e) => body.onChange(e.target.value)}
+            onSelect={track('body')}
+            readOnly={!live.canEdit}
+            rows={20}
+            aria-label="Page content"
+            placeholder={'# Heading\n\nWrite with **Markdown**. Link tasks and discussions by pasting their Küü links.\n\n- [ ] Checklists work too'}
+          />
+        )}
+        <p className="text-xs text-muted-foreground">Everyone editing sees each other’s changes as they type. Readers see the last saved version until someone saves.</p>
+      </CardContent>
+      <CardFooter className="justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>
           {changed ? 'Close (keep shared draft)' : 'Close'}
-        </button>
-        <button
-          className="btn primary"
+        </Button>
+        <Button
           disabled={!changed || !title.value.trim() || !live.canEdit}
           onClick={async () => {
             await live.flush();
@@ -113,9 +116,9 @@ export function LiveEditor({
           }}
         >
           Save version {page.version + (changed ? 1 : 0)}
-        </button>
-      </div>
-    </div>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
