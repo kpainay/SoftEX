@@ -748,6 +748,36 @@ export function ChannelView() {
 }
 
 /** The column beside a conversation (thread, members, pins, files); full screen on phones. */
+/**
+ * Keep a scrolling list on its newest item: when it opens, when items arrive, and while images and previews
+ * finish loading and grow the list — unless the reader has scrolled up to read older items.
+ */
+function useStayAtEnd(end: RefObject<HTMLElement | null>, ready: boolean, count: number) {
+  const stick = useRef(true);
+  const toEnd = useRef<() => void>(() => {});
+  useEffect(() => {
+    const list = end.current?.parentElement;
+    let scroller = list?.parentElement ?? null;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    if (!list || !scroller) return;
+    const box = scroller;
+    toEnd.current = () => (box.scrollTop = box.scrollHeight);
+    const onScroll = () => (stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80);
+    const grew = new ResizeObserver(() => stick.current && toEnd.current());
+    grew.observe(list);
+    box.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      grew.disconnect();
+      box.removeEventListener('scroll', onScroll);
+    };
+  }, [end, ready]);
+  // Opening the list, or a new item in it (yours or someone else's), brings the newest item into view.
+  useEffect(() => {
+    stick.current = true;
+    toEnd.current();
+  }, [ready, count]);
+}
+
 function SidePanelColumn({ title, label, onClose, children }: { title: string; label: string; onClose: () => void; children: ReactNode }) {
   return (
     <aside className="flex w-full min-w-0 flex-col border-l bg-card lg:w-96 lg:shrink-0" aria-label={label}>
@@ -1320,7 +1350,7 @@ function ThreadPanel({
     if (e.type === 'message.created' && e.message.parent_id === data?.root.id) outbox.settle(e.message);
     if ((e.type === 'message.created' && (e.message.parent_id === data?.root.id || e.message.id === data?.root.id)) || (e.type === 'message.updated' && data && (e.parentId === data.root.id || e.messageId === data.root.id))) reload();
   });
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [data?.replies.length, outgoing.length]);
+  useStayAtEnd(end, !!data, (data?.replies.length ?? 0) + outgoing.length);
   return (
     <SidePanelColumn title="Thread" label="Thread" onClose={onClose}>
       {error && <ErrorState error={error} />}
