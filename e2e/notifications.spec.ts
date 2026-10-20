@@ -78,7 +78,8 @@ test('the sidebar keeps the logo and profile in view, folds channels, and docks 
 
   await sidebar.getByRole('button', { name: 'Collapse the sidebar into a dock' }).click();
   await expect(sidebar).toHaveClass(/docked/);
-  expect((await sidebar.boundingBox())!.width).toBeLessThan(90);
+  // The dock animates its width, so wait for it to settle.
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeLessThan(90);
   await sidebar.getByRole('link', { name: /^Inbox/ }).click();
   await expect(page).toHaveURL(/\/inbox$/);
   // Remembered on this device.
