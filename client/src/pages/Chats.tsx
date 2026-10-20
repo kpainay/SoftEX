@@ -65,7 +65,7 @@ import { bytes, plainMentions, timeAgo, timeOf } from '../format';
 import { useApi, useRealtime, useViewing } from '../hooks';
 import { realtime } from '../realtime';
 import { outbox, useOutbox, type Outgoing } from '../outbox';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { MediaAttachment, VideoLinks, isPlayable } from '../components/Media';
 import { FavoriteButton } from '../components/Favorites';
 import { ForwardModal, ForwardedQuote, PollCard, PollModal, VoiceNoteButton } from '../components/ChatExtras';
@@ -231,7 +231,8 @@ export function Chats() {
 // ======================= Channel browser =======================
 
 export function ChannelsBrowser() {
-  const { me, people } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const navigate = useNavigate();
   const act = useAction();
   const { data: channels, error, reload } = useApi<Channel[]>('/channels');
@@ -841,7 +842,7 @@ function ChannelSettings({ channel, onSaved }: { channel: ChannelDetail; onSaved
 }
 
 function AddMembers({ open, onClose, channel, onDone }: { open: boolean; onClose: () => void; channel: ChannelDetail; onDone: () => void }) {
-  const { people } = useSession();
+  const people = usePeople();
   const act = useAction();
   const [ids, setIds] = useState<string[]>([]);
   return (
@@ -1402,7 +1403,7 @@ function Composer({
   members: { id: string; name: string; color: string }[];
   onSent?: () => void;
 }) {
-  const { people } = useSession();
+  const people = usePeople();
   const act = useAction();
   const storageKey = `softex.draft.${channelId}.${parentId ?? 'root'}`;
   const [enterSends, setEnterSends] = useEnterSends();

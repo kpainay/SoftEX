@@ -12,7 +12,7 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/componen
 import { FieldLegend, FieldSet } from '@/components/ui/field';
 import { Progress as UIProgress } from '@/components/ui/progress';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -182,7 +182,8 @@ export function Goals() {
 
 function GoalForm({ goal, goals, onClose, onSaved }: { goal?: Goal; goals: Goal[]; onClose: () => void; onSaved: (g: Goal) => void }) {
   const act = useAction();
-  const { people, me } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const { data: projects } = useApi<Project[]>('/projects');
   const [title, setTitle] = useState(goal?.title ?? '');
   const [description, setDescription] = useState(goal?.description ?? '');

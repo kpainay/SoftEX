@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useLiveDoc, useYText, type Peer, type SaveStatus } from '../collab';
 import { useRealtime } from '../hooks';
@@ -135,8 +135,16 @@ export function useEditingNow(pageId: string) {
     });
   });
   useEffect(() => {
-    const t = window.setInterval(() => setPeers((prev) => new Map([...prev].filter(([, p]) => p.at > Date.now() - 30_000))), 10_000);
+    // Only a change re-renders: a new Map every tick would redraw the open page every 10 seconds.
+    const t = window.setInterval(
+      () =>
+        setPeers((prev) => {
+          const live = [...prev].filter(([, p]) => p.at > Date.now() - 30_000);
+          return live.length === prev.size ? prev : new Map(live);
+        }),
+      10_000,
+    );
     return () => window.clearInterval(t);
   }, []);
-  return [...peers.values()];
+  return useMemo(() => [...peers.values()], [peers]);
 }

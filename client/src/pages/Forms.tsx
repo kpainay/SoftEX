@@ -9,7 +9,7 @@ import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader,
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -138,7 +138,7 @@ function CopyLink({ url }: { url: string }) {
 function FormBuilder({ projectId, form, onClose, onSaved }: { projectId: string; form: Form | null; onClose: () => void; onSaved: () => void }) {
   const act = useAction();
   const confirm = useConfirm();
-  const { people } = useSession();
+  const people = usePeople();
   const { data: fields } = useProjectFields(projectId);
   const [title, setTitle] = useState(form?.title ?? '');
   const [description, setDescription] = useState(form?.description ?? '');

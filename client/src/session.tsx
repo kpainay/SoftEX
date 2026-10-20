@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError, type Me, type Person } from './api';
 import { clearOfflineData, disablePush } from './pwa';
 import { realtime } from './realtime';
@@ -9,12 +9,14 @@ interface Session {
   setMe: (me: Me | null) => void;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
-  people: Person[];
   reloadPeople: () => Promise<void>;
   can: (role: 'lead' | 'admin' | 'owner') => boolean;
 }
 
 const SessionContext = createContext<Session>(null as unknown as Session);
+// Separate from the session: people change often (presence, profile edits), and only screens that list
+// people should redraw when they do, not everything that reads who is signed in.
+const PeopleContext = createContext<Person[]>([]);
 const RANK = { guest: 0, member: 1, lead: 2, admin: 3, owner: 4 } as const;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -116,7 +118,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [invalidateRefreshes],
   );
 
-  return <SessionContext.Provider value={{ me, loading, setMe: replaceMe, refresh, logout, people, reloadPeople, can }}>{children}</SessionContext.Provider>;
+  const session = useMemo(() => ({ me, loading, setMe: replaceMe, refresh, logout, reloadPeople, can }), [me, loading, replaceMe, refresh, logout, reloadPeople, can]);
+  return (
+    <SessionContext.Provider value={session}>
+      <PeopleContext.Provider value={people}>{children}</PeopleContext.Provider>
+    </SessionContext.Provider>
+  );
 }
 
 export const useSession = () => useContext(SessionContext);
+/** Everyone in the workspace, kept up to date with presence and profile changes. */
+export const usePeople = () => useContext(PeopleContext);

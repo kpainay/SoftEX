@@ -39,7 +39,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { dateTime, ROLE_LABEL, timeAgo } from '../format';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -440,7 +440,8 @@ function Invitations() {
 }
 
 function Teams() {
-  const { people, can } = useSession();
+  const { can } = useSession();
+  const people = usePeople();
   const act = useAction();
   const confirm = useConfirm();
   const { data, reload } = useApi<{ id: string; name: string; description: string; members: { id: string; name: string; color: string }[] }[]>('/teams');

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
 import { api } from '../api';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
 import { DatePicker, useAction } from '@/components/kit';
@@ -69,7 +69,7 @@ interface Suggestion {
 /** Thread tools: summary and task suggestions that a person reviews before anything is created. */
 export function ThreadAi({ messageId, excluded }: { messageId: string; excluded: boolean }) {
   const enabled = useAiEnabled();
-  const { people } = useSession();
+  const people = usePeople();
   const act = useAction();
   const [busy, setBusy] = useState<'summary' | 'tasks' | null>(null);
   const [summary, setSummary] = useState<string | null>(null);

@@ -1,4 +1,4 @@
-import { createContext, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronsUpDown, Ellipsis, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api, type Channel } from '../api';
@@ -191,11 +191,16 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
     return () => window.clearTimeout(t);
   }, [location.pathname, reloadChannels]);
 
-  const shell: Shell = {
-    openTask: useCallback((id: string) => setTaskId(id), []),
-    openCreate: useCallback((kind) => setCreate({ open: true, kind }), []),
-    openSearch: useCallback((q = '') => setSearch({ open: true, q }), []),
-  };
+  // One object for the life of the shell: a new one each render would redraw everything that uses it whenever the
+  // sidebar refreshes (which is on every new message).
+  const shell = useMemo<Shell>(
+    () => ({
+      openTask: (id) => setTaskId(id),
+      openCreate: (kind) => setCreate({ open: true, kind }),
+      openSearch: (q = '') => setSearch({ open: true, q }),
+    }),
+    [],
+  );
 
   if (!me) return null;
   const chatUnread = (channels ?? []).filter((c) => c.kind === 'dm').reduce((n, c) => n + c.unread, 0);
@@ -532,7 +537,8 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
 
 /** The bottom tab bar on phones. */
 function MobileNav({ unread, onSearch }: { unread: number; onSearch: () => void }) {
-  const tab = 'relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-muted-foreground [&.active]:text-primary';
+  // h-16 matches the 4rem that full-height screens (chats) leave for this bar.
+  const tab = 'relative flex h-16 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium text-muted-foreground [&.active]:text-primary';
   return (
     <nav
       aria-label="Primary"

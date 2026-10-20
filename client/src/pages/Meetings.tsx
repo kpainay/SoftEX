@@ -16,7 +16,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import { dateTime, localTimeIn, timeOf } from '../format';
 import { useApi, useRealtime } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
@@ -182,7 +182,7 @@ export function MeetingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { openTask } = useShell();
-  const { people } = useSession();
+  const people = usePeople();
   const act = useAction();
   const confirm = useConfirm();
   const { data: m, error, reload } = useApi<MeetingFull>(`/meetings/${id}`);

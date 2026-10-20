@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, qs, type Task } from '../api';
 import { bytes, dueLabel, plainMentions, STATUS_LABEL, timeAgo } from '../format';
 import { useApi, useRealtime, useViewing } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { RemindButton } from './Later';
@@ -139,7 +139,8 @@ interface TaskFull extends Task {
 }
 
 export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: () => void }) {
-  const { people, me } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const { has: planHas } = usePlan();
   const act = useAction();
   const confirm = useConfirm();

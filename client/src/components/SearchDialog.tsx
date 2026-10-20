@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, qs } from '../api';
 import { dateTime, plainMentions, timeAgo } from '../format';
 import { useDebounced } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { useAiEnabled } from './Ai';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
@@ -60,7 +60,7 @@ function ResultItem({ value, onSelect, media, title, meta, snippet, end }: { val
 
 export function SearchDialog({ open, initial, onClose }: { open: boolean; initial: string; onClose: () => void }) {
   const navigate = useNavigate();
-  const { people } = useSession();
+  const people = usePeople();
   const [q, setQ] = useState(initial);
   const [type, setType] = useState<SearchType>('all');
   const [from, setFrom] = useState('');

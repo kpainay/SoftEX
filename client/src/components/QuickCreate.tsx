@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, type Project, type Task } from '../api';
 import { toIso, toLocalInput } from '../format';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Icon } from './Icon';
 import { FormField, Modal, PeoplePicker, useAction, Callout, ColorSwatches, DatePicker, DateTimePicker } from '@/components/kit';
 import { Input } from '@/components/ui/input';
@@ -72,7 +72,8 @@ export function NewTaskForm({
   defaults?: Partial<{ title: string; ownerId: string; dueDate: string; status: string; milestoneId: string; meetingId: string; parentId: string }>;
   endpoint?: string;
 }) {
-  const { me, people } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const act = useAction();
   const { data: projects } = useApi<Project[]>(fixedProject ? null : '/projects');
   const [title, setTitle] = useState(defaults.title ?? '');
@@ -162,7 +163,8 @@ export function NewTaskForm({
 }
 
 function NewProjectForm({ onDone }: { onDone: () => void }) {
-  const { people, me } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const navigate = useNavigate();
   const act = useAction();
   const [name, setName] = useState('');
@@ -231,7 +233,8 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
 }
 
 function NewMessageForm({ onDone }: { onDone: () => void }) {
-  const { people, me } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const navigate = useNavigate();
   const act = useAction();
   const [ids, setIds] = useState<string[]>([]);
@@ -261,7 +264,8 @@ function NewMessageForm({ onDone }: { onDone: () => void }) {
 }
 
 export function NewMeetingForm({ onDone, projectId: fixedProject, channelId }: { onDone: () => void; projectId?: string; channelId?: string }) {
-  const { people, me } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const navigate = useNavigate();
   const act = useAction();
   const { data: projects } = useApi<Project[]>(fixedProject ? null : '/projects');

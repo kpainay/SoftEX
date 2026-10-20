@@ -36,7 +36,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { dateTime, plainMentions, STATUS_LABEL, timeAgo } from '../format';
 import { useApi, useRealtime } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -444,6 +444,20 @@ export function ProjectTimeline({ projectId, milestones, canEdit }: { projectId:
     }
     return out;
   }, [range]);
+  // Up to 240 cells that only change with the range, not while a bar is dragged.
+  const dayCells = useMemo(
+    () =>
+      Array.from({ length: range.days }, (_, i) => {
+        const d = addDays(range.from, i);
+        const dow = parseDay(d).getUTCDay();
+        return (
+          <span key={d} className={`tl-day ${dow === 0 || dow === 6 ? 'weekend' : ''}`} style={{ left: i * PX, width: PX }}>
+            {d.slice(8)}
+          </span>
+        );
+      }),
+    [range],
+  );
 
   const onPointerDown = (e: React.PointerEvent, t: Task, mode: 'move' | 'end') => {
     if (!canEdit) return;
@@ -455,11 +469,10 @@ export function ProjectTimeline({ projectId, milestones, canEdit }: { projectId:
     const d = drag.current;
     if (!d) return;
     const delta = Math.round((e.clientX - d.x) / PX);
-    if (d.mode === 'move') setPreview({ id: d.id, start: addDays(d.start, delta), due: addDays(d.due, delta) });
-    else {
-      const due = addDays(d.due, delta);
-      setPreview({ id: d.id, start: d.start, due: due < d.start ? d.start : due });
-    }
+    const due = addDays(d.due, delta);
+    const next = d.mode === 'move' ? { id: d.id, start: addDays(d.start, delta), due } : { id: d.id, start: d.start, due: due < d.start ? d.start : due };
+    // Pointer moves within the same day change nothing, so they don't redraw the timeline.
+    setPreview((prev) => (prev && prev.id === next.id && prev.start === next.start && prev.due === next.due ? prev : next));
   };
   const onPointerUp = async (t: Task) => {
     const p = preview;
@@ -512,15 +525,7 @@ export function ProjectTimeline({ projectId, milestones, canEdit }: { projectId:
                     {m.label}
                   </span>
                 ))}
-                {Array.from({ length: range.days }, (_, i) => {
-                  const d = addDays(range.from, i);
-                  const dow = parseDay(d).getUTCDay();
-                  return (
-                    <span key={d} className={`tl-day ${dow === 0 || dow === 6 ? 'weekend' : ''}`} style={{ left: i * PX, width: PX }}>
-                      {d.slice(8)}
-                    </span>
-                  );
-                })}
+                {dayCells}
               </div>
               <div className="tl-today" style={{ left: x(range.today) + PX / 2 }} aria-hidden="true" />
               {milestones.some((m) => m.due_date) && (
@@ -689,7 +694,7 @@ function describe(r: Rule, people: { id: string; name: string }[], channels: Cha
 export function ProjectAutomations({ projectId }: { projectId: string }) {
   const act = useAction();
   const confirm = useConfirm();
-  const { people } = useSession();
+  const people = usePeople();
   const { data, error, reload } = useApi<{ can_manage: boolean; automations: Rule[] }>(`/projects/${projectId}/automations`);
   const { data: channels } = useApi<Channel[]>('/channels');
   const [editing, setEditing] = useState<{ id?: string; draft: RuleDraft } | null>(null);

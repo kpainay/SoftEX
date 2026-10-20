@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { timeAgo } from '../format';
 import { useApi, useRealtime } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { Markdown } from './Markdown';
@@ -77,7 +77,8 @@ interface PageComment {
 export function PageComments({ pageId, canModerate, onChange }: { pageId: string; canModerate: boolean; onChange?: () => void }) {
   const act = useAction();
   const confirm = useConfirm();
-  const { me, people } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const { data, reload } = useApi<PageComment[]>(`/pages/${pageId}/comments`);
   const [body, setBody] = useState('');
   const [showResolved, setShowResolved] = useState(false);
