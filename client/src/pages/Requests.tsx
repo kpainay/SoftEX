@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { cn } from '@/lib/utils';
 import { timeAgo } from '../format';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -32,7 +32,8 @@ interface Request {
 const KIND_LABEL: Record<string, string> = { access: 'Access', purchase: 'Purchase', leave: 'Leave handoff', support: 'Internal support', other: 'Other' };
 
 export function Requests() {
-  const { me, people } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const act = useAction();
   const [tab, setTab] = useState<'inbox' | 'mine'>('inbox');
   const [creating, setCreating] = useState(false);

@@ -9,12 +9,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { localTimeIn, ROLE_LABEL, dateLabel } from '../format';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Button, buttonVariants } from '@/components/ui/button';
 
 export function Directory() {
-  const { people } = useSession();
+  const people = usePeople();
   const [tab, setTab] = useState<'people' | 'teams'>('people');
   const [q, setQ] = useState('');
   const [team, setTeam] = useState('');

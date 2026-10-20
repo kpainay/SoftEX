@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, memo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
@@ -69,7 +69,8 @@ function linkEl(href: string, label: string, key: string) {
   return <Fragment key={key}>{label}</Fragment>;
 }
 
-export function Markdown({ text, compact = false }: { text: string; compact?: boolean }) {
+/** Memoised: its props are plain strings, so a redraw of the screen around it never re-parses unchanged text. */
+export const Markdown = memo(function Markdown({ text, compact = false }: { text: string; compact?: boolean }) {
   const lines = text.replace(/\r/g, '').split('\n');
   const blocks: ReactNode[] = [];
   let i = 0;
@@ -169,4 +170,4 @@ export function Markdown({ text, compact = false }: { text: string; compact?: bo
   }
   // Blocks follow each other with a gap; compact (messages) keeps it tighter.
   return <div className={cn('markdown min-w-0 break-words [&>*+*]:mt-3', compact && 'compact [&>*+*]:mt-2')}>{blocks}</div>;
-}
+});

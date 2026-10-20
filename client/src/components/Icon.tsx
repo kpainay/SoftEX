@@ -77,7 +77,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import type { SVGProps } from 'react';
+import { memo, type SVGProps } from 'react';
 import { cn } from '@/lib/utils';
 
 /** The app's icon names, drawn from lucide (the preset's icon library). New code can import lucide icons directly. */
@@ -165,7 +165,7 @@ export type IconName = keyof typeof ICONS;
 /**
  * An icon by name. Inside shadcn components (buttons, menu items, badges) the component's own CSS sets the size.
  */
-export function Icon({
+export const Icon = memo(function Icon({
   name,
   size = 18,
   className,
@@ -184,4 +184,4 @@ export function Icon({
       {...rest}
     />
   );
-}
+});

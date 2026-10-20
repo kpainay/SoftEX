@@ -3,7 +3,7 @@ import { ChevronUp } from 'lucide-react';
 import { api, LABEL_COLORS, type CustomField, type FieldType, type Label, type LabelColor, type TimeEntry } from '../api';
 import { duration, localToday, timeAgo } from '../format';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Icon } from './Icon';
 import { UpgradeNotice, usePlan } from './Plan';
 import { DatePicker, IconButton, Modal, Pill, useAction, useConfirm } from '@/components/kit';
@@ -142,7 +142,7 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
 
 /** Read-only display of a field value (tables, cards). */
 export function FieldValue({ field, value }: { field: CustomField; value: unknown }) {
-  const { people } = useSession();
+  const people = usePeople();
   if (value === undefined || value === null || value === '') return <span className="text-muted-foreground">—</span>;
   switch (field.type) {
     case 'checkbox':
@@ -168,7 +168,7 @@ export function FieldValue({ field, value }: { field: CustomField; value: unknow
 
 /** Editable field value; saves on change/blur. */
 export function FieldInput({ field, value, disabled, onSave }: { field: CustomField; value: unknown; disabled?: boolean; onSave: (value: unknown) => void }) {
-  const { people } = useSession();
+  const people = usePeople();
   const label = field.name;
   switch (field.type) {
     case 'checkbox':

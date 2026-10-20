@@ -15,7 +15,8 @@ export function useApi<T>(path: string | null, deps: unknown[] = []) {
     try {
       const result = await api.get<T>(path);
       if (current.current === path) {
-        setData(result);
+        // Realtime refetches often bring back exactly what's on screen; keeping the same object skips a full redraw.
+        setData((prev) => (prev !== undefined && JSON.stringify(prev) === JSON.stringify(result) ? prev : result));
         setError(null);
       }
     } catch (e) {

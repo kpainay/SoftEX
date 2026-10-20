@@ -185,6 +185,16 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
+/*
+ * Phones get the full-size type scale: everything in rem (text, controls, spacing) is ~14% larger than on the dense
+ * desktop layout, so it's easy to read and tap. 16px text in form fields also stops iOS Safari zooming in on focus.
+ */
+@media (max-width: 767px) {
+  html,
+  body {
+    font-size: 16px;
+  }
+}
 h1,
 h2,
 h3,

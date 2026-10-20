@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, type CustomField, type Task, type TaskStatus } from '../api';
 import { dueLabel, localToday, STATUS_LABEL, duration } from '../format';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { Avatar } from './Avatar';
 import { Icon } from './Icon';
 import { FieldInput, FieldValue, LabelChips } from './Work';
@@ -33,7 +33,7 @@ export function TaskTable({
   onOpen: (id: string) => void;
   onChanged: (task: Task) => void;
 }) {
-  const { people } = useSession();
+  const people = usePeople();
   const act = useAction();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'status', dir: 1 });
 

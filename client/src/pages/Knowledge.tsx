@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { bytes, dateTime, plainMentions, timeAgo, dateLabel } from '../format';
 import { useApi } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { MediaAttachment, isPlayable } from '../components/Media';
 import { FavoriteButton } from '../components/Favorites';
 import { IconPicker, PageComments, PublishPanel } from '../components/PageExtras';
@@ -250,7 +250,8 @@ export function PageView() {
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { me, people } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const act = useAction();
   const { data: page, error, reload } = useApi<PageFull>(`/pages/${id}`);
   const editing = params.get('edit') === '1';

@@ -57,7 +57,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { bytes, dateTime, dueLabel, duration, HEALTH_LABEL, STATUS_LABEL, timeAgo, dateLabel } from '../format';
 import { useApi, useRealtime } from '../hooks';
-import { useSession } from '../session';
+import { usePeople, useSession } from '../session';
 import { CheckinModal } from './Home';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -326,8 +326,8 @@ export function ProjectDetail() {
             {project.due_date && <span>Target: {dateLabel(project.due_date)}</span>}
             <AvatarStack users={project.members} max={5} total={project.member_count} />
             {project.channels.map((c) => (
-              <Badge key={c.id} variant="outline" render={<Link to={`/channels/${c.id}`} />}>
-                <Icon name={c.kind === 'private' ? 'lock' : 'hash'} /> {c.name}
+              <Badge key={c.id} variant="outline" className="max-w-full" title={c.name} render={<Link to={`/channels/${c.id}`} />}>
+                <Icon name={c.kind === 'private' ? 'lock' : 'hash'} /> <span className="truncate">{c.name}</span>
               </Badge>
             ))}
           </div>
@@ -572,7 +572,8 @@ function Overview({ project, reload }: { project: ProjectFull; reload: () => voi
 }
 
 function Members({ project, reload }: { project: ProjectFull; reload: () => void }) {
-  const { people, me } = useSession();
+  const { me } = useSession();
+  const people = usePeople();
   const act = useAction();
   const [ids, setIds] = useState<string[]>([]);
   return (
@@ -988,7 +989,7 @@ function ProjectDecisions({ project }: { project: ProjectFull }) {
 
 function Risks({ project }: { project: ProjectFull }) {
   const act = useAction();
-  const { people } = useSession();
+  const people = usePeople();
   const { data, reload } = useApi<{ id: string; title: string; impact: string; mitigation: string; owner_id: string | null; owner_name: string | null; status: string }[]>(
     `/projects/${project.id}/risks`,
   );
