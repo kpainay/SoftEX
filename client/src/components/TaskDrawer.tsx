@@ -706,17 +706,23 @@ export function TaskRow({
   onOpen,
   onToggle,
   showProject = true,
+  selection,
 }: {
   task: Task;
   onOpen: () => void;
   onToggle?: (done: boolean) => void | Promise<unknown>;
   showProject?: boolean;
+  /** Choosing several tasks to act on at once: the box selects instead of completing, and so does clicking the row. */
+  selection?: { selected: boolean; onChange: (selected: boolean) => void };
 }) {
   // Ticked at once; the list's own data takes over again when the server has answered.
   const [pending, setPending] = useState<boolean | null>(null);
   const done = pending ?? task.status === 'done';
   return (
-    <div className={cn('task group/task flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted/60', done && 'is-done')}>
+    <div className={cn('task group/task flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted/60', done && 'is-done', selection?.selected && 'bg-accent/70 hover:bg-accent')}>
+      {selection ? (
+        <Checkbox checked={selection.selected} onCheckedChange={(v) => selection.onChange(!!v)} aria-label={`Select ${task.title}`} />
+      ) : (
       <Checkbox
         checked={done}
         onCheckedChange={async (checked) => {
@@ -730,7 +736,11 @@ export function TaskRow({
         aria-label={`Mark ${task.title} ${done ? 'not done' : 'done'}`}
         disabled={!onToggle}
       />
-      <button className="task-body flex min-w-0 flex-1 flex-col items-start gap-1 text-left outline-none focus-visible:underline" onClick={onOpen}>
+      )}
+      <button
+        className="task-body flex min-w-0 flex-1 flex-col items-start gap-1 text-left outline-none focus-visible:underline"
+        onClick={selection ? () => selection.onChange(!selection.selected) : onOpen}
+      >
         <strong className={cn('text-sm font-medium', done && 'text-muted-foreground line-through')}>{task.title}</strong>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           {showProject &&

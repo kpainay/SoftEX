@@ -19,6 +19,8 @@ import { NotificationsMenu } from './NotificationsMenu';
 import { PushPrompt } from './PushPrompt';
 import { SaveBar } from './SaveBar';
 import { FavoritesNav } from './Favorites';
+import { ShortcutsDialog, useShortcuts } from './Shortcuts';
+import { recordVisit } from '../recent';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -179,6 +181,29 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Single-key shortcuts ("/", "c", "?", "g" then a letter) and the sheet that lists them.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  useShortcuts({
+    onSearch: useCallback(() => setSearch({ open: true, q: '' }), []),
+    onCreate: useCallback(() => setCreate({ open: true, kind: 'task' }), []),
+    onHelp: useCallback(() => setShortcutsOpen(true), []),
+  });
+  useEffect(() => {
+    const open = () => setShortcutsOpen(true);
+    window.addEventListener('kuu:shortcuts', open);
+    return () => window.removeEventListener('kuu:shortcuts', open);
+  }, []);
+
+  // Remember where you've been (on this device), so the command palette can take you back.
+  useEffect(() => {
+    const path = location.pathname + location.search;
+    const t = window.setTimeout(() => {
+      const heading = document.querySelector('#main h1')?.textContent?.trim();
+      recordVisit(path, heading || document.title.split(' · ')[0]);
+    }, 1200);
+    return () => window.clearTimeout(t);
+  }, [location.pathname, location.search]);
 
   // Opening a meeting, page, project, goal or file reads what you were notified about it (chats do this as they are read).
   // Not gated on the unread count: on a direct load (or a push notification tap) the count hasn't arrived yet.
@@ -543,6 +568,7 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
       <SearchDialog open={search.open} initial={search.q} onClose={() => setSearch({ open: false, q: '' })} />
       <QuickCreate open={create.open} kind={create.kind} onClose={() => setCreate({ open: false })} />
       <TaskDrawer taskId={taskId} onClose={() => setTaskId(null)} />
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <PushPrompt />
       {!online && (
         <div className="fixed inset-x-3 bottom-20 z-40 mx-auto max-w-xl md:bottom-4">

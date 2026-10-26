@@ -25,7 +25,23 @@ function Eyebrow({ children }: { children?: ReactNode }) {
 }
 
 /** A centred dialog for a focused task. `wide` for forms with two columns or previews. */
-export function Modal({ open, onClose, title, eyebrow, description, footer, children, className, hideTitle, wide = false }: OverlayProps & { wide?: boolean }) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  eyebrow,
+  description,
+  footer,
+  children,
+  className,
+  hideTitle,
+  wide = false,
+  readOnly = false,
+}: OverlayProps & {
+  wide?: boolean;
+  /** Content with nothing to click or type in (a reference sheet): its scroll area takes keyboard focus so it can be scrolled. */
+  readOnly?: boolean;
+}) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className={cn('flex max-h-[min(90dvh,52rem)] flex-col gap-4 overflow-hidden', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg', className)}>
@@ -34,7 +50,9 @@ export function Modal({ open, onClose, title, eyebrow, description, footer, chil
           <DialogTitle className="text-lg">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6 pb-1">{children}</div>
+        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6 pb-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/50" tabIndex={readOnly ? 0 : undefined}>
+          {children}
+        </div>
         {footer && <DialogFooter>{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>

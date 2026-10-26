@@ -77,3 +77,25 @@ describe('pages', () => {
     expect((await owner.agent.get(`/api/pages/${page.id}`)).body.title).toBe('Packing list');
   });
 });
+
+describe('reading a chat', () => {
+  it('says when you last read it, and "mark unread" makes a message and what follows unread again', async () => {
+    env = setup();
+    const owner = await registerOwner(env, 'Ada');
+    const bo = await invite(env, owner.agent, 'member', {}, 'Bo');
+    const dm = (await owner.agent.post('/api/dms').send({ userIds: [bo.id] })).body;
+    const first = (await owner.agent.post(`/api/channels/${dm.id}/messages`).send({ body: 'one' })).body;
+    await owner.agent.post(`/api/channels/${dm.id}/messages`).send({ body: 'two' });
+    const unreadCount = async () => (await bo.agent.get('/api/channels')).body.find((c: { id: string }) => c.id === dm.id).unread;
+
+    const before = (await bo.agent.get(`/api/channels/${dm.id}/messages`)).body;
+    expect(before.last_read_at < first.created_at).toBe(true);
+    await bo.agent.post(`/api/channels/${dm.id}/read`).expect(200);
+    expect(await unreadCount()).toBe(0);
+
+    await bo.agent.post(`/api/channels/${dm.id}/unread`).send({ messageId: first.id }).expect(200);
+    expect(await unreadCount()).toBe(2);
+    expect((await bo.agent.get(`/api/channels/${dm.id}/messages`)).body.last_read_at < first.created_at).toBe(true);
+    await bo.agent.post(`/api/channels/${dm.id}/unread`).send({ messageId: 'nope' }).expect(404);
+  });
+});

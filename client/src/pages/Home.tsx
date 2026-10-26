@@ -4,6 +4,7 @@ import { api, type Activity, type Decision, type Notification, type Project, typ
 import { Avatar, AvatarStack } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
+import { QuickAddTask } from '../components/QuickAddTask';
 import { TaskRow } from '../components/TaskDrawer';
 import { ErrorState, FormField, Loading, Modal, Page, PageHeader, Panel, SwitchField, useAction } from '@/components/kit';
 import { ProjectCard } from '../components/ProjectCard';
@@ -11,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { plainMentions, timeAgo, timeOf } from '../format';
+import { localToday, plainMentions, timeAgo, timeOf } from '../format';
 import { useApi, useRealtime } from '../hooks';
 import { useSession } from '../session';
 import { GroupCount } from './Inbox';
@@ -176,9 +177,8 @@ export function Home() {
             {data.focus.map((t) => (
               <TaskRow key={t.id} task={t} onOpen={() => openTask(t.id)} onToggle={(d) => complete(t, d)} />
             ))}
-            <Button variant="ghost" className="mt-1 justify-start text-muted-foreground" onClick={() => openCreate('task')}>
-              <Icon name="plus" data-icon="inline-start" /> Add a task
-            </Button>
+            {/* Type it and press Enter; anything without a date is for today. */}
+            <QuickAddTask className="mt-2" defaultDue={localToday()} onCreated={reload} placeholder="Add a task for today — or “… friday !high”" />
           </Panel>
 
           {data.blocked.length > 0 && (

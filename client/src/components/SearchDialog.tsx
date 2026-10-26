@@ -1,8 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, qs } from '../api';
+import { api, qs, type Channel, type Me } from '../api';
 import { dateTime, plainMentions, timeAgo } from '../format';
-import { useDebounced } from '../hooks';
+import { useApi, useDebounced } from '../hooks';
+import { useRecentPlaces } from '../recent';
+import { effectiveTheme, getTheme, setTheme } from '../theme';
+import { useShell } from './Layout';
+import { GO_TO } from './Shortcuts';
 import { usePeople, useSession } from '../session';
 import { useAiEnabled } from './Ai';
 import { Avatar } from './Avatar';
@@ -63,9 +67,28 @@ function ResultItem({ value, onSelect, media, title, meta, snippet, end }: { val
   );
 }
 
+const PLACE_ICON: Record<string, string> = { channel: 'hash', project: 'folder', task: 'task', page: 'book', file: 'file', meeting: 'video', person: 'users', team: 'users', goal: 'target', board: 'whiteboard', dashboard: 'chart' };
+
+interface Command {
+  id: string;
+  label: string;
+  icon: string;
+  hint?: string;
+  /** Extra words it can be found by. */
+  words?: string;
+  run: () => void | Promise<unknown>;
+}
+
 export function SearchDialog({ open, initial, onClose }: { open: boolean; initial: string; onClose: () => void }) {
   const navigate = useNavigate();
   const people = usePeople();
+  const { me, setMe } = useSession();
+  const { openCreate } = useShell();
+  const recent = useRecentPlaces();
+  // Places to jump to by name; loaded when the palette opens.
+  const { data: channels } = useApi<Channel[]>(open ? '/channels' : null);
+  const { data: projects } = useApi<{ id: string; name: string; color: string }[]>(open ? '/projects' : null);
+  const { data: teams } = useApi<{ id: string; name: string }[]>(open ? '/teams' : null);
   const [q, setQ] = useState(initial);
   const [type, setType] = useState<SearchType>('all');
   const [from, setFrom] = useState('');
@@ -123,6 +146,46 @@ export function SearchDialog({ open, initial, onClose }: { open: boolean; initia
     onClose();
     navigate(path);
   };
+  const focusFor = async (minutes: number) => {
+    onClose();
+    const updated = await api.patch<Me>('/me', { status: 'focus', focus_until: new Date(Date.now() + minutes * 60_000).toISOString() }).catch(() => null);
+    if (updated) setMe(updated);
+  };
+  const dark = effectiveTheme(getTheme()) === 'dark';
+  const commands: Command[] = [
+    { id: 'new-task', label: 'Create a task', icon: 'task', hint: 'C', words: 'new add todo', run: () => (onClose(), openCreate('task')) },
+    {
+      id: 'new-page',
+      label: 'Write a new page',
+      icon: 'book',
+      words: 'new knowledge note doc',
+      run: async () => {
+        onClose();
+        const page = await api.post<{ id: string }>('/pages', {}).catch(() => null);
+        if (page) navigate(`/knowledge/${page.id}?edit=1&new=1`);
+      },
+    },
+    { id: 'new-meeting', label: 'Schedule a meeting', icon: 'video', words: 'new call event calendar', run: () => (onClose(), openCreate('meeting')) },
+    { id: 'new-message', label: 'Send a message', icon: 'chat', words: 'new dm chat write', run: () => (onClose(), openCreate('message')) },
+    ...(me?.role !== 'guest' ? [{ id: 'new-project', label: 'Start a project', icon: 'folder', words: 'new', run: () => (onClose(), openCreate('project')) }] : []),
+    { id: 'focus-30', label: 'Focus for 30 minutes', icon: 'clock', words: 'do not disturb dnd quiet', run: () => focusFor(30) },
+    { id: 'focus-60', label: 'Focus for 1 hour', icon: 'clock', words: 'do not disturb dnd quiet', run: () => focusFor(60) },
+    { id: 'theme', label: dark ? 'Switch to light mode' : 'Switch to dark mode', icon: dark ? 'sun' : 'moon', words: 'theme appearance', run: () => setTheme(dark ? 'light' : 'dark') },
+    { id: 'shortcuts', label: 'Keyboard shortcuts', icon: 'help', hint: '?', words: 'keys help', run: () => (onClose(), window.dispatchEvent(new Event('kuu:shortcuts'))) },
+    ...GO_TO.map((g) => ({ id: `go-${g.path}`, label: `Go to ${g.label}`, icon: 'arrow', hint: `G ${g.key.toUpperCase()}`, run: () => go(g.path) })),
+  ];
+  const needle = q.trim().toLowerCase();
+  const matches = (text: string) => text.toLowerCase().includes(needle);
+  const matchedCommands = needle ? commands.filter((c) => matches(`${c.label} ${c.words ?? ''}`)).slice(0, 5) : commands.slice(0, 6);
+  // Places whose name matches what's typed: chats, channels, people, projects and teams.
+  const jumps = needle
+    ? [
+        ...(channels ?? []).filter((c) => c.kind !== 'dm' && matches(c.name)).map((c) => ({ key: `c-${c.id}`, label: `#${c.name}`, icon: c.kind === 'private' ? 'lock' : 'hash', path: `/channels/${c.id}`, person: null })),
+        ...people.filter((p) => matches(p.name)).map((p) => ({ key: `p-${p.id}`, label: p.name, icon: 'users', path: `/people/${p.id}`, person: p })),
+        ...(projects ?? []).filter((p) => matches(p.name)).map((p) => ({ key: `pr-${p.id}`, label: p.name, icon: 'folder', path: `/projects/${p.id}`, person: null })),
+        ...(teams ?? []).filter((t) => matches(t.name)).map((t) => ({ key: `t-${t.id}`, label: `${t.name} team`, icon: 'users', path: `/teams/${t.id}`, person: null })),
+      ].slice(0, 6)
+    : [];
 
   const total = results ? Object.values(results).reduce((n, list) => n + list.length, 0) : 0;
   // In "All", a group with more than a few results shows the first few and can be opened up.
@@ -260,8 +323,42 @@ export function SearchDialog({ open, initial, onClose }: { open: boolean; initia
               />
             </CommandGroup>
           )}
-          {!results && <p className="px-3 py-6 text-center text-sm text-muted-foreground">Type at least two characters. Results only include items you have access to.</p>}
-          {results && total === 0 && !loading && <p className="px-3 py-6 text-center text-sm text-muted-foreground">No results for “{debounced}”.</p>}
+          {!needle && recent.length > 0 && (
+            <CommandGroup heading="Recent">
+              {recent.slice(0, 5).map((r) => (
+                <ResultItem key={r.path} value={`recent-${r.path}`} onSelect={() => go(r.path)} media={<Icon name={PLACE_ICON[r.kind] ?? 'arrow'} />} title={r.label} meta={timeAgo(new Date(r.at).toISOString())} />
+              ))}
+            </CommandGroup>
+          )}
+          {jumps.length > 0 && (
+            <CommandGroup heading="Go to">
+              {jumps.map((j) => (
+                <ResultItem
+                  key={j.key}
+                  value={`jump-${j.key}`}
+                  onSelect={() => go(j.path)}
+                  media={j.person ? <Avatar user={j.person} size="sm" /> : <Icon name={j.icon} />}
+                  title={j.label}
+                />
+              ))}
+            </CommandGroup>
+          )}
+          {matchedCommands.length > 0 && (
+            <CommandGroup heading="Commands">
+              {matchedCommands.map((c) => (
+                <ResultItem
+                  key={c.id}
+                  value={`cmd-${c.id}`}
+                  onSelect={() => void c.run()}
+                  media={<Icon name={c.icon} />}
+                  title={c.label}
+                  end={c.hint ? <kbd className="rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">{c.hint}</kbd> : undefined}
+                />
+              ))}
+            </CommandGroup>
+          )}
+          {!results && needle.length < 2 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">Type to search messages, tasks, files, knowledge and people — only what you have access to.</p>}
+          {results && total === 0 && !loading && !jumps.length && !matchedCommands.length && <p className="px-3 py-6 text-center text-sm text-muted-foreground">No results for “{debounced}”.</p>}
           {section('pages', 'Knowledge', (p) => (
             <ResultItem
               key={p.id}

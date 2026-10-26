@@ -587,7 +587,24 @@ export function channelsRouter(ctx: Ctx) {
         ORDER BY created_at DESC LIMIT ?`,
       ...(q.before ? [channel.id, q.before, q.limit] : [channel.id, q.limit]),
     );
-    res.json({ messages: await serializeMessages(db, auth, rows.reverse()), has_more: rows.length === q.limit });
+    // When you last read this chat, so the first unread message can be marked (read before the visit marks it read).
+    const member = await db.get('SELECT last_read_at FROM channel_members WHERE channel_id = ? AND user_id = ?', channel.id, auth.userId);
+    res.json({ messages: await serializeMessages(db, auth, rows.reverse()), has_more: rows.length === q.limit, last_read_at: member?.last_read_at ?? null });
+  });
+
+  /** "Mark unread": everything from this message on counts as unread again, so the chat shows up as unread. */
+  r.post('/channels/:id/unread', async (req, res) => {
+    const auth = authOf(req);
+    const channel = await loadChannel(db, auth, req.params.id);
+    const { messageId } = parse(z.object({ messageId: z.string() }), req.body);
+    const message = await db.get('SELECT created_at FROM messages WHERE id = ? AND channel_id = ?', messageId, channel.id);
+    if (!message) throw notFound('Message');
+    // Just before the message, so it and everything after it are unread.
+    const before = new Date(new Date(message.created_at).getTime() - 1).toISOString();
+    const { changes } = await db.run('UPDATE channel_members SET last_read_at = ? WHERE channel_id = ? AND user_id = ?', before, channel.id, auth.userId);
+    if (!changes) throw badRequest('Join the channel to keep track of what you have read');
+    await ctx.hub.publish(auth.workspaceId, { type: 'channel.updated', channelId: channel.id }, { kind: 'user', userId: auth.userId });
+    res.json({ ok: true, last_read_at: before });
   });
 
   r.get('/channels/:id/pins', async (req, res) => {
