@@ -27,11 +27,11 @@ export function Decisions() {
       )}
       {list.length > 0 && (
         <Card className="py-2">
-          <ItemGroup className="gap-0">
+          <ItemGroup className="gap-0" role="list" aria-label="Decisions">
             {list.map((d, i) => (
               <Fragment key={d.id}>
                 {i > 0 && <ItemSeparator className="my-0" />}
-                <Item className="items-start">
+                <Item className="items-start" role="listitem">
                   <ItemMedia variant="icon" className="size-8 rounded-lg bg-accent text-accent-foreground">
                     <Icon name="gavel" />
                   </ItemMedia>
