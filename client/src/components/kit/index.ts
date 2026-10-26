@@ -11,3 +11,4 @@ export * from './filters';
 export * from './date-picker';
 export * from './page';
 export * from './people-picker';
+export * from './categories';

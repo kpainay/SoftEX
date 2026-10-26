@@ -136,7 +136,9 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
   const theme = useTheme();
   const { data: counts, reload: reloadCounts } = useApi<{ unread: number }>('/notifications?filter=unread&limit=1');
   const { data: channels, reload: reloadChannels } = useApi<Channel[]>('/channels');
-  const { data: work, reload: reloadWork } = useApi<{ overdue: unknown[]; today: unknown[] }>('/my-work');
+  const { data: work, reload: reloadWork } = useApi<{ overdue: unknown[]; today: unknown[]; team?: unknown[] }>('/my-work');
+  const { data: teams } = useApi<{ id: string; name: string; is_member: boolean }[]>('/teams');
+  const myTeams = (teams ?? []).filter((t) => t.is_member);
 
   const { setOpenMobile } = sidebar;
   useEffect(() => setOpenMobile(false), [location.pathname, setOpenMobile]);
@@ -205,7 +207,7 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
   if (!me) return null;
   const chatUnread = (channels ?? []).filter((c) => c.kind === 'dm').reduce((n, c) => n + c.unread, 0);
   const channelUnread = (channels ?? []).filter((c) => c.kind !== 'dm' && c.joined).reduce((n, c) => n + c.mentions, 0);
-  const workDue = (work?.overdue.length ?? 0) + (work?.today.length ?? 0);
+  const workDue = (work?.overdue.length ?? 0) + (work?.today.length ?? 0) + (work?.team?.length ?? 0);
   const joinedChannels = (channels ?? []).filter((c) => c.kind !== 'dm' && c.joined);
   const openChannelId = location.pathname.match(/^\/channels\/([^/]+)/)?.[1];
   const dmOpen = !!openChannelId && (channels ?? []).some((c) => c.id === openChannelId && c.kind === 'dm');
@@ -218,11 +220,12 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
 
   const nav: NavEntry[] = [
     { to: '/', icon: 'home', label: 'Home', end: true },
-    { to: '/inbox', icon: 'inbox', label: 'Inbox', badge: counts?.unread },
     { to: '/chats', icon: 'chat', label: 'Chats', badge: chatUnread },
+    { to: '/activities', icon: 'inbox', label: 'Activities', badge: counts?.unread },
     { to: '/channels', icon: 'hash', label: 'Channels', badge: channelUnread },
     { to: '/my-work', icon: 'check', label: 'My work', badge: workDue, soft: true },
     { to: '/projects', icon: 'folder', label: 'Projects' },
+    { to: '/files', icon: 'files', label: 'Files' },
     ...(me.role === 'guest' ? [] : [{ to: '/goals', icon: 'target', label: 'Goals' }, { to: '/dashboards', icon: 'chart', label: 'Dashboards' }]),
   ];
   const explore: NavEntry[] = [
@@ -390,6 +393,23 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          {myTeams.length > 0 && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Your teams</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu aria-label="Your teams">
+                  {myTeams.map((t) => (
+                    <SidebarMenuItem key={t.id}>
+                      <SidebarMenuButton isActive={location.pathname === `/teams/${t.id}`} tooltip={t.name} render={<NavLink to={`/teams/${t.id}`} />}>
+                        <Icon name="users" />
+                        <span>{t.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
           <FavoritesNav />
           <SidebarSeparator />
           <SidebarGroup>
@@ -548,14 +568,15 @@ function MobileNav({ unread, onSearch }: { unread: number; onSearch: () => void 
         <Icon name="home" size={20} />
         <span>Home</span>
       </NavLink>
-      <NavLink to="/inbox" className={tab}>
-        <Icon name="inbox" size={20} />
-        <span>Inbox</span>
-        <CountBadge count={unread} className="absolute top-1 left-1/2 ml-1 h-4 min-w-4 px-1 text-[10px]" />
-      </NavLink>
       <NavLink to="/chats" className={tab}>
         <Icon name="chat" size={20} />
         <span>Chats</span>
+      </NavLink>
+      {/* Activities sits in the middle: what needs you, front and centre. */}
+      <NavLink to="/activities" className={tab}>
+        <Icon name="inbox" size={20} />
+        <span>Activities</span>
+        <CountBadge count={unread} className="absolute top-1 left-1/2 ml-1 h-4 min-w-4 px-1 text-[10px]" />
       </NavLink>
       <NavLink to="/my-work" className={tab}>
         <Icon name="check" size={20} />

@@ -23,7 +23,7 @@ test('unread messages from one chat are one Inbox row with a count, and reading 
   const run = Date.now().toString(36);
   for (const n of [1, 2, 3]) await call(nina, 'POST', `/channels/${dm.id}/messages`, { body: `Update ${n} ${run}` });
 
-  await page.goto('/inbox');
+  await page.goto('/activities');
   const row = page.locator('.inbox-item.unread').filter({ hasText: `Update 3 ${run}` });
   await expect(row).toHaveCount(1);
   await expect(row.locator('.group-count')).toHaveText(/^[3-9]|\d\d+$/);
@@ -80,8 +80,8 @@ test('the sidebar keeps the logo and profile in view, folds channels, and docks 
   await expect(sidebar).toHaveClass(/docked/);
   // The dock animates its width, so wait for it to settle.
   await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeLessThan(90);
-  await sidebar.getByRole('link', { name: /^Inbox/ }).click();
-  await expect(page).toHaveURL(/\/inbox$/);
+  await sidebar.getByRole('link', { name: /^Activities/ }).click();
+  await expect(page).toHaveURL(/\/activities$/);
   // Remembered on this device.
   await page.reload();
   await expect(sidebar).toHaveClass(/docked/);

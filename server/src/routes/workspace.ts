@@ -9,12 +9,17 @@ import {
   canViewMeeting,
   canViewPage,
   canViewTask,
+  canViewChannel,
+  isAdmin,
   isGuest,
   requireRole,
   type Auth,
   type Role,
 } from '../access.js';
 import { audit, authOf, notify, platformEvent, type Ctx } from '../context.js';
+import { syncTeamChannels } from '../teams.js';
+import { serializeMessages } from './channels.js';
+import { serializeTasks } from './tasks.js';
 import { mePayload, startSession } from './auth.js';
 import { verifyTotp } from '../totp.js';
 import { queueEmail } from '../mailer.js';
@@ -104,11 +109,95 @@ export function workspaceRouter(ctx: Ctx) {
     const auth = authOf(req);
     const teams = await db.all('SELECT * FROM teams WHERE workspace_id = ? ORDER BY name', auth.workspaceId);
     res.json(
-      (await Promise.all(teams.map(async (t) => ({
-        ...t,
-        members: await db.all(`SELECT u.id, u.name, u.color FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? ORDER BY u.name`, t.id),
-      })))),
+      (await Promise.all(teams.map(async (t) => {
+        const members = await db.all(`SELECT u.id, u.name, u.color FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE tm.team_id = ? ORDER BY u.name`, t.id);
+        return { ...t, members, is_member: members.some((m) => m.id === auth.userId) };
+      }))),
     );
+  });
+
+  const loadTeam = async (auth: Auth, id: string) => {
+    const team = await db.get('SELECT * FROM teams WHERE id = ? AND workspace_id = ?', id, auth.workspaceId);
+    // Guests see only the teams they are on.
+    if (!team || (isGuest(auth) && !await db.get('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?', team.id, auth.userId))) throw notFound('Team');
+    return team;
+  };
+
+  /** A team's page: who is on it and its channels. */
+  r.get('/teams/:id', async (req, res) => {
+    const auth = authOf(req);
+    const team = await loadTeam(auth, req.params.id);
+    const members = await db.all(
+      `SELECT u.id, u.name, u.color, u.title, u.status FROM team_members tm JOIN users u ON u.id = tm.user_id
+         JOIN memberships m ON m.user_id = u.id AND m.workspace_id = ? WHERE tm.team_id = ? AND m.deactivated_at IS NULL ORDER BY u.name`,
+      auth.workspaceId,
+      team.id,
+    );
+    const channels = await filterAsync(
+      await db.all("SELECT * FROM channels WHERE team_id = ? AND archived_at IS NULL AND kind != 'dm' ORDER BY name", team.id),
+      (c) => canViewChannel(db, auth, c),
+    );
+    const projects = await db.all('SELECT id, name, color FROM projects WHERE team_id = ? AND archived_at IS NULL ORDER BY name', team.id);
+    const visible = new Set(await accessibleProjectIds(db, auth));
+    res.json({
+      ...team,
+      members,
+      is_member: members.some((m) => m.id === auth.userId),
+      can_manage: atLeast(auth, 'lead'),
+      channels: channels.map((c) => ({ id: c.id, name: c.name, kind: c.kind, topic: c.topic })),
+      projects: projects.filter((p) => visible.has(p.id)),
+    });
+  });
+
+  /**
+   * The team's shared inbox: what has been addressed to the team as a whole — tasks given to it (open ones,
+   * unclaimed first), messages that @mention it, and files shared with it.
+   */
+  r.get('/teams/:id/inbox', async (req, res) => {
+    const auth = authOf(req);
+    const team = await loadTeam(auth, req.params.id);
+    const taskRows = await filterAsync(
+      await db.all(
+        `SELECT * FROM tasks WHERE team_id = ? AND status != 'done' ORDER BY CASE WHEN owner_id IS NULL THEN 0 ELSE 1 END, due_date IS NULL, due_date, updated_at DESC LIMIT 200`,
+        team.id,
+      ),
+      (t) => canViewTask(db, auth, t),
+    );
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const mentionRows = await db.all(
+      `SELECT m.* FROM messages m JOIN channels c ON c.id = m.channel_id
+        WHERE c.workspace_id = ? AND m.deleted_at IS NULL AND m.created_at >= ? AND m.body LIKE ? ORDER BY m.created_at DESC LIMIT 100`,
+      auth.workspaceId,
+      since,
+      `%(team:${team.id})%`,
+    );
+    const channelCache = new Map<string, boolean>();
+    const mentions = await filterAsync(mentionRows, async (m) => {
+      if (!channelCache.has(m.channel_id)) {
+        const channel = await db.get('SELECT * FROM channels WHERE id = ?', m.channel_id);
+        channelCache.set(m.channel_id, !!channel && await canViewChannel(db, auth, channel));
+      }
+      return channelCache.get(m.channel_id)!;
+    });
+    const channelNames = new Map(
+      (await db.all(`SELECT id, name, kind FROM channels WHERE id IN (${[...channelCache.keys()].map(() => '?').join(',') || "''"})`, ...channelCache.keys())).map((c) => [c.id, c]),
+    );
+    const files = await filterAsync(
+      await db.all(
+        `SELECT f.*, u.name AS owner_name FROM files f JOIN users u ON u.id = f.owner_id
+          WHERE f.workspace_id = ? AND f.archived_at IS NULL AND (f.team_id = ? OR f.channel_id IN (SELECT id FROM channels WHERE team_id = ?))
+          ORDER BY f.created_at DESC LIMIT 20`,
+        auth.workspaceId,
+        team.id,
+        team.id,
+      ),
+      (f) => canViewFile(db, auth, f),
+    );
+    res.json({
+      tasks: await serializeTasks(db, taskRows),
+      mentions: (await serializeMessages(db, auth, mentions.slice(0, 30))).map((m) => ({ ...m, channel: channelNames.get(m.channel_id) ?? null })),
+      files: files.slice(0, 10).map((f) => ({ id: f.id, name: f.name, owner_name: f.owner_name, created_at: f.created_at, channel_id: f.channel_id })),
+    });
   });
 
   r.post('/teams', async (req, res) => {
@@ -142,6 +231,8 @@ export function workspaceRouter(ctx: Ctx) {
           }
         }
       });
+      // New people on the team join its channels.
+      await syncTeamChannels(db, team.id);
     }
     res.json({ ok: true });
   });

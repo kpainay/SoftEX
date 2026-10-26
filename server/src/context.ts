@@ -189,14 +189,14 @@ export async function notify(ctx: Ctx, workspaceId: string, input: NotifyInput) 
       kind: 'urgent',
       to: user.email,
       subject: `Urgent: ${input.title}`,
-      text: input.body ? `${input.title}\n\n“${input.body.replace(/@\[([^\]]+)\]\([0-9a-f-]{36}\)/g, '@$1')}”` : input.title,
+      text: input.body ? `${input.title}\n\n“${input.body.replace(/@\[([^\]]+)\]\((?:team:)?[0-9a-f-]{36}\)/g, '@$1')}”` : input.title,
       action: { label: 'Open in Küü', url: `${ctx.config.publicUrl}${input.link ?? '/inbox'}` },
     });
   }
   // Phones and browsers get a push notification unless the person is using Küü in a window that's in front right now:
   // a background tab or another device left open must not swallow it.
   if (!silent && !ctx.hub.isActive(workspaceId, input.userId)) {
-    const pushBody = (input.body ?? '').replace(/@\[([^\]]+)\]\([0-9a-f-]{36}\)/g, '@$1').slice(0, 180);
+    const pushBody = (input.body ?? '').replace(/@\[([^\]]+)\]\((?:team:)?[0-9a-f-]{36}\)/g, '@$1').slice(0, 180);
     await ctx.db.afterCommit(async () => sendPush(ctx, input.userId, { title: input.title, body: pushBody, url: input.link || '/inbox', tag: row.id }));
   }
   await ctx.hub.toUser(workspaceId, input.userId, {

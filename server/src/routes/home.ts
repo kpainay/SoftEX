@@ -308,6 +308,13 @@ export function homeRouter(ctx: Ctx) {
     res.json({ ok: true });
   });
 
+  /** Clear out old notifications: deletes everything already read. Unread ones stay until they're dealt with. */
+  r.post('/notifications/clear', async (req, res) => {
+    const auth = authOf(req);
+    const { changes } = await db.run('DELETE FROM notifications WHERE user_id = ? AND workspace_id = ? AND read_at IS NOT NULL', auth.userId, auth.workspaceId);
+    res.json({ cleared: changes });
+  });
+
   /** Digest of the last day, grouped by kind, to reduce interruption load (§5.5). */
   r.get('/notifications/digest', async (req, res) => {
     const auth = authOf(req);

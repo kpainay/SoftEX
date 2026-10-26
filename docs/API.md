@@ -38,15 +38,18 @@ The iOS and Android apps use the same endpoints as the web app, but they don't u
 | `GET /api/my-work` | Your tasks grouped into overdue, today, upcoming, blocked, review and later |
 | `GET /api/search?q=…&type=all\|messages\|tasks\|pages\|files\|projects\|decisions\|meetings\|people` | Permission-aware search, including text inside uploaded files |
 | `GET /api/projects` · `POST /api/projects` · `GET/PATCH /api/projects/:id` | Projects |
-| `GET /api/tasks?projectId=…` · `POST /api/tasks` · `GET/PATCH/DELETE /api/tasks/:id` | Tasks (`title`, `projectId`, `ownerId`, `dueDate` as YYYY-MM-DD, `priority`, `status`) |
+| `GET /api/tasks?projectId=…` · `POST /api/tasks` · `GET/PATCH/DELETE /api/tasks/:id` | Tasks (`title`, `projectId`, `ownerId`, `teamId`, `dueDate` as YYYY-MM-DD, `priority`, `status`). A task given to a team (`teamId`, no `ownerId`) is told to everyone on it and visible to them; any of them can take it by setting `ownerId` |
 | `POST /api/tasks/:id/comments` · `POST /api/tasks/:id/checklist` | Task comments and checklist items |
 | `GET /api/channels` · `GET /api/channels/:id/messages` · `POST /api/channels/:id/messages` | Channels and messages (`body`, optional `parentId` for thread replies) |
 | `POST /api/messages/:id/task` · `POST /api/decisions` | Turn a message into a task, or record a decision |
 | `GET /api/pages` · `POST /api/pages` · `GET/PATCH /api/pages/:id` | Knowledge pages (Markdown `body`) |
-| `GET /api/files` · `POST /api/files` (multipart `file`) · `GET /api/files/:id/download` | Files |
+| `GET /api/files` · `POST /api/files` (multipart `file`) · `GET /api/files/:id/download` | Files. The list holds every file you can open, each with `place` (the chat, channel, project, task or team it lives in); narrow it with `channelId`, `projectId` or `teamId`. Upload with `teamId` to share a file with a team you are on |
+| `GET /api/channels/:id/overview` | A channel's details: who created it, tasks made from its messages (and its project's open tasks), its meetings, and file and pin counts |
 | `GET /api/meetings?range=upcoming\|past` · `POST /api/meetings` · `GET /api/meetings/:id/ics` | Meetings and calendar invites |
-| `GET /api/people` · `GET /api/teams` | Directory |
+| `GET /api/people` · `GET /api/teams` | Directory (`is_member` says whether you are on a team) |
+| `GET /api/teams/:id` · `GET /api/teams/:id/inbox` | A team's members, channels and projects; and its shared inbox: open tasks given to the team (unclaimed first), messages that mention it in the last 30 days (`@[Name](team:<id>)`, which also notifies its members), and new files shared with it or in its channels. Channels created with `teamId` include everyone on the team, also people who join later |
 | `GET /api/notifications` | Inbox. Unread updates about the same chat, task or meeting come as one row (the newest) with `group_count`; `group_key` says what it is about, and `unread` counts these groups |
+| `POST /api/notifications/clear` | Delete your read notifications (unread ones stay) |
 | `POST /api/notifications/:id/read` · `POST /api/notifications/read-group` (`{ group: "/tasks/<id>" }`) | Mark a row read (which reads its whole group), or everything about one thing. Reading a channel (`POST /api/channels/:id/read`) or writing in it also reads its notifications |
 | `GET /api/export` | Everything you can access, as JSON |
 | `GET /api/workload?weeks=4&projectId=…&teamId=…` | Open tasks per person per due week |

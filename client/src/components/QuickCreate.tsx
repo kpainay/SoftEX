@@ -7,7 +7,7 @@ import { usePeople, useSession } from '../session';
 import { Icon } from './Icon';
 import { FormField, Modal, PeoplePicker, useAction, Callout, ColorSwatches, DatePicker, DateTimePicker } from '@/components/kit';
 import { Input } from '@/components/ui/input';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -69,16 +69,19 @@ export function NewTaskForm({
 }: {
   onDone: (task?: Task) => void;
   projectId?: string;
-  defaults?: Partial<{ title: string; ownerId: string; dueDate: string; status: string; milestoneId: string; meetingId: string; parentId: string }>;
+  defaults?: Partial<{ title: string; ownerId: string; teamId: string; dueDate: string; status: string; milestoneId: string; meetingId: string; parentId: string }>;
   endpoint?: string;
 }) {
   const { me } = useSession();
   const people = usePeople();
   const act = useAction();
   const { data: projects } = useApi<Project[]>(fixedProject ? null : '/projects');
+  const { data: teams } = useApi<{ id: string; name: string }[]>('/teams');
   const [title, setTitle] = useState(defaults.title ?? '');
   const [projectId, setProjectId] = useState(fixedProject ?? '');
-  const [ownerId, setOwnerId] = useState(defaults.ownerId ?? me!.user.id);
+  // A person's id, or "team:<id>" to give the task to a whole team.
+  const [ownerId, setOwnerId] = useState(defaults.teamId ? `team:${defaults.teamId}` : defaults.ownerId ?? me!.user.id);
+  const team = ownerId.startsWith('team:') ? ownerId.slice(5) : null;
   const [dueDate, setDueDate] = useState(defaults.dueDate ?? '');
   const [priority, setPriority] = useState('medium');
   const [description, setDescription] = useState('');
@@ -92,7 +95,8 @@ export function NewTaskForm({
           title,
           description: description || undefined,
           projectId: projectId || null,
-          ownerId: ownerId || null,
+          ownerId: team ? null : ownerId || null,
+          teamId: team,
           dueDate: dueDate || null,
           priority,
           status: defaults.status,
@@ -123,14 +127,25 @@ export function NewTaskForm({
             </NativeSelect>
           </FormField>
         )}
-        <FormField label="Owner">
+        <FormField label="Owner" hint={team ? 'Everyone on the team is told; anyone can pick it up.' : undefined}>
           <NativeSelect value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
             <NativeSelectOption value="">Unassigned</NativeSelectOption>
-            {people.map((p) => (
-              <NativeSelectOption key={p.id} value={p.id}>
-                {p.id === me!.user.id ? `${p.name} (me)` : p.name}
-              </NativeSelectOption>
-            ))}
+            <NativeSelectOptGroup label="People">
+              {people.map((p) => (
+                <NativeSelectOption key={p.id} value={p.id}>
+                  {p.id === me!.user.id ? `${p.name} (me)` : p.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelectOptGroup>
+            {!!teams?.length && (
+              <NativeSelectOptGroup label="Teams">
+                {teams.map((t) => (
+                  <NativeSelectOption key={t.id} value={`team:${t.id}`}>
+                    {t.name} (team)
+                  </NativeSelectOption>
+                ))}
+              </NativeSelectOptGroup>
+            )}
           </NativeSelect>
         </FormField>
       </div>
@@ -380,13 +395,13 @@ function NewPageForm({ onDone }: { onDone: () => void }) {
     const page = await act(() => api.post('/pages', { title, projectId: projectId || null, body: '' }));
     if (page) {
       onDone();
-      navigate(`/knowledge/${page.id}?edit=1`);
+      navigate(`/knowledge/${page.id}?edit=1${title.trim() ? '' : '&new=1'}`);
     }
   };
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      <FormField label="Title">
-        <Input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Expense policy" />
+      <FormField label="Title" hint="Optional — you can name it later.">
+        <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Untitled" />
       </FormField>
       <FormField label="Where does it belong?">
         <NativeSelect value={projectId} onChange={(e) => setProjectId(e.target.value)}>
@@ -402,9 +417,7 @@ function NewPageForm({ onDone }: { onDone: () => void }) {
         <Button variant="outline" type="button" onClick={onDone}>
           Cancel
         </Button>
-        <Button disabled={!title.trim()} type="submit">
-          Create and edit
-        </Button>
+        <Button type="submit">Create and edit</Button>
       </div>
     </form>
   );

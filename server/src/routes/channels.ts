@@ -4,6 +4,8 @@ import {
   atLeast,
   canPostChannel,
   canViewChannel,
+  canViewMeeting,
+  canViewTask,
   isAdmin,
   isActiveMember,
   isChannelMember,
@@ -15,6 +17,7 @@ import {
 import type { Database, Row } from '../db.js';
 import { audit, authOf, notify, publishToChannel, readNotificationGroup, recordActivity, type Ctx } from '../context.js';
 import { emitEvent } from '../webhooks.js';
+import { extractTeamMentionIds, syncTeamChannels } from '../teams.js';
 import { badRequest, extractMentionIds, forbidden, newId, notFound, now, parse, filterAsync } from '../util.js';
 
 const ChannelName = z
@@ -297,7 +300,7 @@ export async function postMessage(ctx: Ctx, auth: Auth, channel: Row, input: New
   const link = `/channels/${channel.id}?message=${parent?.id ?? id}`;
   // A reply only counts as seen if its thread is open; a top-level message if the channel is.
   const viewKey = parent ? `/channels/${channel.id}?thread=${parent.id}` : `/channels/${channel.id}`;
-  const preview = body.body.replace(/@\[([^\]]+)\]\([0-9a-f-]{36}\)/g, '@$1');
+  const preview = body.body.replace(/@\[([^\]]+)\]\((?:team:)?[0-9a-f-]{36}\)/g, '@$1');
   const notified = new Set<string>([auth.userId]);
   const prefs = new Map((await db.all('SELECT user_id, notify FROM channel_members WHERE channel_id = ?', channel.id)).map((m) => [m.user_id, m.notify]));
   for (const userId of extractMentionIds(body.body)) {
@@ -307,6 +310,19 @@ export async function postMessage(ctx: Ctx, auth: Auth, channel: Row, input: New
     if (prefs.get(userId) === 'none' && !body.urgent) continue;
     notified.add(userId);
     await notify(ctx, auth.workspaceId, { userId, kind: 'mention', title: `${actor.name} mentioned you in ${where}`, body: preview, link, viewKey, actorId: auth.userId, urgent: body.urgent });
+  }
+  // @Team reaches everyone on the team who can see this conversation, and shows in the team's inbox.
+  for (const teamId of extractTeamMentionIds(body.body)) {
+    const team = await db.get('SELECT * FROM teams WHERE id = ? AND workspace_id = ?', teamId, auth.workspaceId);
+    if (!team) continue;
+    for (const { user_id: userId } of await db.all('SELECT user_id FROM team_members WHERE team_id = ?', team.id)) {
+      if (notified.has(userId) || !await isActiveMember(db, auth.workspaceId, userId)) continue;
+      const role = (await db.get('SELECT role FROM memberships WHERE workspace_id = ? AND user_id = ?', auth.workspaceId, userId))!.role;
+      if (!await canViewChannel(db, { userId, workspaceId: auth.workspaceId, role }, channel)) continue;
+      if (prefs.get(userId) === 'none' && !body.urgent) continue;
+      notified.add(userId);
+      await notify(ctx, auth.workspaceId, { userId, kind: 'mention', title: `${actor.name} mentioned @${team.name} in ${where}`, body: preview, link, viewKey, actorId: auth.userId, urgent: body.urgent });
+    }
   }
   const recipients = async (ids: string[], kind: string, title: string) => {
     for (const userId of ids) {
@@ -387,6 +403,8 @@ export function channelsRouter(ctx: Ctx) {
       await addMember(id, auth.userId);
       for (const userId of body.memberIds) if (await isActiveMember(db, auth.workspaceId, userId)) await addMember(id, userId);
     });
+    // A team's channel includes everyone on the team.
+    if (body.teamId) await syncTeamChannels(db, body.teamId);
     await recordActivity(ctx, auth.workspaceId, {
       actorId: auth.userId,
       verb: 'created',
@@ -577,6 +595,40 @@ export function channelsRouter(ctx: Ctx) {
     const channel = await loadChannel(db, auth, req.params.id);
     const rows = await db.all('SELECT * FROM messages WHERE channel_id = ? AND pinned_at IS NOT NULL AND deleted_at IS NULL ORDER BY pinned_at DESC', channel.id);
     res.json(await serializeMessages(db, auth, rows));
+  });
+
+  /**
+   * What a channel's details page shows besides its members: who started it, the tasks made from its
+   * messages (and its project's open tasks), its meetings, and how many files and pins it has.
+   */
+  r.get('/channels/:id/overview', async (req, res) => {
+    const auth = authOf(req);
+    const channel = await loadChannel(db, auth, req.params.id);
+    const creator = await db.get('SELECT id, name, color FROM users WHERE id = ?', channel.created_by);
+    const taskRows = await db.all(
+      `SELECT t.* FROM tasks t LEFT JOIN messages m ON m.id = t.source_message_id
+        WHERE t.workspace_id = ? AND (m.channel_id = ? ${channel.project_id ? 'OR (t.project_id = ? AND t.status != \'done\')' : ''})
+        ORDER BY CASE WHEN t.status = 'done' THEN 1 ELSE 0 END, t.updated_at DESC LIMIT 40`,
+      ...(channel.project_id ? [auth.workspaceId, channel.id, channel.project_id] : [auth.workspaceId, channel.id]),
+    );
+    const tasks = (await filterAsync(taskRows, (t) => canViewTask(db, auth, t))).slice(0, 12);
+    const owners = new Map<string, Row>();
+    for (const t of tasks) if (t.owner_id && !owners.has(t.owner_id)) owners.set(t.owner_id, (await db.get('SELECT id, name, color FROM users WHERE id = ?', t.owner_id))!);
+    // Upcoming meetings soonest first, then past ones most recent first.
+    const at = now();
+    const meetingRows = await db.all('SELECT * FROM meetings WHERE channel_id = ? ORDER BY starts_at DESC LIMIT 100', channel.id);
+    const upcoming = meetingRows.filter((m) => m.starts_at >= at).reverse();
+    const past = meetingRows.filter((m) => m.starts_at < at);
+    const meetings = (await filterAsync([...upcoming, ...past], (m) => canViewMeeting(db, auth, m))).slice(0, 8);
+    const count = async (sql: string) => Number((await db.get(sql, channel.id))?.n ?? 0);
+    res.json({
+      created_by: creator ?? null,
+      created_at: channel.created_at,
+      file_count: await count('SELECT COUNT(*) AS n FROM files WHERE channel_id = ? AND archived_at IS NULL'),
+      pin_count: await count('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ? AND pinned_at IS NOT NULL AND deleted_at IS NULL'),
+      tasks: tasks.map((t) => ({ id: t.id, title: t.title, status: t.status, due_date: t.due_date, owner: t.owner_id ? owners.get(t.owner_id) ?? null : null })),
+      meetings: meetings.map((m) => ({ id: m.id, title: m.title, starts_at: m.starts_at, ends_at: m.ends_at })),
+    });
   });
 
   r.get('/channels/:id/files', async (req, res) => {

@@ -6,7 +6,7 @@ test('owner can reach every main screen', async ({ page }) => {
   await signIn(page, 'alex@acme.test');
   await expect(page.getByText('Today’s focus')).toBeVisible();
   for (const [link, heading] of [
-    ['Inbox', 'Inbox'],
+    ['Activities', 'Activities'],
     ['Chats', 'Chats'],
     ['Channels', 'Channels'],
     ['My work', 'My work'],
@@ -17,7 +17,7 @@ test('owner can reach every main screen', async ({ page }) => {
     ['Decisions', 'Decisions'],
     ['Requests', 'Requests & approvals'],
   ]) {
-    // Link names can include unread badges, e.g. "Inbox 8".
+    // Link names can include unread badges, e.g. "Activities 8".
     await page.getByLabel('Workspace navigation').getByRole('link', { name: new RegExp(`^${link}( \\d+)?$`) }).first().click();
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
   }

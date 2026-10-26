@@ -78,7 +78,11 @@ export function Directory() {
           {teams?.map((t) => (
             <Card key={t.id} size="sm">
               <CardHeader>
-                <CardTitle>{t.name}</CardTitle>
+                <CardTitle>
+                  <Link to={`/teams/${t.id}`} className="hover:underline">
+                    {t.name}
+                  </Link>
+                </CardTitle>
                 <CardDescription>{t.description || 'No description.'}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-1.5">

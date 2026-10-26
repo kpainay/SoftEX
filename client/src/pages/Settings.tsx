@@ -3,7 +3,7 @@ import { dateLabel, timeAgo } from '../format';
 import { useSearchParams } from 'react-router-dom';
 import { api, type Me } from '../api';
 import { Icon } from '../components/Icon';
-import { Callout, FormField, Loading, LoadingRows, Modal, Page, PageHeader, Panel, PasswordInput, Pill, SecretReveal, SwitchField, TabBar, TimePicker, useAction, useConfirm } from '@/components/kit';
+import { CategoryLayout, type Category, Callout, FormField, Loading, LoadingRows, Modal, Page, PageHeader, Panel, PasswordInput, Pill, SecretReveal, SwitchField, TimePicker, useAction, useConfirm } from '@/components/kit';
 import { Kbd } from '@/components/ui/kbd';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -21,37 +21,60 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 
-type Tab = 'profile' | 'notifications' | 'security' | 'api' | 'onboarding';
+type Section = 'account' | 'security' | 'notifications' | 'general' | 'developer';
+
+const SECTIONS: Category<Section>[] = [
+  { id: 'account', label: 'Account', icon: 'user', hint: 'Profile, your data, delete account' },
+  { id: 'security', label: 'Security', icon: 'shield', hint: 'Multifactor sign-in, password, devices' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Focus time, quiet hours, email, push' },
+  { id: 'general', label: 'General', icon: 'settings', hint: 'Appearance, getting started' },
+  { id: 'developer', label: 'Developer', icon: 'code', hint: 'API tokens' },
+];
+
+/** Links from before settings were grouped (?tab=…) still land in the right place. */
+const OLD_TABS: Record<string, Section> = { profile: 'account', notifications: 'notifications', security: 'security', api: 'developer', onboarding: 'general' };
 
 export function Settings() {
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) ?? 'profile';
+  const asked = (params.get('section') ?? OLD_TABS[params.get('tab') ?? ''] ?? null) as Section | null;
   const { has } = usePlan();
   return (
-    <Page width="narrow">
-      <PageHeader title="Settings" description="Your profile, notifications and account security." />
-      <TabBar
-        value={tab}
-        onChange={(t) => setParams({ tab: t })}
-        tabs={[
-          { id: 'profile', label: 'Profile' },
-          { id: 'notifications', label: 'Notifications & focus' },
-          { id: 'security', label: 'Security' },
-          { id: 'api', label: 'API tokens' },
-          { id: 'onboarding', label: 'Onboarding' },
-        ]}
-      />
-      {tab === 'profile' && (
-        <>
-          <Appearance />
-          <Profile />
-        </>
-      )}
-      {tab === 'notifications' && <Notifications />}
-      {tab === 'security' && <Security />}
-      {tab === 'api' && (has('api') ? <ApiTokens /> : <UpgradeNotice feature="api" />)}
-      {tab === 'onboarding' && <Onboarding />}
+    <Page>
+      <PageHeader title="Settings" description="Your account, security, notifications and preferences." />
+      <CategoryLayout label="Settings categories" backLabel="Settings" categories={SECTIONS} open={asked} onOpen={(id) => setParams(id ? { section: id } : {})}>
+        {(shown) => (
+          <>
+            {shown.id === 'account' && (
+              <>
+                <Profile />
+                <YourData />
+                <DeleteAccount />
+              </>
+            )}
+            {shown.id === 'security' && <Security />}
+            {shown.id === 'notifications' && <Notifications />}
+            {shown.id === 'general' && (
+              <>
+                <Appearance />
+                <Onboarding />
+              </>
+            )}
+            {shown.id === 'developer' && (has('api') ? <ApiTokens /> : <UpgradeNotice feature="api" />)}
+          </>
+        )}
+      </CategoryLayout>
     </Page>
+  );
+}
+
+function YourData() {
+  return (
+    <Panel title="Your data" description="Download everything you can access — messages, tasks, pages, file metadata, meetings and decisions — as JSON.">
+      <a href="/api/export" className={buttonVariants({ variant: 'outline', className: 'self-start' })}>
+        <Icon name="download" data-icon="inline-start" />
+        Export my data
+      </a>
+    </Panel>
   );
 }
 
@@ -197,7 +220,7 @@ function Notifications() {
   };
   return (
     <>
-      <Panel title="Focus time" description="During focus time, notifications are collected in your Inbox without interrupting you. Urgent messages still come through.">
+      <Panel title="Focus time" description="During focus time, notifications are collected in Activities without interrupting you. Urgent messages still come through.">
         {focusActive ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <strong>Focusing until {new Date(me!.user.focus_until!).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.</strong>
@@ -390,13 +413,6 @@ function Security() {
         </form>
       </Panel>
       <Sessions />
-      <Panel title="Your data" description="Download everything you can access — messages, tasks, pages, file metadata, meetings and decisions — as JSON.">
-        <a href="/api/export" className={buttonVariants({ variant: 'outline', className: 'self-start' })}>
-          <Icon name="download" data-icon="inline-start" />
-          Export my data
-        </a>
-      </Panel>
-      <DeleteAccount />
     </>
   );
 }

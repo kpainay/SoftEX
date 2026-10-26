@@ -89,7 +89,7 @@ export function Operator() {
       <Page>
         <ErrorState error={summary.error} />
         {(summary.error as { details?: { code?: string } }).details?.code === 'operator_mfa' && (
-          <Link to="/settings?tab=security" className={buttonVariants({ className: 'mx-auto' })}>
+          <Link to="/settings?section=security" className={buttonVariants({ className: 'mx-auto' })}>
             Set up multifactor authentication
           </Link>
         )}

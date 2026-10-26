@@ -1,9 +1,8 @@
 import { Fragment, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, qs, type Project } from '../api';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { useShell } from '../components/Layout';
 import { Markdown } from '../components/Markdown';
 import { DatePicker, EmptyState, ErrorState, FilterBar, FormField, Loading, Modal, Page, PageHeader, Panel, Pill, SearchField, SwitchField, TabBar, useAction } from '@/components/kit';
 import { Badge } from '@/components/ui/badge';
@@ -58,18 +57,15 @@ interface FileSummary {
 
 export function Knowledge() {
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as 'pages' | 'files') ?? 'pages';
-  const { openCreate } = useShell();
+  // Files moved to their own page.
+  const toFiles = params.get('tab') === 'files';
+  const navigate = useNavigate();
   const { me } = useSession();
   const act = useAction();
   const [filter, setFilter] = useState('');
   const [status, setStatus] = useState<'all' | 'approved' | 'draft' | 'review'>('all');
   const [archived, setArchived] = useState(false);
-  const pages = useApi<PageSummary[]>(tab === 'pages' ? `/pages${qs({ archived: archived ? 'true' : undefined })}` : null);
-  const files = useApi<FileSummary[]>(tab === 'files' ? `/files${qs({ archived: archived ? 'true' : undefined })}` : null);
-  const upload = useRef<HTMLInputElement>(null);
-  const [linking, setLinking] = useState(false);
-  const [link, setLink] = useState({ name: '', url: '' });
+  const pages = useApi<PageSummary[]>(toFiles ? null : `/pages${qs({ archived: archived ? 'true' : undefined })}`);
 
   const pageIds = new Set((pages.data ?? []).map((p) => p.id));
   const childCount = (id: string) => (pages.data ?? []).filter((p) => p.parent_id === id).length;
@@ -80,61 +76,39 @@ export function Knowledge() {
       (!filter || `${p.title} ${p.excerpt}`.toLowerCase().includes(filter.toLowerCase())) &&
       (status === 'all' || (status === 'review' ? p.needs_review : p.status === status)),
   );
-  const fileList = (files.data ?? []).filter((f) => !filter || `${f.name} ${f.label}`.toLowerCase().includes(filter.toLowerCase()));
 
+  if (toFiles) return <Navigate to="/files" replace />;
   return (
     <Page>
       <PageHeader
         title="Knowledge"
-        description="Policies, how-tos, decisions and files — with owners and review dates so they stay trustworthy."
+        description="Policies, how-tos and decisions — with owners and review dates so they stay trustworthy."
         actions={
-          me!.role !== 'guest' &&
-          (tab === 'files' ? (
-            <>
-              <Button variant="outline" onClick={() => setLinking(true)}>
-                <Icon name="link" data-icon="inline-start" /> Link file
-              </Button>
-              <Button onClick={() => upload.current?.click()}>
-                <Icon name="upload" data-icon="inline-start" /> Upload
-              </Button>
-              <input
-                ref={upload}
-                type="file"
-                hidden
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const form = new FormData();
-                  form.append('file', f);
-                  await act(() => api.upload('/files', form), 'File uploaded');
-                  e.target.value = '';
-                  files.reload();
-                }}
-              />
-            </>
-          ) : (
-            <Button onClick={() => openCreate('page')}>
+          me!.role !== 'guest' && (
+            // Straight into an untitled page: name it later, or never.
+            <Button
+              onClick={async () => {
+                const page = await act(() => api.post<{ id: string }>('/pages', {}));
+                if (page) navigate(`/knowledge/${page.id}?edit=1&new=1`);
+              }}
+            >
               <Icon name="plus" data-icon="inline-start" /> New page
             </Button>
-          ))
+          )
         }
       />
-      <TabBar value={tab} onChange={(t) => setParams(t === 'pages' ? {} : { tab: t })} tabs={[{ id: 'pages', label: 'Pages' }, { id: 'files', label: 'Files' }]} />
       <FilterBar>
-        <SearchField className="max-w-sm flex-1" placeholder={`Filter ${tab}`} value={filter} onChange={setFilter} aria-label="Filter" />
-        {tab === 'pages' && (
-          <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
+        <SearchField className="max-w-sm flex-1" placeholder="Filter pages" value={filter} onChange={setFilter} aria-label="Filter" />
+        <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
             <NativeSelectOption value="all">All pages</NativeSelectOption>
             <NativeSelectOption value="approved">Approved</NativeSelectOption>
             <NativeSelectOption value="draft">Drafts</NativeSelectOption>
             <NativeSelectOption value="review">Due for review</NativeSelectOption>
           </NativeSelect>
-        )}
         <SwitchField label="Archived" checked={archived} onCheckedChange={setArchived} className="w-auto" />
       </FilterBar>
 
-      {tab === 'pages' && (
-        <>
+      <>
           {pages.error && <ErrorState error={pages.error} retry={pages.reload} />}
           {!pages.data && !pages.error && <Loading />}
           {pages.data && !pageList.length && (
@@ -167,68 +141,6 @@ export function Knowledge() {
             ))}
           </div>
         </>
-      )}
-
-      {tab === 'files' && (
-        <>
-          {files.error && <ErrorState error={files.error} retry={files.reload} />}
-          {!files.data && !files.error && <Loading />}
-          {files.data && !fileList.length && <EmptyState icon="file" title="No files here" />}
-          {fileList.length > 0 && (
-            <Card className="py-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="max-md:hidden">Owner</TableHead>
-                    <TableHead className="max-md:hidden">Size</TableHead>
-                    <TableHead>Updated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fileList.map((f) => (
-                    <TableRow key={f.id}>
-                      <TableCell className="max-w-80 whitespace-normal">
-                        <Link to={`/files/${f.id}`} className="inline-flex items-center gap-2 font-medium hover:underline">
-                          <Icon name={f.external_url ? 'link' : 'file'} size={16} className="shrink-0 text-muted-foreground" /> {f.name}
-                        </Link>{' '}
-                        {f.label && <Pill>{f.label}</Pill>}
-                      </TableCell>
-                      <TableCell className="max-md:hidden">{f.owner?.name}</TableCell>
-                      <TableCell className="text-muted-foreground max-md:hidden">{f.external_url ? 'Link' : `${bytes(f.size)} · v${f.version}`}</TableCell>
-                      <TableCell className="text-muted-foreground">{timeAgo(f.updated_at)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
-          )}
-        </>
-      )}
-      <Modal open={linking} onClose={() => setLinking(false)} title="Link an external file">
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const ok = await act(() => api.post('/files/link', link), 'Link added');
-            if (ok) {
-              setLinking(false);
-              setLink({ name: '', url: '' });
-              files.reload();
-            }
-          }}
-        >
-          <FormField label="Name">
-            <Input required value={link.name} onChange={(e) => setLink({ ...link, name: e.target.value })} />
-          </FormField>
-          <FormField label="URL">
-            <Input required type="url" value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} placeholder="https://…" />
-          </FormField>
-          <div className="flex justify-end">
-            <Button type="submit">Add link</Button>
-          </div>
-        </form>
-      </Modal>
     </Page>
   );
 }
@@ -322,6 +234,7 @@ export function PageView() {
       {editing ? (
         <LiveEditor
           page={page}
+          fresh={params.get('new') === '1'}
           onClose={() => {
             setParams({});
             reload();
@@ -579,7 +492,7 @@ export function FileView() {
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink render={<Link to="/knowledge?tab=files" />}>Files</BreadcrumbLink>
+            <BreadcrumbLink render={<Link to="/files" />}>Files</BreadcrumbLink>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -687,7 +600,7 @@ export function FileView() {
               className="text-destructive"
               onClick={async () => {
                 await act(() => api.post(`/files/${file.id}/archive`, { archived: !file.archived_at }), file.archived_at ? 'File restored' : 'File archived');
-                file.archived_at ? reload() : navigate('/knowledge?tab=files');
+                file.archived_at ? reload() : navigate('/files');
               }}
             >
               {file.archived_at ? 'Restore file' : 'Archive file'}

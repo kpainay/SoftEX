@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import * as Y from 'yjs';
 import { LOCAL, type LiveDoc } from '../collab';
 import { Icon } from './Icon';
@@ -9,13 +9,14 @@ import { Minus, Plus } from 'lucide-react';
 import { Toggle } from '@/components/ui/toggle';
 import { Separator } from '@/components/ui/separator';
 import { ButtonGroup } from '@/components/ui/button-group';
+import { cn } from '@/lib/utils';
 
 /**
  * A collaborative whiteboard. Elements live in a Y.Map shared through the live-collaboration
  * store, so everyone sees changes as they happen; undo only reverts your own changes.
  */
 
-export type Tool = 'select' | 'hand' | 'sticky' | 'rect' | 'ellipse' | 'text' | 'arrow' | 'pen';
+export type Tool = 'select' | 'hand' | 'sticky' | 'rect' | 'ellipse' | 'text' | 'arrow' | 'pen' | 'eraser';
 export interface El {
   id: string;
   type: 'sticky' | 'rect' | 'ellipse' | 'text' | 'arrow' | 'pen';
@@ -30,6 +31,8 @@ export interface El {
   points?: number[];
   color: string;
   text?: string;
+  /** Free text that sizes itself to what was typed (no wrapping, no box). */
+  auto?: boolean;
   z: number;
 }
 
@@ -44,7 +47,18 @@ const TOOLS: { id: Tool; icon: string; label: string; key: string }[] = [
   { id: 'text', icon: 'type', label: 'Text', key: 't' },
   { id: 'arrow', icon: 'arrow', label: 'Arrow (drag between shapes to connect them)', key: 'a' },
   { id: 'pen', icon: 'pen', label: 'Pen', key: 'p' },
+  { id: 'eraser', icon: 'eraser', label: 'Eraser (drag over things to erase them)', key: 'e' },
 ];
+
+const TEXT_SIZE = 18;
+let measurer: CanvasRenderingContext2D | null = null;
+/** How wide free text is, so its box (for selecting and moving it) fits the words. */
+function textWidth(text: string, size = TEXT_SIZE) {
+  measurer ??= document.createElement('canvas').getContext('2d');
+  if (!measurer) return Math.max(...text.split('\n').map((l) => l.length)) * size * 0.55;
+  measurer.font = `${size}px ${getComputedStyle(document.body).fontFamily}`;
+  return Math.max(0, ...text.split('\n').map((l) => measurer!.measureText(l).width));
+}
 
 const newId = () => Math.random().toString(36).slice(2, 11);
 /** Colours come from other people's edits: only plain hex colours are used. */
@@ -120,7 +134,7 @@ function wrap(text: string, width: number, size: number) {
   return out;
 }
 
-function ElementShape({ e: raw, byId, selected }: { e: El; byId: Map<string, El>; selected: boolean }) {
+function ElementShape({ e: raw, byId, selected, hidden = false }: { e: El; byId: Map<string, El>; selected: boolean; hidden?: boolean }) {
   const e = { ...raw, color: safeColor(raw.color, raw.type === 'sticky' ? STICKY[0] : INK[0]) };
   const stroke = selected ? 'var(--k-accent)' : undefined;
   switch (e.type) {
@@ -128,12 +142,12 @@ function ElementShape({ e: raw, byId, selected }: { e: El; byId: Map<string, El>
     case 'rect':
     case 'ellipse':
     case 'text': {
-      const size = e.type === 'text' ? 18 : 15;
-      const lines = wrap(e.text ?? '', e.w - 16, size);
+      const size = e.type === 'text' ? TEXT_SIZE : 15;
+      const lines = e.auto ? (e.text ?? '').split('\n') : wrap(e.text ?? '', e.w - 16, size);
       const lh = size * 1.3;
       const top = e.type === 'text' ? e.y + size : e.y + e.h / 2 - ((lines.length - 1) * lh) / 2 + size * 0.35;
       return (
-        <g data-id={e.id}>
+        <g data-id={e.id} opacity={hidden ? 0 : undefined}>
           {e.type === 'sticky' && <rect x={e.x} y={e.y} width={e.w} height={e.h} rx={4} fill={e.color} filter="url(#wb-shadow)" stroke={stroke} strokeWidth={selected ? 2 : 0} />}
           {e.type === 'rect' && <rect x={e.x} y={e.y} width={e.w} height={e.h} rx={8} fill="var(--wb-fill)" stroke={stroke ?? e.color} strokeWidth={2} />}
           {e.type === 'ellipse' && <ellipse cx={e.x + e.w / 2} cy={e.y + e.h / 2} rx={e.w / 2} ry={e.h / 2} fill="var(--wb-fill)" stroke={stroke ?? e.color} strokeWidth={2} />}
@@ -177,7 +191,9 @@ type Drag =
   | { kind: 'marquee'; start: { x: number; y: number }; now: { x: number; y: number } }
   | { kind: 'create'; id: string; start: { x: number; y: number } }
   | { kind: 'arrow'; id: string }
-  | { kind: 'pen'; id: string; pts: number[]; origin: { x: number; y: number } };
+  | { kind: 'pen'; id: string; pts: number[]; origin: { x: number; y: number } }
+  | { kind: 'erase' }
+  | { kind: 'text'; at: { x: number; y: number } };
 
 export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
   const doc = live.doc;
@@ -192,6 +208,9 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
   const drag = useRef<Drag | null>(null);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const svg = useRef<SVGSVGElement>(null);
+  /** The text box for typing on the board. Always there, so a tap can focus it at once and phones show the keyboard. */
+  const editor = useRef<HTMLTextAreaElement>(null);
+  const [draftWidth, setDraftWidth] = useState(0);
   const readOnly = !live.canEdit;
 
   useEffect(() => {
@@ -225,6 +244,16 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
   const shapeAt = (p: { x: number; y: number }, except?: string) =>
     [...sorted].reverse().find((e) => boxable(e) && e.id !== except && p.x >= e.x && p.x <= e.x + e.w && p.y >= e.y && p.y <= e.y + e.h);
 
+  /** Erase whatever is under the pointer (the eraser takes whole items, like a sticky note or a pen stroke). */
+  const eraseAt = (ev: { clientX: number; clientY: number }) => {
+    const under = document.elementsFromPoint(ev.clientX, ev.clientY).map((n) => n.closest('[data-id]')).find(Boolean);
+    const id = under?.getAttribute('data-id');
+    if (id && byId.has(id)) {
+      remove([id]);
+      setSelected((cur) => cur.filter((x) => x !== id));
+    }
+  };
+
   const onPointerDown = (ev: RPointerEvent<SVGSVGElement>) => {
     if (editing) return;
     (ev.target as Element).setPointerCapture?.(ev.pointerId);
@@ -250,6 +279,16 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
       }
       return;
     }
+    if (tool === 'eraser') {
+      drag.current = { kind: 'erase' };
+      eraseAt(ev);
+      return;
+    }
+    if (tool === 'text') {
+      // Placed when the finger lifts, so the text box can be focused right then and the keyboard comes up.
+      drag.current = { kind: 'text', at: p };
+      return;
+    }
     const id = newId();
     const z = topZ();
     setSelected([]);
@@ -261,11 +300,13 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
       set([{ id, type: 'pen', x: p.x, y: p.y, w: 1, h: 1, points: [0, 0], color: color.ink, z }]);
       drag.current = { kind: 'pen', id, pts: [0, 0], origin: p };
     } else {
-      const size = tool === 'sticky' ? { w: 180, h: 140 } : tool === 'text' ? { w: 220, h: 34 } : { w: 1, h: 1 };
+      const size = tool === 'sticky' ? { w: 180, h: 140 } : { w: 1, h: 1 };
       const el: El = { id, type: tool, x: p.x, y: p.y, ...size, color: tool === 'sticky' ? color.sticky : color.ink, text: '', z };
       set([el]);
       setSelected([id]);
-      if (tool === 'sticky' || tool === 'text') {
+      if (tool === 'sticky') {
+        // Keep the browser from moving focus away from the note's text box after this press.
+        ev.preventDefault();
         setEditing(id);
         setTool('select');
       } else drag.current = { kind: 'create', id, start: p };
@@ -294,6 +335,8 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
       d.pts.push(p.x - d.origin.x, p.y - d.origin.y);
       const e = byId.get(d.id);
       if (e && d.pts.length % 4 === 0) set([{ ...e, points: [...d.pts] }]);
+    } else if (d.kind === 'erase') {
+      eraseAt(ev);
     } else if (d.kind === 'marquee') {
       d.now = p;
       setMarquee({ x: Math.min(d.start.x, p.x), y: Math.min(d.start.y, p.y), w: Math.abs(p.x - d.start.x), h: Math.abs(p.y - d.start.y) });
@@ -305,6 +348,16 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
     drag.current = null;
     if (!d) return;
     const p = toWorld(ev);
+    if (d.kind === 'text') {
+      // Tap anywhere and type: plain text, no box. The tap point is where the first line starts.
+      const id = newId();
+      set([{ id, type: 'text', auto: true, x: d.at.x, y: d.at.y - TEXT_SIZE * 0.75, w: 24, h: 34, color: color.ink, text: '', z: topZ() }]);
+      setSelected([id]);
+      setEditing(id);
+      setTool('select');
+      startTyping('');
+      return;
+    }
     if (d.kind === 'create') {
       const e = byId.get(d.id);
       // A click without dragging makes a default-sized shape.
@@ -332,6 +385,23 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
       setMarquee(null);
     }
   };
+
+  /** Focus the board's text box now (inside the tap, so phones open the keyboard). */
+  const startTyping = (text: string) => {
+    const el = editor.current;
+    if (!el) return;
+    el.value = text;
+    setDraftWidth(textWidth(text));
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(text.length, text.length);
+  };
+  // Editing something else (a double-clicked sticky note): load its text into the box.
+  useLayoutEffect(() => {
+    const e = editing ? byId.get(editing) : null;
+    if (!e || !editor.current || document.activeElement === editor.current) return;
+    startTyping(e.text ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 
   const onWheel = (ev: React.WheelEvent) => {
     if (ev.ctrlKey || ev.metaKey) {
@@ -553,9 +623,9 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
         <rect className="wb-ui" x={0} y={0} width="100%" height="100%" fill="url(#wb-grid)" />
         <g className="wb-world" transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
           {sorted.map((e) => (
-            <ElementShape key={e.id} e={e} byId={byId} selected={selected.includes(e.id)} />
+            <ElementShape key={e.id} e={e} byId={byId} selected={selected.includes(e.id)} hidden={editing === e.id && e.type === 'text'} />
           ))}
-          {single && boxable(single) && !readOnly && (
+          {single && boxable(single) && !readOnly && !editing && (
             <rect className="wb-ui wb-handle" data-handle="1" x={single.x + single.w - 6 / view.zoom} y={single.y + single.h - 6 / view.zoom} width={12 / view.zoom} height={12 / view.zoom} />
           )}
           {marquee && <rect className="wb-ui wb-marquee" x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} />}
@@ -570,33 +640,66 @@ export function Whiteboard({ live, title }: { live: LiveDoc; title: string }) {
         </g>
       </svg>
 
-      {editingEl && (
+      {!readOnly && (
         <Textarea
-          className="absolute z-20 min-h-0 resize-none rounded-sm border-2 border-primary p-2 text-center leading-tight text-[#2b2118] shadow-none focus-visible:ring-0"
-          autoFocus
+          ref={editor}
+          className={cn(
+            'absolute z-20 min-h-0 resize-none p-2 leading-tight shadow-none focus-visible:ring-0',
+            !editingEl && 'pointer-events-none -left-[9999px] opacity-0',
+            editingEl?.type === 'text'
+              ? 'overflow-hidden rounded-none border-0 bg-transparent px-0.5 py-0 text-left whitespace-pre dark:bg-transparent'
+              : 'rounded-sm border-2 border-primary text-center text-[#2b2118]',
+          )}
           aria-label="Edit text"
-          defaultValue={editingEl.text ?? ''}
-          style={{
-            left: view.x + editingEl.x * view.zoom,
-            top: view.y + editingEl.y * view.zoom,
-            width: editingEl.w * view.zoom,
-            height: Math.max(editingEl.h, 34) * view.zoom,
-            fontSize: (editingEl.type === 'text' ? 18 : 15) * view.zoom,
-            background: editingEl.type === 'sticky' ? safeColor(editingEl.color, STICKY[0]) : 'var(--surface)',
+          tabIndex={editingEl ? 0 : -1}
+          style={
+            editingEl
+              ? editingEl.type === 'text'
+                ? {
+                    left: view.x + editingEl.x * view.zoom,
+                    top: view.y + editingEl.y * view.zoom,
+                    width: (draftWidth + TEXT_SIZE * 1.5) * view.zoom,
+                    height: Math.max(editingEl.h, 34) * view.zoom,
+                    fontSize: TEXT_SIZE * view.zoom,
+                    lineHeight: 1.3,
+                    color: safeColor(editingEl.color),
+                    caretColor: safeColor(editingEl.color),
+                  }
+                : {
+                    left: view.x + editingEl.x * view.zoom,
+                    top: view.y + editingEl.y * view.zoom,
+                    width: editingEl.w * view.zoom,
+                    height: Math.max(editingEl.h, 34) * view.zoom,
+                    fontSize: 15 * view.zoom,
+                    background: editingEl.type === 'sticky' ? safeColor(editingEl.color, STICKY[0]) : 'var(--surface)',
+                  }
+              : { top: 0 }
+          }
+          onInput={(ev) => {
+            if (editingEl?.type !== 'text') return;
+            const text = ev.currentTarget.value;
+            setDraftWidth(textWidth(text));
+            // Grow downwards with each new line.
+            ev.currentTarget.style.height = `${Math.max(34, text.split('\n').length * TEXT_SIZE * 1.3 + 10) * view.zoom}px`;
           }}
           onKeyDown={(ev) => {
             if (ev.key === 'Escape' || (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey))) (ev.target as HTMLTextAreaElement).blur();
           }}
           onBlur={(ev) => {
+            if (!editingEl) return;
             const text = ev.target.value;
             const e = byId.get(editingEl.id);
             if (e) {
               if (!text.trim() && e.type === 'text') remove([e.id]);
-              else {
-                const lines = wrap(text, e.w - 16, e.type === 'text' ? 18 : 15).length;
+              else if (e.type === 'text' && e.auto) {
+                const lines = text.split('\n').length;
+                set([{ ...e, text, w: Math.max(24, textWidth(text) + 6), h: Math.max(34, lines * TEXT_SIZE * 1.3 + 8) }]);
+              } else {
+                const lines = wrap(text, e.w - 16, e.type === 'text' ? TEXT_SIZE : 15).length;
                 set([{ ...e, text, h: e.type === 'text' ? Math.max(34, lines * 24 + 10) : e.h }]);
               }
             }
+            ev.target.value = '';
             setEditing(null);
           }}
         />

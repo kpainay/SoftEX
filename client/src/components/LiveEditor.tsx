@@ -4,6 +4,7 @@ import { useLiveDoc, useYText, type Peer, type SaveStatus } from '../collab';
 import { useRealtime } from '../hooks';
 import { AvatarStack } from './Avatar';
 import { Markdown } from './Markdown';
+import { useMarkdownToolbar } from './MarkdownToolbar';
 import { Loading, useAction } from '@/components/kit';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -40,16 +41,25 @@ export function LiveEditor({
   page,
   onClose,
   onSaved,
+  fresh = false,
 }: {
   page: { id: string; title: string; body: string; version: number };
   onClose: () => void;
   onSaved: () => void;
+  /** A page just made with "New page": start typing straight into the body; the title can wait. */
+  fresh?: boolean;
 }) {
   const act = useAction();
   const live = useLiveDoc('page', page.id);
   const title = useYText(live, 'title');
   const body = useYText(live, 'body');
   const [preview, setPreview] = useState(false);
+  const format = useMarkdownToolbar(body.ref, body.onChange, !live?.canEdit);
+  const ready = !!live?.ready;
+  useEffect(() => {
+    if (ready && fresh) body.ref.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, fresh]);
 
   if (!live || !live.ready) return <Loading label="Opening the live editor" />;
   const changed = title.value !== page.title || body.value !== page.body;
@@ -74,8 +84,11 @@ export function LiveEditor({
           value={title.value}
           onChange={(e) => title.onChange(e.target.value)}
           onSelect={track('title')}
+          // A placeholder title is replaced as soon as you type one.
+          onFocus={(e) => title.value === 'Untitled' && e.currentTarget.select()}
           readOnly={!live.canEdit}
           aria-label="Page title"
+          placeholder="Untitled"
         />
         {others('title').length > 0 && <PeerList peers={others('title')} label="In the title" />}
         <Tabs value={preview ? 'preview' : 'write'} onValueChange={(v) => setPreview(v === 'preview')}>
@@ -89,17 +102,21 @@ export function LiveEditor({
             <Markdown text={body.value} />
           </div>
         ) : (
+          <>
+          {live.canEdit && format.toolbar}
           <Textarea
             ref={body.ref}
             className="min-h-96 font-mono text-sm leading-relaxed"
             value={body.value}
             onChange={(e) => body.onChange(e.target.value)}
             onSelect={track('body')}
+            onKeyDown={format.onKeyDown}
             readOnly={!live.canEdit}
             rows={20}
             aria-label="Page content"
-            placeholder={'# Heading\n\nWrite with **Markdown**. Link tasks and discussions by pasting their Küü links.\n\n- [ ] Checklists work too'}
+            placeholder="Start writing. Use the buttons above for headings, lists and checklists — or type Markdown if you know it."
           />
+          </>
         )}
         <p className="text-xs text-muted-foreground">Everyone editing sees each other’s changes as they type. Readers see the last saved version until someone saves.</p>
       </CardContent>

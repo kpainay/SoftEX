@@ -26,7 +26,7 @@ test('the bell lists notifications and each one opens what it is about', async (
 
 test('inbox summary pills filter the list', async ({ page }) => {
   await signIn(page, 'alex@acme.test');
-  await page.goto('/inbox');
+  await page.goto('/activities');
   const pill = page.locator('.digest .pill-button').first();
   await expect(pill).toBeVisible();
   await pill.click();

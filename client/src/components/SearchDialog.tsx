@@ -44,6 +44,11 @@ const TYPES: { id: SearchType; label: string }[] = [
   { id: 'people', label: 'People' },
 ];
 
+/** In "All", each group shows this many results before "Show more". */
+const FOLD_AT = 4;
+/** How many results per group "All" fetches, so a group can be opened up without searching again. */
+const ALL_LIMIT = 20;
+
 function ResultItem({ value, onSelect, media, title, meta, snippet, end }: { value: string; onSelect: () => void; media: ReactNode; title: ReactNode; meta?: ReactNode; snippet?: ReactNode; end?: ReactNode }) {
   return (
     <CommandItem value={value} onSelect={onSelect} className="items-start gap-3 py-2">
@@ -66,6 +71,8 @@ export function SearchDialog({ open, initial, onClose }: { open: boolean; initia
   const [from, setFrom] = useState('');
   const [hasFile, setHasFile] = useState(false);
   const [results, setResults] = useState<Record<string, any[]> | null>(null);
+  // Groups the person opened up to see past the first few results.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const debounced = useDebounced(q, 200);
   const aiEnabled = useAiEnabled();
@@ -99,8 +106,12 @@ export function SearchDialog({ open, initial, onClose }: { open: boolean; initia
     let cancelled = false;
     setLoading(true);
     api
-      .get(`/search${qs({ q: debounced.trim(), type, from, hasFile: hasFile ? 'true' : undefined, limit: type === 'all' ? 5 : 25 })}`)
-      .then((r) => !cancelled && setResults(r))
+      .get(`/search${qs({ q: debounced.trim(), type, from, hasFile: hasFile ? 'true' : undefined, limit: type === 'all' ? ALL_LIMIT : 25 })}`)
+      .then((r) => {
+        if (cancelled) return;
+        setResults(r);
+        setExpanded(new Set());
+      })
       .catch(() => !cancelled && setResults(null))
       .finally(() => !cancelled && setLoading(false));
     return () => {
@@ -114,12 +125,24 @@ export function SearchDialog({ open, initial, onClose }: { open: boolean; initia
   };
 
   const total = results ? Object.values(results).reduce((n, list) => n + list.length, 0) : 0;
-  const section = (key: string, title: string, render: (item: any) => ReactNode) =>
-    results && results[key]?.length ? (
-      <CommandGroup heading={title} key={key}>
-        {results[key].map(render)}
+  // In "All", a group with more than a few results shows the first few and can be opened up.
+  const section = (key: string, title: string, render: (item: any) => ReactNode) => {
+    const list = results?.[key] ?? [];
+    if (!list.length) return null;
+    const folded = type === 'all' && list.length > FOLD_AT && !expanded.has(key);
+    const more = list.length - FOLD_AT;
+    return (
+      <CommandGroup heading={`${title} · ${list.length}${type === 'all' && list.length >= ALL_LIMIT ? '+' : ''}`} key={key}>
+        {(folded ? list.slice(0, FOLD_AT) : list).map(render)}
+        {folded && (
+          <CommandItem value={`more-${key}`} onSelect={() => setExpanded(new Set(expanded).add(key))} className="justify-center py-1.5 text-xs font-medium text-primary">
+            <Icon name="chevronDown" size={14} /> Show {more}
+            {list.length >= ALL_LIMIT ? '+' : ''} more {title.toLowerCase()}
+          </CommandItem>
+        )}
       </CommandGroup>
-    ) : null;
+    );
+  };
 
   return (
     <CommandDialog

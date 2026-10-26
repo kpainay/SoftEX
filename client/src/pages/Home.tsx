@@ -142,7 +142,7 @@ export function Home() {
 
       <div className="-mt-2 flex flex-wrap gap-2">
         {data.onboarding.total > 0 && data.onboarding.done < data.onboarding.total && (
-          <Badge variant="brand" className={nudge} render={<Link to="/settings?tab=onboarding" />}>
+          <Badge variant="brand" className={nudge} render={<Link to="/settings?section=general" />}>
             <Icon name="flag" /> Onboarding: {data.onboarding.done} of {data.onboarding.total} steps done
           </Badge>
         )}

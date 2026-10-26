@@ -20,6 +20,8 @@ const Help = lazyPage(() => import('./pages/Help'), 'Help');
 const Home = lazyPage(() => import('./pages/Home'), 'Home');
 const Inbox = lazyPage(() => import('./pages/Inbox'), 'Inbox');
 const FileView = lazyPage(() => import('./pages/Knowledge'), 'FileView');
+const Files = lazyPage(() => import('./pages/Files'), 'Files');
+const TeamView = lazyPage(() => import('./pages/Teams'), 'TeamView');
 const Knowledge = lazyPage(() => import('./pages/Knowledge'), 'Knowledge');
 const PageView = lazyPage(() => import('./pages/Knowledge'), 'PageView');
 const MeetingDetail = lazyPage(() => import('./pages/Meetings'), 'MeetingDetail');
@@ -61,9 +63,15 @@ function TaskPage() {
   );
 }
 
+/** Redirect to a renamed page, keeping its query string (filters, tabs). */
+function KeepQuery({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
+
 const TITLES: [RegExp, string][] = [
   [/^\/$/, 'Home'],
-  [/^\/inbox/, 'Inbox'],
+  [/^\/activities|^\/inbox/, 'Activities'],
   [/^\/chats/, 'Chats'],
   [/^\/channels/, 'Channels'],
   [/^\/my-work/, 'My work'],
@@ -74,9 +82,11 @@ const TITLES: [RegExp, string][] = [
   [/^\/forms|^\/f\//, 'Form'],
   [/^\/timesheet/, 'Timesheet'],
   [/^\/tasks/, 'Task'],
-  [/^\/knowledge|^\/files/, 'Knowledge'],
+  [/^\/files/, 'Files'],
+  [/^\/knowledge/, 'Knowledge'],
   [/^\/meetings/, 'Meetings'],
   [/^\/directory|^\/people/, 'Directory'],
+  [/^\/teams/, 'Team'],
   [/^\/decisions/, 'Decisions'],
   [/^\/requests/, 'Requests'],
   [/^\/workload/, 'Workload'],
@@ -156,7 +166,9 @@ export function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/inbox" element={<Inbox />} />
+        <Route path="/activities" element={<Inbox />} />
+        {/* Links in emails, pushes and older notifications still say /inbox. */}
+        <Route path="/inbox" element={<KeepQuery to="/activities" />} />
         <Route path="/chats" element={<Chats />} />
         <Route path="/channels" element={<ChannelsBrowser />} />
         <Route path="/channels/:id" element={<ChannelView />} />
@@ -174,10 +186,12 @@ export function App() {
         <Route path="/boards/:id" element={<BoardView />} />
         <Route path="/knowledge" element={<Knowledge />} />
         <Route path="/knowledge/:id" element={<PageView />} />
+        <Route path="/files" element={<Files />} />
         <Route path="/files/:id" element={<FileView />} />
         <Route path="/meetings" element={<Meetings />} />
         <Route path="/meetings/:id" element={<MeetingDetail />} />
         <Route path="/directory" element={<Directory />} />
+        <Route path="/teams/:id" element={<TeamView />} />
         <Route path="/people/:id" element={<PersonView />} />
         <Route path="/decisions" element={<Decisions />} />
         <Route path="/requests" element={<Requests />} />

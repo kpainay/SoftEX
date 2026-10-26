@@ -6,7 +6,7 @@ test('phones never scroll sideways, and long tab rows scroll on their own', asyn
   await signIn(page, 'alex@acme.test');
   await page.setViewportSize({ width: 390, height: 844 });
   const projectId = await page.evaluate(async () => (await (await fetch('/api/projects')).json())[0].id);
-  for (const path of ['/', '/inbox', '/chats', `/projects/${projectId}`, '/admin', '/meetings', '/workload', '/goals', '/help']) {
+  for (const path of ['/', '/activities', '/chats', `/projects/${projectId}`, '/admin', '/meetings', '/workload', '/goals', '/help']) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');
     expect(await offscreen(page), `sideways scroll on ${path}`).toEqual([]);
@@ -89,7 +89,7 @@ test('long titles, names and links fit on an iPhone-sized screen', async ({ page
     const goal = await post('/goals', { title: 'Grow adoption to two hundred active retailers across Montserrado County this quarter' });
     return { project: project.id, task: task.id, channel: channel.id, goal: goal.id };
   });
-  const paths = ['/', '/my-work', '/inbox', '/goals', `/goals/${ids.goal}`, `/projects/${ids.project}`, `/tasks/${ids.task}`, `/channels/${ids.channel}`, '/directory'];
+  const paths = ['/', '/my-work', '/activities', '/goals', `/goals/${ids.goal}`, `/projects/${ids.project}`, `/tasks/${ids.task}`, `/channels/${ids.channel}`, '/directory'];
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const path of paths) {
