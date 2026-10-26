@@ -8,8 +8,9 @@ import { Separator } from "@/components/ui/separator"
 
 function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
+    // No list role by default: most groups hold buttons or links, which a list may not contain.
+    // A real list passes role="list" and gives its items role="listitem".
     <div
-      role="list"
       data-slot="item-group"
       className={cn(
         "group/item-group flex w-full flex-col gap-4 has-data-[size=sm]:gap-2.5 has-data-[size=xs]:gap-2",
@@ -26,6 +27,8 @@ function ItemSeparator({
 }: React.ComponentProps<typeof Separator>) {
   return (
     <Separator
+      // A line between items; it's decorative, and a list may only contain its items.
+      aria-hidden
       data-slot="item-separator"
       orientation="horizontal"
       className={cn("my-2", className)}

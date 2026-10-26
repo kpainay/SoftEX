@@ -343,6 +343,26 @@ interface ChannelDetail extends Channel {
   ai_excluded: boolean;
 }
 
+/** Many new messages since you were last here: a button to go back to the first of them. */
+function JumpToUnread({ from, count }: { from: string; count: number }) {
+  const { scrollToMessage } = useMessageScroller();
+  const [gone, setGone] = useState(false);
+  if (gone) return null;
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      className="absolute top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border shadow-md"
+      onClick={() => {
+        scrollToMessage(from, { align: 'start' });
+        setGone(true);
+      }}
+    >
+      <Icon name="chevronDown" className="rotate-180" data-icon="inline-start" /> {count} new message{count === 1 ? '' : 's'}
+    </Button>
+  );
+}
+
 /** Inside the scroller: jump to a linked message (?message=…), or open its thread when it's a reply. */
 function HighlightScroller({ highlight, loaded, exists, onThread }: { highlight: string | null; loaded: boolean; exists: boolean; onThread: (id: string) => void }) {
   const { scrollToMessage } = useMessageScroller();
@@ -409,11 +429,17 @@ export function ChannelView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [id],
   );
+  // Where unread messages began when you opened the chat (or from where you marked it unread): a "New" line goes there.
+  const [unread, setUnread] = useState<{ from: string; count: number } | null>(null);
   const load = async (before?: string) => {
-    const res = await api.get<{ messages: Message[]; has_more: boolean }>(`/channels/${id}/messages${qs({ before, limit: 50 })}`);
+    const res = await api.get<{ messages: Message[]; has_more: boolean; last_read_at: string | null }>(`/channels/${id}/messages${qs({ before, limit: 50 })}`);
     setHasMore(res.has_more);
     setMessages((prev) => (before ? [...res.messages, ...prev] : res.messages));
     setLoaded(true);
+    if (!before && res.last_read_at) {
+      const fresh = res.messages.filter((m) => m.created_at > res.last_read_at! && m.user?.id !== me!.user.id && !m.deleted);
+      setUnread(fresh.length ? { from: fresh[0].id, count: fresh.length } : null);
+    }
   };
 
   useEffect(() => {
@@ -421,8 +447,11 @@ export function ChannelView() {
     setFresh(new Set());
     setLoaded(false);
     setThreadId(null);
-    load().catch(() => setLoaded(true));
-    api.post(`/channels/${id}/read`).catch(() => {});
+    setUnread(null);
+    // Marked read once loaded, so the load still knows what was new.
+    load()
+      .catch(() => setLoaded(true))
+      .finally(() => api.post(`/channels/${id}/read`).catch(() => {}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -490,6 +519,12 @@ export function ChannelView() {
   }, []);
 
   const actions = useStableActions({
+    markUnread: async (m: Message) => {
+      if (await act(() => api.post(`/channels/${m.channel_id}/unread`, { messageId: m.id }), 'Marked unread from here')) {
+        const after = messages.filter((x) => x.created_at >= m.created_at && !x.deleted);
+        setUnread({ from: after[0]?.id ?? m.id, count: after.length || 1 });
+      }
+    },
     forward: (m: Message) => setForwarding(m),
     react: async (m: Message, emoji: string) => {
       // Show the reaction at once; undo it if the server says no.
@@ -645,6 +680,11 @@ export function ChannelView() {
                           <MarkerContent>{new Date(m.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</MarkerContent>
                         </Marker>
                       )}
+                      {unread?.from === m.id && (
+                        <div id="new-messages" role="separator" aria-label="New messages" className="my-2 flex items-center gap-2 text-xs font-semibold text-destructive">
+                          <span className="h-px flex-1 bg-destructive/50" /> New <span className="h-px w-6 bg-destructive/50" />
+                        </div>
+                      )}
                       <MessageItem
                         message={m}
                         grouped={!!grouped && !newDay}
@@ -669,12 +709,22 @@ export function ChannelView() {
               </MessageScrollerContent>
             </MessageScrollerViewport>
             <MessageScrollerButton />
+            {unread && unread.count > 4 && <JumpToUnread from={unread.from} count={unread.count} />}
           </MessageScroller>
           <div className="h-5 px-4 text-xs text-muted-foreground" aria-live="polite">
             {typingNames.length > 0 && <span className="shimmer">{`${typingNames.join(', ')} ${typingNames.length > 1 ? 'are' : 'is'} typing…`}</span>}
           </div>
           {channel.can_post ? (
-            <Composer channelId={channel.id} placeholder={channel.kind === 'dm' ? `Message ${dmName}` : `Message #${channel.name}`} members={channel.members} />
+            <Composer
+              channelId={channel.id}
+              placeholder={channel.kind === 'dm' ? `Message ${dmName}` : `Message #${channel.name}`}
+              members={channel.members}
+              onEditLast={() => {
+                // ↑ in an empty box: edit your last message here.
+                const mine = [...messages].reverse().find((x) => x.user?.id === me!.user.id && !x.deleted && !x.poll);
+                if (mine) window.dispatchEvent(new CustomEvent('kuu:edit-message', { detail: mine.id }));
+              }}
+            />
           ) : (
             <p className="mx-4 mb-4 rounded-xl border border-dashed p-3 text-center text-sm text-muted-foreground">
               {channel.kind === 'announcement' ? 'Only leads and admins post here. You can reply in threads and acknowledge announcements.' : 'You cannot post in this channel.'}
@@ -1131,6 +1181,7 @@ interface Actions {
   reply: (m: Message) => void;
   task: (m: Message) => void;
   decision: (m: Message) => void;
+  markUnread: (m: Message) => void;
 }
 
 /** Memoised: a chat redraws only the rows that changed, not every message whenever anything in the chat changes. */
@@ -1157,6 +1208,16 @@ const MessageItem = memo(function MessageItem({
   const { me } = useSession();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.body);
+  // ↑ in the message box asks the last message you wrote to open for editing.
+  useEffect(() => {
+    const onEdit = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== m.id) return;
+      setDraft(m.body);
+      setEditing(true);
+    };
+    window.addEventListener('kuu:edit-message', onEdit);
+    return () => window.removeEventListener('kuu:edit-message', onEdit);
+  }, [m.id, m.body]);
   const [picker, setPicker] = useState(false);
   const [menu, setMenu] = useState(false);
   const [remind, setRemind] = useState(false);
@@ -1237,7 +1298,19 @@ const MessageItem = memo(function MessageItem({
               setEditing(false);
             }}
           >
-            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} autoFocus aria-label="Edit message" />
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={3}
+              autoFocus
+              aria-label="Edit message"
+              // Esc cancels; Ctrl/⌘+Enter saves (plain Enter is a new line, as in the message box with "Enter to send" off).
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') (e.preventDefault(), setEditing(false));
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.preventDefault(), e.currentTarget.form?.requestSubmit());
+              }}
+              onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+            />
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" type="button" onClick={() => setEditing(false)}>
                 Cancel
@@ -1377,6 +1450,9 @@ const MessageItem = memo(function MessageItem({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setRemind(true)}>
                 <Icon name="clock" /> Remind me about this
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => actions.markUnread(m)}>
+                <Icon name="inbox" /> Mark unread from here
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
@@ -1578,12 +1654,15 @@ function Composer({
   placeholder,
   members,
   onSent,
+  onEditLast,
 }: {
   channelId: string;
   parentId?: string;
   placeholder: string;
   members: { id: string; name: string; color: string }[];
   onSent?: () => void;
+  /** ↑ in an empty box: edit the last message you wrote. */
+  onEditLast?: () => void;
 }) {
   const people = usePeople();
   const act = useAction();
@@ -1797,6 +1876,10 @@ function Composer({
               }
             }
             if (e.key === 'Escape') setQuery(null);
+            if (e.key === 'ArrowUp' && !text && !candidates.length && onEditLast && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+              e.preventDefault();
+              onEditLast();
+            }
           }}
         />
         {/* The tools wrap onto a second line on narrow screens; the send button always stays in view. */}
