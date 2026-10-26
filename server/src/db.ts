@@ -964,6 +964,9 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string, backfil
   ['pages', 'icon', 'TEXT'],
   ['pages', 'public_token', 'TEXT'],
   ['tasks', 'form_id', 'TEXT'],
+  // Teams: a task can be assigned to a team, and a file shared with one.
+  ['tasks', 'team_id', 'TEXT REFERENCES teams(id) ON DELETE SET NULL'],
+  ['files', 'team_id', 'TEXT REFERENCES teams(id) ON DELETE SET NULL'],
   ['messages', 'forwarded_from', 'TEXT'],
   // Per-workspace entitlement overrides set by an operator: custom deals, add-ons and comps.
   ['workspaces', 'entitlement_overrides', 'TEXT'],

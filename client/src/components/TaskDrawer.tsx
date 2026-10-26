@@ -145,6 +145,7 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
   const act = useAction();
   const confirm = useConfirm();
   const { data: task, error, reload, setData } = useApi<TaskFull>(`/tasks/${taskId}`);
+  const { data: teams } = useApi<{ id: string; name: string }[]>('/teams');
   const [newItem, setNewItem] = useState('');
   const [comment, setComment] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
@@ -263,6 +264,22 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
               </NativeSelectOption>
             ))}
           </NativeSelect>
+        </Prop>
+        <Prop label="Team">
+          <NativeSelect className="w-full" value={task.team?.id ?? ''} disabled={disabled} onChange={(e) => update({ teamId: e.target.value || null })} aria-label="Team">
+            <NativeSelectOption value="">No team</NativeSelectOption>
+            {(teams ?? []).map((t) => (
+              <NativeSelectOption key={t.id} value={t.id}>
+                {t.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {task.team && !task.owner && !disabled && (
+            // Given to the team and nobody has it yet: anyone on the team can take it.
+            <Button size="sm" variant="outline" className="shrink-0" onClick={() => update({ ownerId: me!.user.id })}>
+              Take it
+            </Button>
+          )}
         </Prop>
         <Prop label="Due">
           <DatePicker value={task.due_date} disabled={disabled} onChange={(v) => update({ dueDate: v })} aria-label="Due date" placeholder="No due date" />
@@ -722,7 +739,7 @@ export function TaskRow({
                 <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--c-${task.project.color})` }} />
                 <span className="truncate">{task.project.name}</span>
               </span>
-            ) : (
+            ) : task.team ? null : (
               'Personal'
             ))}
           {task.status !== 'todo' && task.status !== 'done' && <StatusPill status={task.status} />}
@@ -743,7 +760,14 @@ export function TaskRow({
       </button>
       <span className="flex shrink-0 items-center gap-2">
         {task.due_date && <DueLabel due={task.due_date} overdue={task.overdue} />}
-        <Avatar user={task.owner} size="sm" />
+        {/* Given to a team and nobody has it yet: show the team instead of an empty avatar. */}
+        {!task.owner && task.team ? (
+          <Pill className="max-w-28 truncate" title={`${task.team.name} — anyone on the team can pick it up`}>
+            <Icon name="users" size={12} /> {task.team.name}
+          </Pill>
+        ) : (
+          <Avatar user={task.owner} size="sm" />
+        )}
       </span>
     </div>
   );

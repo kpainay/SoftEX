@@ -14,6 +14,7 @@ import {
   canViewPage,
   isAdmin,
   isGuest,
+  isTeamMember,
   loadChannel,
   loadProject,
   loadTask,
@@ -175,7 +176,8 @@ export function knowledgeRouter(ctx: Ctx) {
 
   r.post('/pages', async (req, res) => {
     const auth = authOf(req);
-    const body = parse(PageBody, req.body);
+    // Jotting something down shouldn't need a name first: a page without a title starts as "Untitled".
+    const body = parse(PageBody.extend({ title: z.string().trim().max(200).transform((t) => t || 'Untitled').default('Untitled') }), req.body ?? {});
     if (body.parentId) body.projectId = (await checkParent(auth, body.parentId)).project_id;
     if (body.projectId) {
       const project = await loadProject(db, auth, body.projectId);
@@ -371,8 +373,14 @@ export function knowledgeRouter(ctx: Ctx) {
   };
 
   /** Where a new file may be placed, checked against the uploader's rights. */
-  const checkPlacement = async (auth: Auth, target: { projectId?: string | null; channelId?: string | null; taskId?: string | null }) => {
+  const checkPlacement = async (auth: Auth, target: { projectId?: string | null; channelId?: string | null; taskId?: string | null; teamId?: string | null }) => {
     let projectId = target.projectId ?? null;
+    // Sharing with a team: you must be on it (or an admin).
+    if (target.teamId) {
+      const team = await db.get('SELECT 1 FROM teams WHERE id = ? AND workspace_id = ?', target.teamId, auth.workspaceId);
+      if (!team) throw notFound('Team');
+      if (!isAdmin(auth) && !await isTeamMember(db, target.teamId, auth.userId)) throw forbidden('Only people on the team can share files with it');
+    }
     if (target.taskId) {
       const task = await loadTask(db, auth, target.taskId);
       if (!await canEditTask(db, auth, task)) throw forbidden('You cannot attach files to this task');
@@ -435,7 +443,7 @@ export function knowledgeRouter(ctx: Ctx) {
     const auth = authOf(req);
     if (!req.file) throw badRequest('Attach a file');
     const body = parse(
-      z.object({ projectId: z.string().optional(), channelId: z.string().optional(), taskId: z.string().optional(), label: z.string().max(60).default('') }),
+      z.object({ projectId: z.string().optional(), channelId: z.string().optional(), taskId: z.string().optional(), teamId: z.string().optional(), label: z.string().max(60).default('') }),
       req.body,
     );
     let projectId: string | null;
@@ -455,6 +463,7 @@ export function knowledgeRouter(ctx: Ctx) {
         project_id: projectId,
         channel_id: body.channelId ?? null,
         task_id: body.taskId ?? null,
+        team_id: body.teamId ?? null,
         owner_id: auth.userId,
         name,
         label: body.label,
@@ -513,19 +522,71 @@ export function knowledgeRouter(ctx: Ctx) {
     res.status(201).json(await fileSummary((await db.get('SELECT * FROM files WHERE id = ?', id))!));
   });
 
+  /**
+   * Where each file lives, for lists: the channel or chat it was shared in, its project, or its task.
+   * One query per kind of place rather than one per file.
+   */
+  const placesOf = async (auth: Auth, files: Row[]) => {
+    const ids = (key: string) => [...new Set(files.map((f) => f[key]).filter(Boolean) as string[])];
+    const inList = (n: number) => Array(n).fill('?').join(',');
+    const channelIds = ids('channel_id');
+    const projectIds = ids('project_id');
+    const taskIds = ids('task_id');
+    const teamIds = ids('team_id');
+    const channels = new Map<string, Row>();
+    if (channelIds.length) for (const c of await db.all(`SELECT id, name, kind FROM channels WHERE id IN (${inList(channelIds.length)})`, ...channelIds)) channels.set(c.id, c);
+    // A chat is named after the other people in it.
+    const dmIds = [...channels.values()].filter((c) => c.kind === 'dm').map((c) => c.id);
+    const dmNames = new Map<string, string[]>();
+    if (dmIds.length) {
+      for (const m of await db.all(
+        `SELECT cm.channel_id, u.name FROM channel_members cm JOIN users u ON u.id = cm.user_id WHERE cm.channel_id IN (${inList(dmIds.length)}) AND cm.user_id != ? ORDER BY u.name`,
+        ...dmIds,
+        auth.userId,
+      ))
+        dmNames.set(m.channel_id, [...(dmNames.get(m.channel_id) ?? []), m.name]);
+    }
+    const projects = new Map<string, Row>();
+    if (projectIds.length) for (const p of await db.all(`SELECT id, name, color FROM projects WHERE id IN (${inList(projectIds.length)})`, ...projectIds)) projects.set(p.id, p);
+    const teams = new Map<string, Row>();
+    if (teamIds.length) for (const t of await db.all(`SELECT id, name FROM teams WHERE id IN (${inList(teamIds.length)})`, ...teamIds)) teams.set(t.id, t);
+    const tasks = new Map<string, Row>();
+    if (taskIds.length) for (const t of await db.all(`SELECT id, title FROM tasks WHERE id IN (${inList(taskIds.length)})`, ...taskIds)) tasks.set(t.id, t);
+    return (f: Row) => {
+      const channel = f.channel_id ? channels.get(f.channel_id) : null;
+      if (channel?.kind === 'dm') return { kind: 'chat', name: (dmNames.get(channel.id) ?? []).join(', ') || 'Yourself', link: `/channels/${channel.id}` };
+      if (channel) return { kind: 'channel', name: channel.name, link: `/channels/${channel.id}` };
+      const project = f.project_id ? projects.get(f.project_id) : null;
+      if (project) return { kind: 'project', name: project.name, link: `/projects/${project.id}` };
+      const task = f.task_id ? tasks.get(f.task_id) : null;
+      if (task) return { kind: 'task', name: task.title, link: `/tasks/${task.id}` };
+      const team = f.team_id ? teams.get(f.team_id) : null;
+      if (team) return { kind: 'team', name: team.name, link: `/teams/${team.id}` };
+      return { kind: 'library', name: 'Files', link: '/files' };
+    };
+  };
+
   r.get('/files', async (req, res) => {
     const auth = authOf(req);
-    const q = parse(z.object({ projectId: z.string().optional(), archived: z.enum(['true', 'false']).default('false') }), req.query);
+    const q = parse(
+      z.object({ projectId: z.string().optional(), channelId: z.string().optional(), teamId: z.string().optional(), archived: z.enum(['true', 'false']).default('false') }),
+      req.query,
+    );
     if (q.projectId) await loadProject(db, auth, q.projectId);
+    const where = ['workspace_id = ?'];
+    const params: string[] = [auth.workspaceId];
+    if (q.projectId) (where.push('project_id = ?'), params.push(q.projectId));
+    if (q.channelId) (where.push('channel_id = ?'), params.push(q.channelId));
+    // A team's files: shared with the team, or in one of its channels.
+    if (q.teamId) (where.push('(team_id = ? OR channel_id IN (SELECT id FROM channels WHERE team_id = ?))'), params.push(q.teamId, q.teamId));
     const projects = new Set(await accessibleProjectIds(db, auth));
-    const rows = (await filterAsync((await db
-      .all(
-        `SELECT * FROM files WHERE workspace_id = ? ${q.projectId ? 'AND project_id = ?' : ''} AND archived_at IS ${q.archived === 'true' ? 'NOT NULL' : 'NULL'}
-          ORDER BY updated_at DESC LIMIT 1000`,
-        ...(q.projectId ? [auth.workspaceId, q.projectId] : [auth.workspaceId]),
-      )), async (f) => (f.project_id ? projects.has(f.project_id) : await canViewFile(db, auth, f))));
-    if (q.archived === 'true' && !isAdmin(auth)) return res.json((await Promise.all(rows.filter((f) => f.owner_id === auth.userId).map(fileSummary))));
-    res.json((await Promise.all(rows.map(fileSummary))));
+    let rows = await filterAsync(
+      await db.all(`SELECT * FROM files WHERE ${where.join(' AND ')} AND archived_at IS ${q.archived === 'true' ? 'NOT NULL' : 'NULL'} ORDER BY updated_at DESC LIMIT 1000`, ...params),
+      async (f) => (f.project_id ? projects.has(f.project_id) : await canViewFile(db, auth, f)),
+    );
+    if (q.archived === 'true' && !isAdmin(auth)) rows = rows.filter((f) => f.owner_id === auth.userId);
+    const place = await placesOf(auth, rows);
+    res.json(await Promise.all(rows.map(async (f) => ({ ...(await fileSummary(f)), place: place(f) }))));
   });
 
   r.get('/files/:id', async (req, res) => {

@@ -56,6 +56,10 @@ export async function serializeTasks(db: Database, rows: Row[]) {
   const users = new Map(
     userIds.length ? (await db.all(`SELECT id, name, color FROM users WHERE id IN (${userIds.map(() => '?').join(',')})`, ...userIds)).map((u) => [u.id, u]) : [],
   );
+  const teamIds = [...new Set(rows.map((t) => t.team_id).filter(Boolean))];
+  const teams = new Map(
+    teamIds.length ? (await db.all(`SELECT id, name FROM teams WHERE id IN (${teamIds.map(() => '?').join(',')})`, ...teamIds)).map((x) => [x.id, x]) : [],
+  );
   const t0 = today();
   const extras = await taskExtras(db, ids);
   return rows.map((t) => {
@@ -78,6 +82,7 @@ export async function serializeTasks(db: Database, rows: Row[]) {
       milestone_id: t.milestone_id,
       parent_id: t.parent_id,
       owner: t.owner_id ? users.get(t.owner_id) ?? null : null,
+      team: t.team_id ? teams.get(t.team_id) ?? null : null,
       reviewer: t.reviewer_id ? users.get(t.reviewer_id) ?? null : null,
       source_message_id: t.source_message_id,
       meeting_id: t.meeting_id,
@@ -111,6 +116,8 @@ const TaskInput = z.object({
   milestoneId: z.string().nullish(),
   parentId: z.string().nullish(),
   ownerId: z.string().nullish(),
+  /** Assign to a team instead of (or as well as) a person: everyone on it is told, and any of them can pick it up. */
+  teamId: z.string().nullish(),
   reviewerId: z.string().nullish(),
   status: Status.default('todo'),
   priority: Priority.default('medium'),
@@ -141,6 +148,20 @@ export function tasksRouter(ctx: Ctx) {
     }
   };
 
+  const loadTeam = async (auth: Auth, teamId: string) => {
+    const team = await db.get('SELECT * FROM teams WHERE id = ? AND workspace_id = ?', teamId, auth.workspaceId);
+    if (!team) throw notFound('Team');
+    return team;
+  };
+
+  /** Tell everyone on a team (except whoever did it) that a task was given to the team. */
+  const notifyTeam = async (auth: Auth, team: Row, task: { id: string; title: string }, title: string) => {
+    for (const m of await db.all('SELECT user_id FROM team_members WHERE team_id = ?', team.id)) {
+      if (m.user_id === auth.userId || !await isActiveMember(db, auth.workspaceId, m.user_id)) continue;
+      await notify(ctx, auth.workspaceId, { userId: m.user_id, kind: 'assigned', title, body: `For ${team.name} — anyone on the team can pick it up`, link: `/tasks/${task.id}`, actorId: auth.userId });
+    }
+  };
+
   /** Create a task. `quiet` (used by imports) skips per-task notifications, activity and automations. */
   const createTask = async (auth: Auth, body: z.infer<typeof TaskInput>, quiet = false) => {
     // Start dates drive the timeline, which is part of planning.
@@ -159,7 +180,9 @@ export function tasksRouter(ctx: Ctx) {
     if (body.milestoneId && !await db.get('SELECT 1 FROM milestones WHERE id = ? AND project_id = ?', body.milestoneId, body.projectId ?? '')) {
       throw badRequest('Milestone does not belong to this project');
     }
-    const ownerId = body.ownerId === undefined ? auth.userId : body.ownerId;
+    const team = body.teamId ? await loadTeam(auth, body.teamId) : null;
+    // Given to a team, a task is nobody's in particular until someone takes it.
+    const ownerId = body.ownerId === undefined ? (team ? null : auth.userId) : body.ownerId;
     await checkAssignee(auth, ownerId, project);
     await checkAssignee(auth, body.reviewerId, project);
     if (body.sourceMessageId) {
@@ -183,6 +206,7 @@ export function tasksRouter(ctx: Ctx) {
         title: body.title,
         description: body.description,
         owner_id: ownerId ?? null,
+        team_id: team?.id ?? null,
         reviewer_id: body.reviewerId ?? null,
         status: body.status,
         priority: body.priority,
@@ -226,6 +250,10 @@ export function tasksRouter(ctx: Ctx) {
         actorId: auth.userId,
         urgent: body.priority === 'urgent',
       });
+    }
+    if (team) {
+      const actor = (await db.get('SELECT name FROM users WHERE id = ?', auth.userId))!;
+      await notifyTeam(auth, team, { id, title: body.title }, `${actor.name} gave ${team.name} “${body.title}”`);
     }
     if (body.sourceMessageId) {
       const message = (await db.get('SELECT * FROM messages WHERE id = ?', body.sourceMessageId))!;
@@ -300,6 +328,13 @@ export function tasksRouter(ctx: Ctx) {
       )), (t) => canViewTask(db, auth, t)));
     const tasks = await serializeTasks(db, mine);
     const owned = tasks.filter((t) => t.owner?.id === auth.userId);
+    // Tasks given to one of your teams that nobody has picked up yet.
+    const teamOpen = await db.all(
+      `SELECT t.* FROM tasks t JOIN team_members tm ON tm.team_id = t.team_id AND tm.user_id = ?
+        WHERE t.workspace_id = ? AND t.owner_id IS NULL AND t.status != 'done' ORDER BY t.due_date IS NULL, t.due_date, t.created_at LIMIT 50`,
+      auth.userId,
+      auth.workspaceId,
+    );
     const open = owned.filter((t) => t.status !== 'done');
     res.json({
       overdue: open.filter((t) => t.due_date && t.due_date < t0),
@@ -309,6 +344,7 @@ export function tasksRouter(ctx: Ctx) {
       blocked: open.filter((t) => t.status === 'blocked'),
       review: tasks.filter((t) => t.reviewer?.id === auth.userId && t.status === 'review'),
       done_recently: owned.filter((t) => t.status === 'done'),
+      team: await serializeTasks(db, teamOpen),
     });
   });
 
@@ -488,7 +524,7 @@ export function tasksRouter(ctx: Ctx) {
     if (!message || message.deleted_at) throw notFound('Message');
     const channel = await loadChannel(db, auth, message.channel_id);
     const body = parse(TaskInput.partial({ title: true }), req.body);
-    const plain = message.body.replace(/@\[([^\]]+)\]\([0-9a-f-]{36}\)/g, '@$1');
+    const plain = message.body.replace(/@\[([^\]]+)\]\((?:team:)?[0-9a-f-]{36}\)/g, '@$1');
     const input = parse(TaskInput, {
       ...req.body,
       title: body.title ?? (plain.split('\n')[0].slice(0, 200) || 'Follow up'),
@@ -572,6 +608,7 @@ export function tasksRouter(ctx: Ctx) {
         title: z.string().trim().min(1).max(300).optional(),
         description: z.string().max(20_000).optional(),
         ownerId: z.string().nullable().optional(),
+        teamId: z.string().nullable().optional(),
         reviewerId: z.string().nullable().optional(),
         status: Status.optional(),
         priority: Priority.optional(),
@@ -588,6 +625,7 @@ export function tasksRouter(ctx: Ctx) {
     const project = task.project_id ? (await db.get('SELECT * FROM projects WHERE id = ?', task.project_id))! : null;
     if (body.ownerId !== undefined) await checkAssignee(auth, body.ownerId, project);
     if (body.reviewerId !== undefined) await checkAssignee(auth, body.reviewerId, project);
+    const newTeam = body.teamId && body.teamId !== task.team_id ? await loadTeam(auth, body.teamId) : null;
     if (body.milestoneId && !await db.get('SELECT 1 FROM milestones WHERE id = ? AND project_id = ?', body.milestoneId, task.project_id ?? '')) {
       throw badRequest('Milestone does not belong to this project');
     }
@@ -597,6 +635,7 @@ export function tasksRouter(ctx: Ctx) {
       title: body.title,
       description: body.description,
       owner_id: body.ownerId,
+      team_id: body.teamId,
       reviewer_id: body.reviewerId,
       status: body.status,
       priority: body.priority,
@@ -673,6 +712,7 @@ export function tasksRouter(ctx: Ctx) {
       });
       await notify(ctx, auth.workspaceId, { userId: body.ownerId, kind: 'assigned', title: `${actor.name} assigned you “${task.title}”`, link, actorId: auth.userId });
     }
+    if (newTeam) await notifyTeam(auth, newTeam, { id: task.id, title: task.title }, `${actor.name} gave ${newTeam.name} “${task.title}”`);
     if (body.dueDate !== undefined && body.dueDate !== task.due_date && task.owner_id) {
       await notify(ctx, auth.workspaceId, { userId: task.owner_id, kind: 'status', title: `Due date for “${task.title}” changed to ${body.dueDate ?? 'none'}`, link, actorId: auth.userId });
     }

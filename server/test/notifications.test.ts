@@ -139,6 +139,24 @@ describe('notifications', () => {
     expect(test.body.error).toMatch(/refused the server’s keys/);
   });
 
+  it('clearing deletes read notifications and keeps unread ones, only for the person clearing', async () => {
+    env = setup();
+    const owner = await registerOwner(env, 'Ada');
+    const member = await invite(env, owner.agent, 'member', {}, 'Bo');
+    const first = (await owner.agent.post('/api/tasks').send({ title: 'Read me', ownerId: member.id })).body;
+    await owner.agent.post('/api/tasks').send({ title: 'Still new', ownerId: member.id });
+    await member.agent.post('/api/notifications/read-group').send({ group: `/tasks/${first.id}` }).expect(200);
+    // Someone else's notifications are not touched.
+    await member.agent.post('/api/tasks').send({ title: 'For Ada', ownerId: owner.me.user.id });
+    await owner.agent.post('/api/notifications/read-all').expect(200);
+
+    const res = await member.agent.post('/api/notifications/clear').expect(200);
+    expect(res.body.cleared).toBe(1);
+    const left = (await member.agent.get('/api/notifications')).body.notifications;
+    expect(left.map((n: { title: string }) => n.title)).toEqual([expect.stringMatching(/Still new/)]);
+    expect((await owner.agent.get('/api/notifications')).body.notifications.length).toBeGreaterThan(0);
+  });
+
   it('fills the requested number of rows even when one chat has a flood of unread messages', async () => {
     env = setup();
     const owner = await registerOwner(env, 'Ada');

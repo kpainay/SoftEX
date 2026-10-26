@@ -17,11 +17,11 @@ type Item = Notification;
 
 /**
  * The bell in the top bar: opens a list of recent notifications. Choosing one marks it read
- * and goes to what it's about; the full history stays in the Inbox.
+ * and goes to what it's about; the full history stays in Activities.
  */
 export function NotificationsMenu({ unread, onChange }: { unread: number; onChange: () => void }) {
   const [open, setOpen] = useState(false);
-  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [onlyUnread, setOnlyUnread] = useState(unread > 0);
   const navigate = useNavigate();
   const { data, reload, setData } = useApi<{ notifications: Item[]; unread: number }>(
     open ? `/notifications${qs({ filter: onlyUnread ? 'unread' : 'all', limit: 12 })}` : null,
@@ -34,7 +34,7 @@ export function NotificationsMenu({ unread, onChange }: { unread: number; onChan
       void api.post(`/notifications/${n.id}/read`, { read: true }).then(onChange, () => {});
       setData(data && { ...data, notifications: data.notifications.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)) });
     }
-    navigate(n.link || '/inbox');
+    navigate(n.link || '/activities');
   };
 
   const markAll = async () => {
@@ -43,8 +43,22 @@ export function NotificationsMenu({ unread, onChange }: { unread: number; onChan
     reload();
   };
 
+  /** Delete everything already read; unread notifications stay. */
+  const clearRead = async () => {
+    await api.post('/notifications/clear');
+    reload();
+  };
+  const hasRead = !!data?.notifications.some((n) => n.read_at);
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        // Open on what's new; when there is nothing new, show everything.
+        if (next) setOnlyUnread(unread > 0);
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger
         render={<Button variant="ghost" size="icon" className="relative" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} />}
       >
@@ -66,10 +80,19 @@ export function NotificationsMenu({ unread, onChange }: { unread: number; onChan
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          {!!data?.unread && (
-            <Button variant="link" size="inline" className="w-full justify-end text-xs" onClick={markAll}>
-              Mark all read
-            </Button>
+          {(!!data?.unread || (!onlyUnread && hasRead)) && (
+            <div className="flex w-full justify-end gap-3">
+              {!!data?.unread && (
+                <Button variant="link" size="inline" className="text-xs" onClick={markAll}>
+                  Mark all read
+                </Button>
+              )}
+              {!onlyUnread && hasRead && (
+                <Button variant="link" size="inline" className="text-xs text-muted-foreground" onClick={clearRead}>
+                  Clear read
+                </Button>
+              )}
+            </div>
           )}
         </PopoverHeader>
         <div className="max-h-[min(26rem,60dvh)] overflow-y-auto overscroll-contain">
@@ -115,12 +138,12 @@ export function NotificationsMenu({ unread, onChange }: { unread: number; onChan
         </div>
         <div className="border-t p-1">
           <Link
-            to="/inbox"
+            to="/activities"
             onClick={() => setOpen(false)}
             className={buttonVariants({
               variant: "ghost",
               className: "w-full"
-            })}>Open Inbox <Icon name="arrow" data-icon="inline-end" />
+            })}>Open Activities <Icon name="arrow" data-icon="inline-end" />
           </Link>
         </div>
       </PopoverContent>

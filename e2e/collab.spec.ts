@@ -16,10 +16,10 @@ test('two people edit the same page at once', async ({ browser }) => {
 
   await alex.page.goto('/knowledge');
   await alex.page.getByRole('button', { name: 'New page' }).click();
-  await alex.page.getByLabel('Title').fill(title);
-  await alex.page.getByRole('dialog').getByRole('button', { name: /Create/ }).click();
-  // "Create and edit" opens the live editor straight away.
-  await expect(alex.page).toHaveURL(/\/knowledge\/[^/?]+\?edit=1$/);
+  // "New page" opens the live editor straight away, ready to type into; the title can come later.
+  await expect(alex.page).toHaveURL(/\/knowledge\/[^/?]+\?edit=1&new=1$/);
+  await expect(alex.page.getByLabel('Page content')).toBeFocused();
+  await alex.page.getByLabel('Page title').fill(title);
   await maya.page.goto(alex.page.url());
   const alexBody = alex.page.getByLabel('Page content');
   const mayaBody = maya.page.getByLabel('Page content');

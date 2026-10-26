@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, qs, type Channel, type Message } from '../api';
 import { ThreadAi } from '../components/Ai';
@@ -387,7 +387,7 @@ export function ChannelView() {
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<'members' | 'pins' | 'files' | null>(null);
+  const [panel, setPanel] = useState<'details' | 'members' | 'pins' | 'files' | null>(null);
   const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({});
   const [taskFrom, setTaskFrom] = useState<Message | null>(null);
   const [decisionFrom, setDecisionFrom] = useState<Message | null>(null);
@@ -525,20 +525,33 @@ export function ChannelView() {
       <MessageScrollerProvider key={id} autoScroll defaultScrollPosition="end">
         <section className={cn('flex min-w-0 flex-1 flex-col', panelOpen && 'max-lg:hidden')} aria-label={`Conversation ${dmName}`}>
           <header className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
-              <Icon name={channelIcon(channel)} size={16} />
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <h1 className="truncate font-heading text-base font-semibold">{dmName}</h1>
-              <p className="truncate text-xs text-muted-foreground">
-                {channel.project && (
-                  <Link to={`/projects/${channel.project.id}`} className="inline-flex items-center gap-1 hover:underline">
-                    <span className="size-2 rounded-full" style={{ background: `var(--c-${channel.project.color})` }} /> {channel.project.name}
-                  </Link>
-                )}
-                {channel.project && channel.topic && ' · '}
-                {channel.topic}
-              </p>
+            {/* The name and topic open the channel's details: members, files, tasks, meetings. */}
+            <div className="relative -my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted has-[>button:focus-visible]:ring-2 has-[>button:focus-visible]:ring-ring">
+              <button
+                type="button"
+                onClick={() => setPanel(panel === 'details' ? null : 'details')}
+                aria-expanded={panel === 'details'}
+                aria-label={`Details for ${channel.kind === 'dm' ? dmName : `#${channel.name}`}`}
+                className="absolute inset-0 rounded-xl outline-none"
+              />
+              <span className="pointer-events-none flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                <Icon name={channelIcon(channel)} size={16} />
+              </span>
+              <div className="pointer-events-none flex min-w-0 flex-1 flex-col">
+                <h1 className="flex items-center gap-1 font-heading text-base font-semibold">
+                  <span className="truncate">{dmName}</span>
+                  <Icon name="chevronRight" size={14} className="shrink-0 text-muted-foreground" />
+                </h1>
+                <p className="truncate text-xs text-muted-foreground">
+                  {channel.project && (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="size-2 rounded-full" style={{ background: `var(--c-${channel.project.color})` }} /> {channel.project.name}
+                    </span>
+                  )}
+                  {channel.project && channel.topic && ' · '}
+                  {channel.topic}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-0.5">
               <FavoriteButton kind="channel" id={channel.id} />
@@ -684,7 +697,29 @@ export function ChannelView() {
         />
       )}
       {!threadId && panel && (
-        <SidePanelColumn title={panel === 'members' ? 'Members' : panel === 'pins' ? 'Pinned' : 'Files'} label="Channel details" onClose={() => setPanel(null)}>
+        <SidePanelColumn
+          title={panel === 'details' ? (channel.kind === 'dm' ? 'Chat details' : 'Channel details') : panel === 'members' ? 'Members' : panel === 'pins' ? 'Pinned' : 'Files'}
+          label="Channel details"
+          onClose={() => setPanel(null)}
+          onBack={panel === 'details' ? undefined : () => setPanel('details')}
+        >
+          {panel === 'details' && (
+            <ChannelOverview
+              channel={channel}
+              name={dmName}
+              onOpen={setPanel}
+              onAddPeople={channel.kind !== 'dm' && me!.role !== 'guest' && channel.joined ? () => setAdding(true) : undefined}
+              onLeave={
+                channel.kind !== 'dm' && channel.joined
+                  ? async () => {
+                      await act(() => api.post(`/channels/${channel.id}/leave`), `Left #${channel.name}`);
+                      navigate('/channels');
+                    }
+                  : undefined
+              }
+              settings={channel.can_manage && channel.kind !== 'dm' ? <ChannelSettings channel={channel} onSaved={reloadChannel} /> : null}
+            />
+          )}
           {panel === 'members' && (
             <div className="flex flex-col gap-1">
               {channel.members.map((m) => (
@@ -779,11 +814,16 @@ function useStayAtEnd(end: RefObject<HTMLElement | null>, ready: boolean, count:
   }, [ready, count]);
 }
 
-function SidePanelColumn({ title, label, onClose, children }: { title: string; label: string; onClose: () => void; children: ReactNode }) {
+function SidePanelColumn({ title, label, onClose, onBack, children }: { title: string; label: string; onClose: () => void; onBack?: () => void; children: ReactNode }) {
   return (
     <aside className="flex w-full min-w-0 flex-col border-l bg-card lg:w-96 lg:shrink-0" aria-label={label}>
       <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-        <h2 className="font-heading text-base font-semibold">{title}</h2>
+        {onBack && (
+          <IconButton label="Back to details" size="icon-sm" tooltip={false} onClick={onBack} className="-ml-2">
+            <Icon name="chevronLeft" />
+          </IconButton>
+        )}
+        <h2 className="mr-auto font-heading text-base font-semibold">{title}</h2>
         <IconButton label={label === 'Thread' ? 'Close thread' : 'Close panel'} size="icon-sm" tooltip={false} onClick={onClose}>
           <Icon name="x" />
         </IconButton>
@@ -932,6 +972,148 @@ function FilesList({ channelId }: { channelId: string }) {
           </span>
         </Link>
       ))}
+    </div>
+  );
+}
+
+interface ChannelOverviewData {
+  created_by: { id: string; name: string; color: string } | null;
+  created_at: string;
+  file_count: number;
+  pin_count: number;
+  tasks: { id: string; title: string; status: string; due_date: string | null; owner: { id: string; name: string; color: string } | null }[];
+  meetings: { id: string; title: string; starts_at: string; ends_at: string }[];
+}
+
+const KIND_LABEL: Record<string, string> = { public: 'Public channel', private: 'Private channel', announcement: 'Announcements', dm: 'Direct message' };
+
+/** One part of the details panel, with an optional "See all". */
+function OverviewSection({ title, count, onAll, children }: { title: string; count?: number; onAll?: () => void; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-1.5 border-b py-3 last:border-b-0" aria-label={title}>
+      <div className="flex items-center gap-2 px-1">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {count !== undefined && <span className="text-xs text-muted-foreground tabular-nums">{count}</span>}
+        {onAll && (
+          <Button variant="link" size="inline" className="ml-auto text-xs" onClick={onAll}>
+            See all
+          </Button>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Everything about a channel or chat: what it's for, who's in it, and the files, tasks and meetings that came out of it. */
+function ChannelOverview({
+  channel,
+  name,
+  onOpen,
+  onAddPeople,
+  onLeave,
+  settings,
+}: {
+  channel: ChannelDetail;
+  name: string;
+  onOpen: (panel: 'members' | 'pins' | 'files') => void;
+  onAddPeople?: () => void;
+  onLeave?: () => void;
+  settings: ReactNode;
+}) {
+  const { data } = useApi<ChannelOverviewData>(`/channels/${channel.id}/overview`);
+  const { data: files } = useApi<{ id: string; name: string; size: number; owner_name: string; created_at: string }[]>(`/channels/${channel.id}/files`);
+  const shownMembers = channel.members.slice(0, 6);
+  return (
+    <div className="flex flex-col">
+      <section className="flex flex-col gap-2 border-b pb-3" aria-label="About">
+        <div className="flex items-center gap-3 px-1">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
+            <Icon name={channelIcon(channel)} size={20} />
+          </span>
+          <div className="flex min-w-0 flex-col">
+            <strong className="truncate font-heading text-base">{name}</strong>
+            <span className="text-xs text-muted-foreground">{KIND_LABEL[channel.kind] ?? channel.kind}</span>
+          </div>
+        </div>
+        {channel.topic && <p className="px-1 text-sm">{channel.topic}</p>}
+        {channel.project && (
+          <Link to={`/projects/${channel.project.id}`} className="inline-flex items-center gap-1.5 self-start rounded-lg px-1 text-sm hover:underline">
+            <span className="size-2 rounded-full" style={{ background: `var(--c-${channel.project.color})` }} /> {channel.project.name}
+          </Link>
+        )}
+        {data && channel.kind !== 'dm' && (
+          <p className="px-1 text-xs text-muted-foreground">
+            Created{data.created_by ? ` by ${data.created_by.name}` : ''} on {new Date(data.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+        )}
+      </section>
+
+      <OverviewSection title="Members" count={channel.members.length} onAll={channel.members.length > shownMembers.length ? () => onOpen('members') : undefined}>
+        <div className="flex flex-col">
+          {shownMembers.map((m) => (
+            <Link key={m.id} to={`/people/${m.id}`} className="flex items-center gap-2.5 rounded-xl px-1 py-1 hover:bg-muted">
+              <Avatar user={m} size="sm" showPresence />
+              <span className="min-w-0 flex-1 truncate text-sm">{m.name}</span>
+              <span className="truncate text-xs text-muted-foreground">{m.title || m.role}</span>
+            </Link>
+          ))}
+        </div>
+        {onAddPeople && (
+          <Button variant="outline" size="sm" className="mt-1" onClick={onAddPeople}>
+            <Icon name="plus" data-icon="inline-start" /> Add people
+          </Button>
+        )}
+      </OverviewSection>
+
+      <OverviewSection title="Files" count={data?.file_count} onAll={(files?.length ?? 0) > 3 ? () => onOpen('files') : undefined}>
+        {!files && <LoadingRows rows={2} />}
+        {files && !files.length && <p className="px-1 text-sm text-muted-foreground">No files shared here yet.</p>}
+        {files?.slice(0, 3).map((f) => (
+          <Link key={f.id} to={`/files/${f.id}`} className="flex items-center gap-2.5 rounded-xl px-1 py-1 hover:bg-muted">
+            <Icon name="file" size={16} className="shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-sm">{f.name}</span>
+            <span className="text-xs text-muted-foreground">{timeAgo(f.created_at)}</span>
+          </Link>
+        ))}
+      </OverviewSection>
+
+      <OverviewSection title="Tasks" count={data?.tasks.length}>
+        {!data && <LoadingRows rows={2} />}
+        {data && !data.tasks.length && <p className="px-1 text-sm text-muted-foreground">No tasks yet. Turn a message into a task from its menu.</p>}
+        {data?.tasks.map((t) => (
+          <Link key={t.id} to={`/tasks/${t.id}`} className="flex items-center gap-2.5 rounded-xl px-1 py-1 hover:bg-muted">
+            <Icon name={t.status === 'done' ? 'check' : 'task'} size={16} className="shrink-0 text-muted-foreground" />
+            <span className={cn('min-w-0 flex-1 truncate text-sm', t.status === 'done' && 'text-muted-foreground line-through')}>{t.title}</span>
+            {t.owner && <Avatar user={t.owner} size="xs" />}
+          </Link>
+        ))}
+      </OverviewSection>
+
+      <OverviewSection title="Meetings" count={data?.meetings.length}>
+        {!data && <LoadingRows rows={1} />}
+        {data && !data.meetings.length && <p className="px-1 text-sm text-muted-foreground">No meetings scheduled from here.</p>}
+        {data?.meetings.map((m) => (
+          <Link key={m.id} to={`/meetings/${m.id}`} className="flex items-center gap-2.5 rounded-xl px-1 py-1 hover:bg-muted">
+            <Icon name="calendar" size={16} className="shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-sm">{m.title}</span>
+            <time className="shrink-0 text-xs text-muted-foreground" dateTime={m.starts_at}>
+              {new Date(m.starts_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            </time>
+          </Link>
+        ))}
+      </OverviewSection>
+
+      <OverviewSection title="Pinned" count={data?.pin_count} onAll={data?.pin_count ? () => onOpen('pins') : undefined}>
+        {data && !data.pin_count && <p className="px-1 text-sm text-muted-foreground">Nothing pinned.</p>}
+      </OverviewSection>
+
+      {settings}
+      {onLeave && (
+        <Button variant="ghost" className="mt-3 w-full text-destructive" onClick={onLeave}>
+          Leave channel
+        </Button>
+      )}
     </div>
   );
 }
@@ -1405,6 +1587,7 @@ function Composer({
 }) {
   const people = usePeople();
   const act = useAction();
+  const { data: teams } = useApi<{ id: string; name: string }[]>('/teams');
   const storageKey = `softex.draft.${channelId}.${parentId ?? 'root'}`;
   const [enterSends, setEnterSends] = useEnterSends();
   const [text, setText] = useState(() => {
@@ -1452,8 +1635,13 @@ function Composer({
     const found = pool.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
     // @channel and @here notify everyone in the conversation (everyone, or those online now).
     const everyone = members.length > 2 ? BROADCASTS.filter((b) => b.name.startsWith(query.toLowerCase())) : [];
-    return [...found, ...everyone].slice(0, 7);
-  }, [query, members, people]);
+    // @Team notifies everyone on a team (who can see this conversation) and goes to the team's inbox.
+    const groups = (teams ?? [])
+      .filter((t) => t.name.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 3)
+      .map((t) => ({ id: `team:${t.id}`, name: t.name, color: 'gold', team: true as const }));
+    return [...found, ...groups, ...everyone].slice(0, 8);
+  }, [query, members, people, teams]);
 
   const onChange = (value: string) => {
     setText(value);
@@ -1539,6 +1727,10 @@ function Composer({
               {'hint' in p ? (
                 <>
                   <Icon name="megaphone" size={14} /> @{p.name} <span className="text-xs text-muted-foreground">{String(p.hint)}</span>
+                </>
+              ) : 'team' in p ? (
+                <>
+                  <Icon name="users" size={14} /> @{p.name} <span className="text-xs text-muted-foreground">Notify the team</span>
                 </>
               ) : (
                 <>

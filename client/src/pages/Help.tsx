@@ -133,7 +133,7 @@ const TOPICS: Topic[] = [
         q: 'Protect your account',
         a: (
           <>
-            Turn on two-step sign-in and review where you are signed in under <Link to="/settings?tab=security">Settings → Security</Link>. You can also export your data there.
+            Turn on two-step sign-in and review where you are signed in under <Link to="/settings?section=security">Settings → Security</Link>. You can also export your data there.
           </>
         ),
       },

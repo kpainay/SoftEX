@@ -95,18 +95,29 @@ export function Inbox() {
   return (
     <Page width="narrow">
       <PageHeader
-        title="Inbox"
+        title="Activities"
         description="Mentions, assignments, reviews, meeting updates and approvals in one place."
         actions={
-          <Button
-            variant="outline"
-            onClick={async () => {
-              await act(() => api.post('/notifications/read-all'), 'All caught up');
-              reload();
-            }}
-          >
-            <Icon name="check" data-icon="inline-start" /> Mark all read
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                await act(() => api.post('/notifications/clear'), 'Read notifications cleared');
+                reload();
+              }}
+            >
+              <Icon name="trash" data-icon="inline-start" /> Clear read
+            </Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await act(() => api.post('/notifications/read-all'), 'All caught up');
+                reload();
+              }}
+            >
+              <Icon name="check" data-icon="inline-start" /> Mark all read
+            </Button>
+          </>
         }
       />
       {digest && digest.length > 0 && (
@@ -182,7 +193,7 @@ export function Inbox() {
                     <Icon name={KIND_ICON[n.kind] ?? 'bell'} size={16} />
                   </span>
                 )}
-                <Link to={n.link || '/inbox'} onClick={() => !n.read_at && markRead(n)} className="flex min-w-0 flex-1 flex-col gap-0.5 outline-none focus-visible:underline">
+                <Link to={n.link || '/activities'} onClick={() => !n.read_at && markRead(n)} className="flex min-w-0 flex-1 flex-col gap-0.5 outline-none focus-visible:underline">
                   <span className={cn('flex items-center gap-1.5 text-sm', !n.read_at && 'font-semibold')}>
                     <Icon name={KIND_ICON[n.kind] ?? 'bell'} size={14} className="shrink-0 text-muted-foreground" />
                     <span className="min-w-0">

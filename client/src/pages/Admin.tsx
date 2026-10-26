@@ -25,7 +25,8 @@ import {
   SearchField,
   SecretReveal,
   SwitchField,
-  TabBar,
+  CategoryLayout,
+  type Category,
   toneFor,
   useAction,
   useConfirm,
@@ -54,32 +55,34 @@ export function Admin() {
   const { has } = usePlan();
   const [params, setParams] = useSearchParams();
   const isAdmin = can('admin');
-  const tab = (params.get('tab') as Tab) ?? (isAdmin ? 'members' : 'insights');
   if (!can('lead')) return <Navigate to="/" replace />;
-  const tabs: { id: Tab; label: string }[] = isAdmin
+  const tabs: Category<Tab>[] = isAdmin
     ? [
-        { id: 'members', label: 'Members' },
-        ...(me?.mode === 'saas' ? [{ id: 'billing' as Tab, label: 'Billing' }] : []),
-        { id: 'insights', label: 'Insights' },
-        { id: 'invitations', label: 'Invitations' },
-        { id: 'teams', label: 'Teams' },
-        { id: 'onboarding', label: 'Onboarding' },
-        { id: 'settings', label: 'Workspace' },
-        { id: 'sso', label: 'Single sign-on' },
-        { id: 'provisioning', label: 'Provisioning' },
-        { id: 'integrations', label: 'Webhooks' },
-        { id: 'email', label: 'Email' },
-        { id: 'audit', label: 'Audit log' },
+        { id: 'members', label: 'Members', icon: 'users', hint: 'Roles, deactivation, guests', group: 'People' },
+        { id: 'invitations', label: 'Invitations', icon: 'send', hint: 'Invite people, bulk import', group: 'People' },
+        { id: 'teams', label: 'Teams', icon: 'users', hint: 'Groups of people and what they share', group: 'People' },
+        { id: 'onboarding', label: 'Onboarding', icon: 'check', hint: 'What new members are asked to do', group: 'People' },
+        { id: 'settings', label: 'Workspace', icon: 'settings', hint: 'Name, policies, retention', group: 'Workspace' },
+        ...(me?.mode === 'saas' ? [{ id: 'billing' as Tab, label: 'Billing', icon: 'chart', hint: 'Plan and payments', group: 'Workspace' }] : []),
+        { id: 'insights', label: 'Insights', icon: 'chart', hint: 'How the workspace is used', group: 'Workspace' },
+        { id: 'sso', label: 'Single sign-on', icon: 'shield', hint: 'Sign in with your identity provider', group: 'Security & access' },
+        { id: 'provisioning', label: 'Provisioning', icon: 'refresh', hint: 'SCIM user sync', group: 'Security & access' },
+        { id: 'audit', label: 'Audit log', icon: 'list', hint: 'Who did what, and when', group: 'Security & access' },
+        { id: 'integrations', label: 'Webhooks', icon: 'link', hint: 'Send events to other tools', group: 'Integrations' },
+        { id: 'email', label: 'Email', icon: 'send', hint: 'Outgoing email and delivery', group: 'Integrations' },
       ]
     : [
-        { id: 'insights', label: 'Insights' },
-        { id: 'invitations', label: 'Invitations' },
-        { id: 'teams', label: 'Teams' },
+        { id: 'insights', label: 'Insights', icon: 'chart', hint: 'How the workspace is used' },
+        { id: 'invitations', label: 'Invitations', icon: 'send', hint: 'Invite people' },
+        { id: 'teams', label: 'Teams', icon: 'users', hint: 'Groups of people and what they share' },
       ];
+  const asked = (params.get('tab') as Tab | null) ?? null;
   return (
     <Page width="full" className="max-w-7xl">
       <PageHeader title="Administration" description="People, access, policies and the audit trail." />
-      <TabBar value={tab} onChange={(t) => setParams({ tab: t })} tabs={tabs} />
+      <CategoryLayout label="Administration categories" backLabel="Administration" showTitle={false} categories={tabs} open={asked} onOpen={(id) => setParams(id ? { tab: id } : {})}>
+        {({ id: tab }) => (
+          <>
       {tab === 'members' && isAdmin && <Members />}
       {tab === 'billing' && isAdmin && <BillingSettings />}
       {tab === 'insights' && (has('insights') ? <WorkspaceInsights /> : <UpgradeNotice feature="insights" />)}
@@ -92,6 +95,9 @@ export function Admin() {
       {tab === 'integrations' && isAdmin && (has('api') ? <Webhooks /> : <UpgradeNotice feature="api" />)}
       {tab === 'email' && isAdmin && <EmailOutbox />}
       {tab === 'audit' && isAdmin && <Audit />}
+          </>
+        )}
+      </CategoryLayout>
     </Page>
   );
 }

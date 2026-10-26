@@ -88,7 +88,7 @@ export const toLocalInput = (iso: string) => {
 };
 
 /** Replace stored mention tokens with readable @names. */
-export const plainMentions = (body: string) => body.replace(/@\[([^\]]+)\]\([0-9a-f-]{36}\)/g, '@$1');
+export const plainMentions = (body: string) => body.replace(/@\[([^\]]+)\]\((?:team:)?[0-9a-f-]{36}\)/g, '@$1');
 
 /** "1h 25m", "40m", "3h". */
 export const duration = (minutes: number | null | undefined) => {

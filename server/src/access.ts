@@ -133,8 +133,14 @@ export async function accessibleProjectIds(db: Database, auth: Auth): Promise<st
 
 // ---------- Tasks ----------
 
+export async function isTeamMember(db: Database, teamId: string | null | undefined, userId: string) {
+  return !!teamId && !!await db.get('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?', teamId, userId);
+}
+
 export async function canViewTask(db: Database, auth: Auth, task: Row) {
   if (task.workspace_id !== auth.workspaceId) return false;
+  // A task assigned to a team is visible to everyone on the team, so any of them can pick it up.
+  if (task.team_id && await isTeamMember(db, task.team_id, auth.userId)) return true;
   if (task.project_id) {
     const project = await db.get('SELECT * FROM projects WHERE id = ?', task.project_id);
     return !!project && await canViewProject(db, auth, project);
@@ -151,7 +157,7 @@ export async function canEditTask(db: Database, auth: Auth, task: Row) {
   if (!await canViewTask(db, auth, task)) return false;
   if (!task.project_id) return true;
   const project = (await db.get('SELECT * FROM projects WHERE id = ?', task.project_id))!;
-  return await canContributeProject(db, auth, project) || task.owner_id === auth.userId;
+  return await canContributeProject(db, auth, project) || task.owner_id === auth.userId || await isTeamMember(db, task.team_id, auth.userId);
 }
 
 export async function loadTask(db: Database, auth: Auth, taskId: string) {
@@ -229,6 +235,8 @@ export async function canViewFile(db: Database, auth: Auth, file: Row) {
     const task = await db.get('SELECT * FROM tasks WHERE id = ?', file.task_id);
     return !!task && await canViewTask(db, auth, task);
   }
+  // Shared with a team: its members (and whoever shared it, and admins).
+  if (file.team_id) return file.owner_id === auth.userId || isAdmin(auth) || await isTeamMember(db, file.team_id, auth.userId);
   return !isGuest(auth) || file.owner_id === auth.userId;
 }
 

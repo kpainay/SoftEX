@@ -25,7 +25,7 @@ test('message actions show only for the message you tap', async ({ page }) => {
   await row.locator('[data-slot="message-content"] p').first().tap();
   await expect(bar).toHaveCSS('opacity', '1');
   await expect(page.locator('.message[data-selected]')).toHaveCount(1);
-  // Tapping elsewhere hides it again.
-  await page.getByRole('heading', { level: 1 }).tap();
+  // Tapping elsewhere hides it again. (Not the channel name: that opens the channel's details.)
+  await page.getByRole('textbox', { name: /^Message / }).tap();
   await expect(bar).toHaveCSS('opacity', '0');
 });

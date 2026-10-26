@@ -241,6 +241,8 @@ export interface Task {
   milestone_id: string | null;
   parent_id: string | null;
   owner: UserRef | null;
+  /** A team the task was given to; anyone on it can pick it up. */
+  team?: { id: string; name: string } | null;
   reviewer: UserRef | null;
   source_message_id: string | null;
   meeting_id: string | null;

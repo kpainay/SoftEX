@@ -21,6 +21,8 @@ interface MyWorkData {
   blocked: Task[];
   review: Task[];
   done_recently: Task[];
+  /** Given to one of your teams and not picked up yet. */
+  team: Task[];
 }
 
 const SECTIONS: { id: keyof MyWorkData; title: string; hint: string; tone?: string }[] = [
@@ -28,6 +30,7 @@ const SECTIONS: { id: keyof MyWorkData; title: string; hint: string; tone?: stri
   { id: 'today', title: 'Today', hint: 'Due today or urgent' },
   { id: 'blocked', title: 'Blocked', hint: 'Waiting on something', tone: 'warn' },
   { id: 'review', title: 'Assigned for review', hint: 'Waiting on your review' },
+  { id: 'team', title: 'For your teams', hint: 'Given to a team you are on — anyone can take it' },
   { id: 'upcoming', title: 'Next 7 days', hint: 'Coming up soon' },
   { id: 'later', title: 'Later', hint: 'No date or further out' },
   { id: 'done_recently', title: 'Done recently', hint: 'Completed in the last day' },
@@ -57,7 +60,7 @@ export function MyWork() {
 
   if (error) return <ErrorState error={error} retry={reload} />;
   if (!data) return <Loading />;
-  const total = SECTIONS.filter((s) => s.id !== 'done_recently').reduce((n, s) => n + data[s.id].length, 0);
+  const total = SECTIONS.filter((s) => s.id !== 'done_recently').reduce((n, s) => n + (data[s.id] ?? []).length, 0);
 
   return (
     <Page width="narrow">
@@ -84,7 +87,7 @@ export function MyWork() {
         </EmptyState>
       )}
       {SECTIONS.map((s) =>
-        data[s.id].length ? (
+        (data[s.id] ?? []).length ? (
           <Collapsible key={s.id} open={!collapsed[s.id]} onOpenChange={(open) => setCollapsed({ ...collapsed, [s.id]: !open })}>
             <Card size="sm" className={cn('gap-2', s.tone === 'danger' && 'ring-destructive/30', s.tone === 'warn' && 'ring-warning/40')}>
               <CardHeader>

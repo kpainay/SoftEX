@@ -11,7 +11,7 @@ const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
  */
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(@\[[^\]]+\]\([0-9a-f-]{36}\))|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
+  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(@\[[^\]]+\]\((?:team:)?[0-9a-f-]{36}\))|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -23,9 +23,11 @@ function inline(text: string, keyBase: string): ReactNode[] {
     else if (m[2]) out.push(<strong key={k}>{inline(token.slice(2, -2), k)}</strong>);
     else if (m[3]) out.push(<em key={k}>{inline(token.slice(1, -1), k)}</em>);
     else if (m[4]) {
-      const [, name, id] = token.match(/@\[([^\]]+)\]\(([^)]+)\)/)!;
+      const [, name, ref] = token.match(/@\[([^\]]+)\]\(([^)]+)\)/)!;
+      // A person, or a whole team ("team:<id>").
+      const to = ref.startsWith('team:') ? `/teams/${ref.slice(5)}` : `/people/${ref}`;
       out.push(
-        <Link key={k} className="rounded-sm bg-accent px-1 font-medium text-accent-foreground hover:underline" to={`/people/${id}`}>
+        <Link key={k} className="rounded-sm bg-accent px-1 font-medium text-accent-foreground hover:underline" to={to}>
           @{name}
         </Link>,
       );

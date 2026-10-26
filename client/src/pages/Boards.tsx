@@ -6,7 +6,7 @@ import { FavoriteButton } from '../components/Favorites';
 import { Icon } from '../components/Icon';
 import { PeerList } from '../components/LiveEditor';
 import { Whiteboard } from '../components/Whiteboard';
-import { EmptyState, ErrorState, FilterBar, FormField, IconButton, Loading, Modal, Page, PageHeader, Pill, SwitchField, useAction } from '@/components/kit';
+import { EmptyState, ErrorState, FilterBar, FormField, Loading, Modal, Page, PageHeader, Pill, SwitchField, useAction, useConfirm } from '@/components/kit';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { timeAgo } from '../format';
@@ -147,6 +147,7 @@ export function Boards({ projectId }: { projectId?: string }) {
 export function BoardView() {
   const { id } = useParams();
   const act = useAction();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const { data: board, error, reload, setData } = useApi<Board>(`/boards/${id}`);
   const live = useLiveDoc('board', board?.id);
@@ -193,15 +194,29 @@ export function BoardView() {
         {live && <PeerList peers={[...live.peers.values()]} label="Here now" />}
         {live && live.status === 'offline' && <Pill tone="danger">Offline</Pill>}
         {board.can_delete && (
-          <IconButton
-            label={board.archived_at ? 'Restore whiteboard' : 'Archive whiteboard'}
+          // Says what it does: archiving hides the board from the list (it can be restored), it isn't a priority flag.
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={board.archived_at ? 'Restore whiteboard' : 'Archive whiteboard'}
             onClick={async () => {
+              if (
+                !board.archived_at &&
+                !(await confirm({
+                  title: 'Archive this whiteboard?',
+                  description: 'It leaves the whiteboards list for everyone. You can find it under “Show archived” and restore it.',
+                  confirmLabel: 'Archive',
+                }))
+              )
+                return;
               const b = await act(() => api.patch<Board>(`/boards/${board.id}`, { archived: !board.archived_at }), board.archived_at ? 'Whiteboard restored' : 'Whiteboard archived');
               if (b && !board.archived_at) navigate('/boards');
               else if (b) setData(b);
-            }}>
-            <Icon name="flag" />
-          </IconButton>
+            }}
+          >
+            <Icon name={board.archived_at ? 'refresh' : 'archive'} data-icon="inline-start" />
+            <span className="max-sm:sr-only">{board.archived_at ? 'Restore' : 'Archive'}</span>
+          </Button>
         )}
       </div>
       {!live || !live.ready ? <Loading label="Opening the whiteboard" /> : <Whiteboard live={live} title={board.title} />}

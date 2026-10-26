@@ -54,7 +54,10 @@ test('appearance: choose dark or light, and it stays after a reload', async ({ p
   const noErrors = trackErrors(page);
   await signIn(page, 'alex@acme.test');
   const canvas = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  // Settings is a list of categories; appearance lives under General.
   await page.goto('/settings');
+  await page.getByRole('navigation', { name: 'Settings categories' }).getByRole('button', { name: /^General/ }).click();
+  await expect(page).toHaveURL(/section=general/);
   await page.getByRole('radio', { name: /Dark/ }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await canvas()).toBe('rgb(19, 19, 18)');

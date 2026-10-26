@@ -76,6 +76,19 @@ import {
   Video,
   X,
   type LucideIcon,
+  Archive,
+  Bold,
+  CircleUser,
+  Code,
+  Eraser,
+  Files,
+  Heading2,
+  Info,
+  Italic,
+  ListOrdered,
+  Quote,
+  SquareCode,
+  Strikethrough,
 } from 'lucide-react';
 import { memo, type SVGProps } from 'react';
 import { cn } from '@/lib/utils';
@@ -158,6 +171,19 @@ export const ICONS = {
   sun: Sun,
   target: Target,
   refresh: RefreshCw,
+  user: CircleUser,
+  code: Code,
+  eraser: Eraser,
+  archive: Archive,
+  files: Files,
+  bold: Bold,
+  italic: Italic,
+  heading: Heading2,
+  listOrdered: ListOrdered,
+  quote: Quote,
+  strike: Strikethrough,
+  info: Info,
+  codeBlock: SquareCode,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
