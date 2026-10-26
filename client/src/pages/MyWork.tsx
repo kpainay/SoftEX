@@ -1,11 +1,14 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, type Task } from '../api';
 import { Icon } from '../components/Icon';
 import { useShell } from '../components/Layout';
 import { TaskRow } from '../components/TaskDrawer';
 import { QuickAddTask } from '../components/QuickAddTask';
+import { TaskViewPanel } from '../components/TaskViews';
+import type { SavedView } from '../taskViews';
 import { ChevronRight } from 'lucide-react';
-import { DatePicker, EmptyState, ErrorState, Loading, Page, PageHeader, Pill, notify, useAction } from '@/components/kit';
+import { DatePicker, EmptyState, ErrorState, Loading, Page, PageHeader, Pill, TabBar, notify, useAction } from '@/components/kit';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { usePeople, useSession } from '../session';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -140,6 +143,43 @@ function BulkBar({ tasks, onClear, reload }: { tasks: Task[]; onClear: () => voi
 }
 
 export function MyWork() {
+  const [params, setParams] = useSearchParams();
+  const views = useApi<SavedView[]>('/views');
+  const tab = params.get('view') ?? 'mine';
+  const go = (id: string) => setParams(id === 'mine' ? {} : { view: id }, { replace: true });
+  const view = views.data?.find((v) => v.id === tab) ?? null;
+  const tabs = [
+    { id: 'mine', label: 'My work' },
+    ...(views.data ?? []).map((v) => ({ id: v.id, label: v.name })),
+    { id: 'filter', label: 'Filter tasks', icon: <Icon name="filter" /> },
+  ];
+  // A view that was deleted elsewhere (or an old link) falls back to the usual list.
+  const showing = tab === 'filter' || view ? tab : 'mine';
+  return (
+    <Page width="narrow">
+      <PageHeader title="My work" description="Everything you own or need to review — or filter every task you can see and save it as a view." />
+      <TabBar aria-label="Views" tabs={tabs} value={showing} onChange={go} />
+      {showing === 'mine' ? (
+        <MyWorkLists />
+      ) : (
+        <TaskViewPanel
+          key={showing}
+          view={view}
+          onSaved={async (v) => {
+            await views.reload();
+            go(v.id);
+          }}
+          onDeleted={async () => {
+            await views.reload();
+            go('mine');
+          }}
+        />
+      )}
+    </Page>
+  );
+}
+
+function MyWorkLists() {
   const { openTask } = useShell();
   const act = useAction();
   const { data, error, reload } = useApi<MyWorkData>('/my-work');
@@ -165,20 +205,20 @@ export function MyWork() {
   const total = SECTIONS.filter((s) => s.id !== 'done_recently').reduce((n, s) => n + (data[s.id] ?? []).length, 0);
 
   return (
-    <Page width="narrow">
-      <PageHeader
-        title="My work"
-        description="Everything you own or need to review, across every project."
-        actions={
-          total > 0 && (
-            <Button variant={selecting ? 'secondary' : 'outline'} onClick={() => (selecting ? stopSelecting() : setSelecting(true))} aria-pressed={selecting}>
+    <>
+      <Card size="sm">
+        <CardContent className="flex flex-col gap-2">
+          {total > 0 && (
+            <Button
+              className="self-end"
+              size="sm"
+              variant={selecting ? 'secondary' : 'outline'}
+              onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+              aria-pressed={selecting}
+            >
               <Icon name="check" data-icon="inline-start" /> {selecting ? 'Done selecting' : 'Select'}
             </Button>
-          )
-        }
-      />
-      <Card size="sm">
-        <CardContent>
+          )}
           <QuickAddTask
             onCreated={reload}
             defaultDue={due || null}
@@ -241,6 +281,6 @@ export function MyWork() {
       )}
       {/* Room for the bar, so it never covers the last task. */}
       {selecting && <div className="h-24" aria-hidden />}
-    </Page>
+    </>
   );
 }

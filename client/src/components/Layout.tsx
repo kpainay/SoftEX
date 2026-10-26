@@ -1,5 +1,6 @@
 import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { awayLabel, isAway } from '../away';
 import { ChevronsUpDown, Ellipsis, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { api, type Channel } from '../api';
 import { useApi, useRealtime } from '../hooks';
@@ -466,7 +467,7 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
                     <SidebarMenuButton
                       size="lg"
                       className="profile data-popup-open:bg-sidebar-accent"
-                      tooltip={`${me.user.name} · ${me.user.status_text || statusLabel(me.user.status)}`}
+                      tooltip={`${me.user.name} · ${isAway(me.user) ? awayLabel(me.user) : me.user.status_text || statusLabel(me.user.status)}`}
                     />
                   }
                 >
@@ -474,7 +475,15 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
                   <span className="grid flex-1 text-left leading-tight">
                     <span className="truncate font-semibold">{me.user.name}</span>
                     <span className="flex items-center gap-1.5 truncate text-xs text-sidebar-foreground/60">
-                      <StatusDot status={me.user.status} /> {me.user.status_text || statusLabel(me.user.status)}
+                      {isAway(me.user) ? (
+                        <>
+                          <Icon name="away" size={12} /> {awayLabel(me.user)}
+                        </>
+                      ) : (
+                        <>
+                          <StatusDot status={me.user.status} /> {me.user.status_text || statusLabel(me.user.status)}
+                        </>
+                      )}
                     </span>
                   </span>
                   <Ellipsis className="ml-auto" />
@@ -495,6 +504,9 @@ function Shell({ children, docked, setDocked }: { children: ReactNode; docked: b
                         {me.user.status === s && <Icon name="check" className="ml-auto" />}
                       </DropdownMenuItem>
                     ))}
+                    <DropdownMenuItem render={<Link to="/settings?section=notifications" />}>
+                      <Icon name="away" /> {isAway(me.user) ? awayLabel(me.user) : 'Set out of office…'}
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>

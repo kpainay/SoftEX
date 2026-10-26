@@ -202,10 +202,11 @@ const loginLimit = (ctx: Ctx, key: string, max = 10) => ({
 const Email = z.string().trim().toLowerCase().email().max(200);
 const Password = z.string().min(8, 'must be at least 8 characters').max(200);
 const Name = z.string().trim().min(1).max(80);
+const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'use YYYY-MM-DD');
 
 export async function mePayload(ctx: Ctx, auth: Auth) {
   const user = (await ctx.db.get(
-    `SELECT id, name, email, title, timezone, working_hours, expertise, status, status_text, focus_until,
+    `SELECT id, name, email, title, timezone, working_hours, expertise, status, status_text, focus_until, ooo_from, ooo_until, ooo_message,
             quiet_start, quiet_end, color, mfa_enabled, email_digest, email_urgent, email_verified_at FROM users WHERE id = ?`,
     auth.userId,
   ))!;
@@ -588,9 +589,16 @@ export function meRouter(ctx: Ctx) {
         quiet_end: Time.optional(),
         email_digest: z.boolean().optional(),
         email_urgent: z.boolean().optional(),
+        // Out of office: inclusive dates and the note people get as an automatic reply. Null dates turn it off.
+        ooo_from: Day.nullable().optional(),
+        ooo_until: Day.nullable().optional(),
+        ooo_message: z.string().max(500).optional(),
       }),
       req.body,
     );
+    if (body.ooo_until === null) body.ooo_from = null;
+    if (body.ooo_from && !body.ooo_until) throw badRequest('ooo_until: Choose when you are back');
+    if (body.ooo_from && body.ooo_until && body.ooo_from > body.ooo_until) throw badRequest('ooo_until: The last day must be on or after the first');
     if (body.timezone) {
       try {
         new Intl.DateTimeFormat('en', { timeZone: body.timezone });
@@ -602,7 +610,16 @@ export function meRouter(ctx: Ctx) {
     const payload = await mePayload(ctx, auth);
     await ctx.hub.publish(auth.workspaceId, {
       type: 'user.updated',
-      user: { id: auth.userId, name: payload.user.name, status: payload.user.status, status_text: payload.user.status_text, color: payload.user.color },
+      user: {
+        id: auth.userId,
+        name: payload.user.name,
+        status: payload.user.status,
+        status_text: payload.user.status_text,
+        color: payload.user.color,
+        ooo_from: payload.user.ooo_from,
+        ooo_until: payload.user.ooo_until,
+        ooo_message: payload.user.ooo_message,
+      },
     });
     res.json(payload);
   });

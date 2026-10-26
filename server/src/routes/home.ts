@@ -112,7 +112,7 @@ export function homeRouter(ctx: Ctx) {
       )), (d) => canViewDecision(db, auth, d)))
       .slice(0, 5);
 
-    const changes = (await db
+    const allChanges = (await db
       .all(
         `SELECT a.*, u.name AS actor_name, u.color AS actor_color FROM activity a JOIN users u ON u.id = a.actor_id
           WHERE a.workspace_id = ? AND a.created_at > ? AND a.actor_id != ? ORDER BY a.created_at DESC LIMIT 200`,
@@ -120,8 +120,32 @@ export function homeRouter(ctx: Ctx) {
         since,
         auth.userId,
       ))
-      .filter((a) => canViewActivity(auth, a, projectSet, channelSet))
-      .slice(0, 12);
+      .filter((a) => canViewActivity(auth, a, projectSet, channelSet));
+    const changes = allChanges.slice(0, 12);
+
+    // The catch-up: what arrived since the last visit, counted, each with somewhere to go and see it.
+    const assigned = (await db.get(
+      `SELECT COUNT(DISTINCT group_key) AS n FROM notifications WHERE user_id = ? AND workspace_id = ? AND kind IN ('assigned', 'handoff') AND created_at > ?`,
+      auth.userId,
+      auth.workspaceId,
+      since,
+    ))!.n;
+    const newDecisions = (await filterAsync(
+      await db.all('SELECT * FROM decisions WHERE workspace_id = ? AND created_at > ? AND decided_by != ? ORDER BY created_at DESC LIMIT 50', auth.workspaceId, since, auth.userId),
+      (d) => canViewDecision(db, auth, d),
+    )).length;
+    const newFiles = (await filterAsync(
+      await db.all('SELECT * FROM files WHERE workspace_id = ? AND created_at > ? AND owner_id != ? AND archived_at IS NULL ORDER BY created_at DESC LIMIT 50', auth.workspaceId, since, auth.userId),
+      (f) => canViewFile(db, auth, f),
+    )).length;
+    const catchUp = {
+      assigned: Number(assigned),
+      completed: allChanges.filter((a) => a.verb === 'completed').length,
+      chats: mentionGroups.size,
+      decisions: newDecisions,
+      files: newFiles,
+      due_today: myOpen.filter((t) => t.due_date === t0).length,
+    };
 
     const activeProjects = memberProjects.length
       ? (await Promise.all((await db
@@ -192,6 +216,7 @@ export function homeRouter(ctx: Ctx) {
       mentions,
       decisions,
       changes,
+      catch_up: catchUp,
       projects: activeProjects,
       onboarding: { total: onboarding.total ?? 0, done: onboarding.done ?? 0 },
       pending_approvals: pendingApprovals,
@@ -360,14 +385,15 @@ export function homeRouter(ctx: Ctx) {
           ORDER BY c.created_at DESC LIMIT 200`,
         ...(q.projectId ? [auth.workspaceId, q.projectId] : [auth.workspaceId]),
       ))
-      .filter((c) => (c.project_id ? projects.has(c.project_id) : !isGuest(auth) || c.user_id === auth.userId));
+      // Team check-ins are read on the team's page; guests see only their own general ones.
+      .filter((c) => !c.team_id && (c.project_id ? projects.has(c.project_id) : !isGuest(auth) || c.user_id === auth.userId));
     res.json(rows.slice(0, 60));
   });
 
   r.post('/checkins', async (req, res) => {
     const auth = authOf(req);
     const body = parse(
-      z.object({ projectId: z.string().nullish(), done: z.string().max(2000).default(''), next: z.string().max(2000).default(''), blockers: z.string().max(2000).default('') }),
+      z.object({ projectId: z.string().nullish(), teamId: z.string().nullish(), done: z.string().max(2000).default(''), next: z.string().max(2000).default(''), blockers: z.string().max(2000).default('') }),
       req.body,
     );
     let project = null;
@@ -375,13 +401,36 @@ export function homeRouter(ctx: Ctx) {
       project = await loadProject(db, auth, body.projectId);
       if (!await canContributeProject(db, auth, project)) throw forbidden();
     }
+    let team = null;
+    if (body.teamId) {
+      team = await db.get('SELECT * FROM teams WHERE id = ? AND workspace_id = ?', body.teamId, auth.workspaceId);
+      if (!team) throw notFound('Team');
+      if (!await db.get('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?', team.id, auth.userId)) throw forbidden('Only people on the team can check in to it');
+    }
     const id = newId();
-    await db.insert('checkins', { id, workspace_id: auth.workspaceId, project_id: body.projectId ?? null, user_id: auth.userId, done: body.done, next: body.next, blockers: body.blockers, created_at: now() });
+    await db.insert('checkins', { id, workspace_id: auth.workspaceId, project_id: body.projectId ?? null, team_id: team?.id ?? null, user_id: auth.userId, done: body.done, next: body.next, blockers: body.blockers, created_at: now() });
     if (project) {
       await recordActivity(ctx, auth.workspaceId, { actorId: auth.userId, verb: 'checked in', objectType: 'checkin', objectId: id, projectId: project.id, summary: `checked in on ${project.name}`, link: `/projects/${project.id}?tab=checkins` });
       if (body.blockers.trim()) {
         const name = (await db.get('SELECT name FROM users WHERE id = ?', auth.userId))!.name;
         await notify(ctx, auth.workspaceId, { userId: project.owner_id, kind: 'status', title: `${name} reported a blocker on ${project.name}`, body: body.blockers, link: `/projects/${project.id}?tab=checkins`, actorId: auth.userId });
+      }
+    }
+    if (team) {
+      // Teammates see it arrive on the team page.
+      await ctx.hub.publish(auth.workspaceId, { type: 'team.checkin', teamId: team.id });
+      if (body.blockers.trim()) {
+        const name = (await db.get('SELECT name FROM users WHERE id = ?', auth.userId))!.name;
+        const leads = await db.all(
+          `SELECT tm.user_id FROM team_members tm JOIN memberships m ON m.user_id = tm.user_id AND m.workspace_id = ?
+            WHERE tm.team_id = ? AND tm.user_id != ? AND m.role IN ('owner', 'admin', 'lead') AND m.deactivated_at IS NULL`,
+          auth.workspaceId,
+          team.id,
+          auth.userId,
+        );
+        for (const l of leads) {
+          await notify(ctx, auth.workspaceId, { userId: l.user_id, kind: 'status', title: `${name} reported a blocker in ${team.name}`, body: body.blockers, link: `/teams/${team.id}?tab=checkins`, actorId: auth.userId });
+        }
       }
     }
     res.status(201).json(await db.get('SELECT * FROM checkins WHERE id = ?', id));

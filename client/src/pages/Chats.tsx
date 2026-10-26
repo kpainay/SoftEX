@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, qs, type Channel, type Message } from '../api';
+import { api, qs, type Channel, type Message, type Person } from '../api';
 import { ThreadAi } from '../components/Ai';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
@@ -66,6 +66,8 @@ import { useApi, useRealtime, useViewing } from '../hooks';
 import { realtime } from '../realtime';
 import { outbox, useOutbox, type Outgoing } from '../outbox';
 import { usePeople, useSession } from '../session';
+import { AwayNotice } from '../components/AwayNotice';
+import { awayLabel, isAway } from '../away';
 import { MediaAttachment, VideoLinks, isPlayable } from '../components/Media';
 import { FavoriteButton } from '../components/Favorites';
 import { ForwardModal, ForwardedQuote, PollCard, PollModal, VoiceNoteButton } from '../components/ChatExtras';
@@ -671,7 +673,7 @@ export function ChannelView() {
                 )}
                 {messages.map((m, i) => {
                   const prev = messages[i - 1];
-                  const grouped = prev && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
+                  const grouped = prev && !m.auto_reply && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
                   const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
                   return (
                     <MessageScrollerItem key={m.id} messageId={m.id} className={CHAT_ITEM}>
@@ -714,6 +716,7 @@ export function ChannelView() {
           <div className="h-5 px-4 text-xs text-muted-foreground" aria-live="polite">
             {typingNames.length > 0 && <span className="shimmer">{`${typingNames.join(', ')} ${typingNames.length > 1 ? 'are' : 'is'} typing…`}</span>}
           </div>
+          {channel.kind === 'dm' && <DmAwayNotice members={channel.members} />}
           {channel.can_post ? (
             <Composer
               channelId={channel.id}
@@ -1282,6 +1285,11 @@ const MessageItem = memo(function MessageItem({
               {timeOf(m.created_at)}
             </time>
             {m.urgent && <Pill tone="danger">Urgent</Pill>}
+            {m.auto_reply && (
+              <Pill>
+                <Icon name="away" /> Automatic reply
+              </Pill>
+            )}
             {m.pinned && (
               <Pill>
                 <Icon name="pin" /> Pinned
@@ -1648,6 +1656,21 @@ const BROADCASTS = [
   { id: 'here', name: 'here', color: 'gold', hint: 'Notify people online now' },
 ];
 
+/** In a direct message with someone who is away: say so, with their note, above the message box. */
+function DmAwayNotice({ members }: { members: { id: string }[] }) {
+  const { me } = useSession();
+  const people = usePeople();
+  const away = members.filter((m) => m.id !== me!.user.id).map((m) => people.find((p) => p.id === m.id)).filter((p): p is Person => isAway(p));
+  if (!away.length) return null;
+  return (
+    <div className="mx-3 mb-2 flex flex-col gap-2 md:mx-4">
+      {away.map((p) => (
+        <AwayNotice key={p.id} person={p} />
+      ))}
+    </div>
+  );
+}
+
 function Composer({
   channelId,
   parentId,
@@ -1733,6 +1756,12 @@ function Composer({
     }
   };
 
+  // People you're @mentioning who are out of office, so you know before you send.
+  const awayMentioned = useMemo(
+    () => Object.entries(mentions).filter(([name]) => text.includes(`@${name}`)).map(([, id]) => people.find((p) => p.id === id)).filter((p): p is Person => isAway(p)),
+    [mentions, text, people],
+  );
+
   const pick = (p: { id: string; name: string }) => {
     const caret = ref.current?.selectionStart ?? text.length;
     const before = text.slice(0, caret).replace(/@([\w.-]*)$/, `@${p.name} `);
@@ -1814,11 +1843,20 @@ function Composer({
               ) : (
                 <>
                   <Avatar user={p} size="xs" /> {p.name}
+                  {isAway(people.find((x) => x.id === p.id)) && <span className="ml-auto text-xs text-muted-foreground">Out of office</span>}
                 </>
               )}
             </button>
           ))}
         </div>
+      )}
+      {awayMentioned.length > 0 && (
+        <p role="status" className="mb-1.5 flex items-start gap-1.5 px-1 text-xs text-muted-foreground">
+          <Icon name="away" size={14} className="mt-px shrink-0" />
+          <span>
+            {awayMentioned.map((p) => `${p.name.split(' ')[0]} is ${awayLabel(p).toLowerCase()}`).join('; ')}. They’ll see this when they’re back.
+          </span>
+        </p>
       )}
       <InputGroup className="h-auto flex-col items-stretch rounded-2xl bg-card shadow-sm">
         {files.length > 0 && (

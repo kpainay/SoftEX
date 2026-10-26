@@ -907,6 +907,38 @@ CREATE TABLE IF NOT EXISTS deadline_reminders (
   created_at TEXT NOT NULL,
   PRIMARY KEY (task_id, due_date, kind)
 );
+
+-- A team's recurring check-in: on which weekdays and at what local time members are asked for an update.
+CREATE TABLE IF NOT EXISTS team_checkin_schedules (
+  team_id TEXT PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  days TEXT NOT NULL DEFAULT '[1,2,3,4,5]',         -- JSON weekdays, 0 = Sunday
+  time TEXT NOT NULL DEFAULT '09:30',               -- in each member's own time zone
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_by TEXT REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+-- Who has been asked for a team check-in on which (local) day, so each person is asked once.
+CREATE TABLE IF NOT EXISTS checkin_prompts (
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (team_id, user_id, day)
+);
+
+-- A person's saved task filters ("My urgent design work"), shown as views on My work.
+CREATE TABLE IF NOT EXISTS saved_views (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  filters TEXT NOT NULL DEFAULT '{}',
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_saved_views_user ON saved_views(user_id, workspace_id);
 `;
 
 /**
@@ -968,6 +1000,14 @@ const ADDED_COLUMNS: [table: string, column: string, definition: string, backfil
   ['tasks', 'team_id', 'TEXT REFERENCES teams(id) ON DELETE SET NULL'],
   ['files', 'team_id', 'TEXT REFERENCES teams(id) ON DELETE SET NULL'],
   ['messages', 'forwarded_from', 'TEXT'],
+  // Out of office: dates (inclusive, YYYY-MM-DD) and the automatic reply people get meanwhile.
+  ['users', 'ooo_from', 'TEXT'],
+  ['users', 'ooo_until', 'TEXT'],
+  ['users', 'ooo_message', "TEXT NOT NULL DEFAULT ''"],
+  // A message sent on someone's behalf while they are out of office.
+  ['messages', 'auto_reply', 'INTEGER NOT NULL DEFAULT 0'],
+  // Check-ins can be for a team as well as a project.
+  ['checkins', 'team_id', 'TEXT REFERENCES teams(id) ON DELETE CASCADE'],
   // Per-workspace entitlement overrides set by an operator: custom deals, add-ons and comps.
   ['workspaces', 'entitlement_overrides', 'TEXT'],
   // Single sign-on started from the phone app: the app's PKCE challenge for the hand-back.

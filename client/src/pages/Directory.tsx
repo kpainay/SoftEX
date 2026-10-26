@@ -4,6 +4,8 @@ import { api, type Person } from '../api';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { statusLabel } from '../components/Layout';
+import { AwayNotice } from '../components/AwayNotice';
+import { awayLabel, isAway } from '../away';
 import { EmptyState, ErrorState, FilterBar, Loading, Page, PageHeader, Pill, SearchField, StatusDot, TabBar, useAction } from '@/components/kit';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +54,10 @@ export function Directory() {
                       <strong className="truncate font-semibold">{p.name}</strong>
                       <span className="truncate text-xs text-muted-foreground">{p.title || ROLE_LABEL[p.role]}</span>
                       <span className="flex items-center gap-1.5 text-xs">
-                        <StatusDot status={p.status} /> <span className="truncate">{p.status_text || statusLabel(p.status)} · {localTimeIn(p.timezone)}</span>
+                        {isAway(p) ? <Icon name="away" size={12} className="shrink-0" /> : <StatusDot status={p.status} />}{' '}
+                        <span className="truncate">
+                          {isAway(p) ? awayLabel(p) : p.status_text || statusLabel(p.status)} · {localTimeIn(p.timezone)}
+                        </span>
                       </span>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {p.role === 'guest' && <Pill tone="warning">Guest</Pill>}
@@ -153,6 +158,7 @@ export function PersonView() {
               <Icon name="chat" data-icon="inline-start" /> Message
             </Button>
           )}
+          <AwayNotice person={p} className="basis-full" />
         </CardContent>
       </Card>
       <Card>

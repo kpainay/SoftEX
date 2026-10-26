@@ -40,12 +40,82 @@ interface HomeData {
   mentions: (Notification & { actor_name: string; actor_color: string })[];
   decisions: (Decision & { project_name: string | null })[];
   changes: Activity[];
+  catch_up: CatchUpCounts;
   projects: { id: string; name: string; color: string; health: string; progress: number; members: { id: string; name: string; color: string }[]; member_count: number }[];
   onboarding: { total: number; done: number };
   pending_approvals: number;
   checked_in_today: boolean;
   reviews_due: { id: string; title: string; review_date: string }[];
   counts: { open_tasks: number; overdue: number; unread: number };
+}
+
+interface CatchUpCounts {
+  assigned: number;
+  due_today: number;
+  chats: number;
+  completed: number;
+  decisions: number;
+  files: number;
+}
+
+const word = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+/** Each count with what it means ("3 tasks given to you") and where to go and see. */
+const CATCH_UP: { key: keyof CatchUpCounts; icon: string; label: (n: number) => string; to: string }[] = [
+  { key: 'assigned', icon: 'task', label: (n) => `${word(n, 'task')} given to you`, to: '/my-work' },
+  { key: 'due_today', icon: 'calendar', label: (n) => `${word(n, 'task')} due today`, to: '/my-work' },
+  { key: 'chats', icon: 'chat', label: (n) => `${word(n, 'chat')} waiting for you`, to: '/chats' },
+  { key: 'completed', icon: 'check', label: (n) => `${word(n, 'task')} finished by others`, to: '#what-changed' },
+  { key: 'decisions', icon: 'gavel', label: (n) => word(n, 'new decision'), to: '/decisions' },
+  { key: 'files', icon: 'file', label: (n) => word(n, 'new file'), to: '/files' },
+];
+
+/** What arrived since the last visit, counted, each a way in. */
+function CatchUp({ counts, since, firstVisit, showChanges }: { counts: CatchUpCounts; since: string; firstVisit?: boolean; showChanges: boolean }) {
+  const items = CATCH_UP.filter((c) => counts[c.key] > 0 && (c.to !== '#what-changed' || showChanges));
+  return (
+    <section aria-labelledby="catch-up-title" className="flex flex-col gap-3 rounded-2xl border bg-card p-4 text-card-foreground">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id="catch-up-title" className="font-heading text-base font-semibold">
+          Catch up
+        </h2>
+        <span className="text-xs text-muted-foreground">{firstVisit ? 'From the last few days' : `Since your last visit · ${timeAgo(since)}`}</span>
+      </div>
+      {items.length ? (
+        <ul className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 lg:grid-cols-3">
+          {items.map((c) => {
+            const content = (
+              <>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                  <Icon name={c.icon} size={16} />
+                </span>
+                <span className="min-w-0 text-sm">
+                  <strong className="font-semibold tabular-nums">{counts[c.key]}</strong> {c.label(counts[c.key])}
+                </span>
+              </>
+            );
+            const cls = 'flex items-center gap-2.5 rounded-xl border bg-background/60 p-2 transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring';
+            return (
+              <li key={c.key}>
+                {c.to.startsWith('#') ? (
+                  <a href={c.to} className={cls} onClick={(e) => (e.preventDefault(), document.getElementById(c.to.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}>
+                    {content}
+                  </a>
+                ) : (
+                  <Link to={c.to} className={cls}>
+                    {content}
+                  </Link>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Icon name="check" size={16} className="text-success" /> You’re all caught up — nothing new needs you.
+        </p>
+      )}
+    </section>
+  );
 }
 
 const OPTIONAL = [
@@ -165,6 +235,8 @@ export function Home() {
       </div>
 
       {data.setup && <SetupGuide steps={data.setup} />}
+
+      {data.catch_up && <CatchUp counts={data.catch_up} since={data.since} firstVisit={data.first_visit} showChanges={show('changes')} />}
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -288,6 +360,8 @@ export function Home() {
 
           {show('changes') && (
             <Panel
+              id="what-changed"
+              className="scroll-mt-20"
               title="What changed"
               description={data.first_visit ? 'Recent activity in your workspace' : `Since you last checked · ${timeAgo(data.since)}`}
               contentClassName="flex flex-col gap-1"
@@ -321,17 +395,33 @@ export function Home() {
   );
 }
 
-export function CheckinModal({ open, onClose, onDone, projectId }: { open: boolean; onClose: () => void; onDone: () => void; projectId?: string }) {
+export function CheckinModal({
+  open,
+  onClose,
+  onDone,
+  projectId,
+  team,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDone: () => void;
+  projectId?: string;
+  /** A team's recurring check-in: answers go to the team page and blockers to its leads. */
+  team?: { id: string; name: string };
+}) {
   const act = useAction();
-  const { data: projects } = useApi<Project[]>(open && !projectId ? '/projects' : null);
+  const { data: projects } = useApi<Project[]>(open && !projectId && !team ? '/projects' : null);
   const [form, setForm] = useState({ projectId: projectId ?? '', done: '', next: '', blockers: '' });
   return (
-    <Modal open={open} onClose={onClose} title="Daily check-in" eyebrow="Async update">
+    <Modal open={open} onClose={onClose} title={team ? `${team.name} check-in` : 'Daily check-in'} eyebrow="Async update">
       <form
         className="flex flex-col gap-4"
         onSubmit={async (e) => {
           e.preventDefault();
-          const ok = await act(() => api.post('/checkins', { ...form, projectId: form.projectId || null }), 'Check-in shared');
+          const ok = await act(
+            () => api.post('/checkins', team ? { done: form.done, next: form.next, blockers: form.blockers, teamId: team.id } : { ...form, projectId: form.projectId || null }),
+            'Check-in shared',
+          );
           if (ok) {
             setForm({ projectId: projectId ?? '', done: '', next: '', blockers: '' });
             onClose();
@@ -339,7 +429,7 @@ export function CheckinModal({ open, onClose, onDone, projectId }: { open: boole
           }
         }}
       >
-        {!projectId && (
+        {!projectId && !team && (
           <FormField label="Project">
             <NativeSelect value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
               <NativeSelectOption value="">General</NativeSelectOption>
@@ -357,7 +447,7 @@ export function CheckinModal({ open, onClose, onDone, projectId }: { open: boole
         <FormField label="What are you working on next?">
           <Textarea rows={2} value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} />
         </FormField>
-        <FormField label="Anything blocking you?" hint="Blockers notify the project owner.">
+        <FormField label="Anything blocking you?" hint={team ? 'Blockers notify the team’s leads.' : 'Blockers notify the project owner.'}>
           <Textarea rows={2} value={form.blockers} onChange={(e) => setForm({ ...form, blockers: e.target.value })} />
         </FormField>
         <div className="flex flex-wrap items-center justify-end gap-2">

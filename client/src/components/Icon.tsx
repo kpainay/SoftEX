@@ -88,6 +88,9 @@ import {
   ListOrdered,
   Quote,
   SquareCode,
+  ListFilter,
+  Plane,
+  Repeat,
   Strikethrough,
 } from 'lucide-react';
 import { memo, type SVGProps } from 'react';
@@ -184,6 +187,9 @@ export const ICONS = {
   strike: Strikethrough,
   info: Info,
   codeBlock: SquareCode,
+  filter: ListFilter,
+  away: Plane,
+  repeat: Repeat,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;
