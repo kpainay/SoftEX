@@ -7,6 +7,7 @@ import { useShell } from '../components/Layout';
 import { Markdown } from '../components/Markdown';
 import { NewTaskForm } from '../components/QuickCreate';
 import { TaskRow } from '../components/TaskDrawer';
+import { TeamCheckins } from '../components/TeamCheckins';
 import { EmptyState, ErrorState, FormField, Loading, LoadingRows, Modal, Page, PageHeader, Pill, TabBar, useAction } from '@/components/kit';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -34,7 +35,7 @@ interface TeamInbox {
   files: { id: string; name: string; owner_name: string; created_at: string }[];
 }
 
-type Section = 'inbox' | 'tasks' | 'channels' | 'files' | 'members';
+type Section = 'inbox' | 'tasks' | 'checkins' | 'channels' | 'files' | 'members';
 
 /** A team's home: its shared inbox, the work given to it, its channels and files, and who's on it. */
 export function TeamView() {
@@ -68,11 +69,12 @@ export function TeamView() {
       />
       <TabBar
         value={section}
-        onChange={(t) => setParams(t === 'inbox' ? {} : { tab: t })}
+        onChange={(t) => setParams(t === 'inbox' ? {} : { tab: t }, { replace: true })}
         aria-label="Team sections"
         tabs={[
           { id: 'inbox', label: 'Inbox', count: waiting.length + (inbox.data?.mentions.length ?? 0) || undefined },
           { id: 'tasks', label: 'Tasks', count: open.length || undefined },
+          { id: 'checkins', label: 'Check-ins' },
           { id: 'channels', label: 'Channels', count: team.channels.length || undefined },
           { id: 'files', label: 'Files' },
           { id: 'members', label: 'Members', count: team.members.length },
@@ -80,6 +82,7 @@ export function TeamView() {
       />
       {section === 'inbox' && <TeamInboxSection team={team} inbox={inbox.data} reload={inbox.reload} />}
       {section === 'tasks' && <TeamTasks team={team} tasks={inbox.data?.tasks} reload={inbox.reload} />}
+      {section === 'checkins' && <TeamCheckins team={team} />}
       {section === 'channels' && <TeamChannels team={team} />}
       {section === 'files' && <TeamFiles team={team} />}
       {section === 'members' && (

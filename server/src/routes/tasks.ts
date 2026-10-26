@@ -19,7 +19,7 @@ import type { Database, Row } from '../db.js';
 import { authOf, notify, recordActivity, userSummary, type Ctx } from '../context.js';
 import { emitEvent } from '../webhooks.js';
 import { runAutomations } from '../automations.js';
-import { badRequest, forbidden, friendlyDate, newId, notFound, now, parse, today, filterAsync } from '../util.js';
+import { badRequest, forbidden, friendlyDate, likePattern, newId, notFound, now, parse, parseJson, today, filterAsync } from '../util.js';
 import { parseCsv, parseLooseDate } from '../csv.js';
 import { hasFeature, requireFeature } from '../plans.js';
 import { taskExtras } from './work.js';
@@ -27,6 +27,23 @@ import { taskExtras } from './work.js';
 const DateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'use YYYY-MM-DD');
 const Status = z.enum(['todo', 'in_progress', 'blocked', 'review', 'done']);
 const Priority = z.enum(['low', 'medium', 'high', 'urgent']);
+const Due = z.enum(['overdue', 'today', 'week', 'later', 'none']);
+
+/** What a task list can be narrowed by: the same keys in a query string and in a saved view. */
+export const TaskFilters = z.object({
+  /** A person's id, "me", or "none" for unassigned. */
+  ownerId: z.string().max(64).optional(),
+  statuses: z.array(Status).max(5).optional(),
+  priorities: z.array(Priority).max(4).optional(),
+  due: Due.optional(),
+  projectId: z.string().max(64).optional(),
+  teamId: z.string().max(64).optional(),
+  labelId: z.string().max(64).optional(),
+  q: z.string().trim().max(100).optional(),
+});
+export type TaskFilters = z.infer<typeof TaskFilters>;
+const csv = <T extends z.ZodTypeAny>(item: T) =>
+  z.preprocess((v) => (typeof v === 'string' ? v.split(',').filter(Boolean) : v), z.array(item)).optional();
 
 export async function serializeTasks(db: Database, rows: Row[]) {
   if (!rows.length) return [];
@@ -277,6 +294,11 @@ export function tasksRouter(ctx: Ctx) {
         projectId: z.string().optional(),
         ownerId: z.string().optional(),
         status: Status.optional(),
+        statuses: csv(Status),
+        priorities: csv(Priority),
+        due: Due.optional(),
+        teamId: z.string().optional(),
+        q: z.string().trim().max(100).optional(),
         milestoneId: z.string().optional(),
         labelId: z.string().optional(),
         includeSubtasks: z.enum(['true', 'false']).default('false'),
@@ -285,6 +307,28 @@ export function tasksRouter(ctx: Ctx) {
     );
     const where: string[] = ['t.workspace_id = ?'];
     const params: string[] = [auth.workspaceId];
+    const t0 = today();
+    const weekAhead = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    if (q.ownerId === 'me') q.ownerId = auth.userId;
+    if (q.ownerId === 'none') {
+      where.push('t.owner_id IS NULL');
+      delete q.ownerId;
+    }
+    if (q.statuses?.length) {
+      where.push(`t.status IN (${q.statuses.map(() => '?').join(',')})`);
+      params.push(...q.statuses);
+    }
+    if (q.priorities?.length) {
+      where.push(`t.priority IN (${q.priorities.map(() => '?').join(',')})`);
+      params.push(...q.priorities);
+    }
+    if (q.due === 'overdue') (where.push("t.due_date < ? AND t.status != 'done'"), params.push(t0));
+    if (q.due === 'today') (where.push('t.due_date = ?'), params.push(t0));
+    if (q.due === 'week') (where.push('t.due_date >= ? AND t.due_date <= ?'), params.push(t0, weekAhead));
+    if (q.due === 'later') (where.push('t.due_date > ?'), params.push(weekAhead));
+    if (q.due === 'none') where.push('t.due_date IS NULL');
+    if (q.teamId) (where.push('t.team_id = ?'), params.push(q.teamId));
+    if (q.q) (where.push(`t.title LIKE ? ESCAPE '\\'`), params.push(likePattern(q.q)));
     if (q.projectId) {
       await loadProject(db, auth, q.projectId);
       where.push('t.project_id = ?');
@@ -310,6 +354,47 @@ export function tasksRouter(ctx: Ctx) {
     const rows = (await filterAsync((await db
       .all(`SELECT t.* FROM tasks t WHERE ${where.join(' AND ')} ORDER BY t.position, t.created_at LIMIT 2000`, ...params)), (t) => canViewTask(db, auth, t)));
     res.json(await serializeTasks(db, rows));
+  });
+
+  // ======================= Saved views =======================
+
+  const ViewBody = z.object({ name: z.string().trim().min(1).max(60), filters: TaskFilters });
+  const loadView = async (auth: Auth, id: string) => {
+    const view = await db.get('SELECT * FROM saved_views WHERE id = ? AND user_id = ? AND workspace_id = ?', id, auth.userId, auth.workspaceId);
+    if (!view) throw notFound('View');
+    return view;
+  };
+  const viewOut = (v: Row) => ({ id: v.id, name: v.name, filters: parseJson(v.filters, {}), position: v.position, created_at: v.created_at });
+
+  /** Your saved task views, in the order you arranged them. */
+  r.get('/views', async (req, res) => {
+    const auth = authOf(req);
+    res.json((await db.all('SELECT * FROM saved_views WHERE user_id = ? AND workspace_id = ? ORDER BY position, created_at', auth.userId, auth.workspaceId)).map(viewOut));
+  });
+
+  r.post('/views', async (req, res) => {
+    const auth = authOf(req);
+    const body = parse(ViewBody, req.body);
+    const count = Number((await db.get('SELECT COUNT(*) AS n FROM saved_views WHERE user_id = ? AND workspace_id = ?', auth.userId, auth.workspaceId))!.n);
+    if (count >= 30) throw badRequest('You can keep up to 30 views. Delete one you no longer use first.');
+    const id = newId();
+    await db.insert('saved_views', { id, workspace_id: auth.workspaceId, user_id: auth.userId, name: body.name, filters: JSON.stringify(body.filters), position: count, created_at: now() });
+    res.status(201).json(viewOut((await db.get('SELECT * FROM saved_views WHERE id = ?', id))!));
+  });
+
+  r.patch('/views/:id', async (req, res) => {
+    const auth = authOf(req);
+    const view = await loadView(auth, req.params.id);
+    const body = parse(ViewBody.partial().extend({ position: z.number().int().min(0).max(100).optional() }), req.body);
+    await db.update('saved_views', view.id, { name: body.name, filters: body.filters ? JSON.stringify(body.filters) : undefined, position: body.position });
+    res.json(viewOut((await db.get('SELECT * FROM saved_views WHERE id = ?', view.id))!));
+  });
+
+  r.delete('/views/:id', async (req, res) => {
+    const auth = authOf(req);
+    const view = await loadView(auth, req.params.id);
+    await db.run('DELETE FROM saved_views WHERE id = ?', view.id);
+    res.json({ ok: true });
   });
 
   /** "My work" (§5.2): today, upcoming, overdue, blocked, and assigned-for-review. */

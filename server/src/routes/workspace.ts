@@ -54,7 +54,7 @@ export function workspaceRouter(ctx: Ctx) {
     const visible = await visibleUserIds(auth);
     const people = (await db
       .all(
-        `SELECT u.id, u.name, u.email, u.title, u.timezone, u.working_hours, u.expertise, u.status, u.status_text, u.focus_until, u.color,
+        `SELECT u.id, u.name, u.email, u.title, u.timezone, u.working_hours, u.expertise, u.status, u.status_text, u.focus_until, u.color, u.ooo_from, u.ooo_until, u.ooo_message,
                 m.role, m.guest_expires_at, m.created_at AS joined_at, s.name AS sponsor_name
            FROM memberships m JOIN users u ON u.id = m.user_id LEFT JOIN users s ON s.id = m.sponsor_id
           WHERE m.workspace_id = ? AND m.deactivated_at IS NULL ORDER BY u.name`,
@@ -80,7 +80,7 @@ export function workspaceRouter(ctx: Ctx) {
     const visible = await visibleUserIds(auth);
     if (visible && !visible.has(req.params.id)) throw notFound('Person');
     const person = await db.get(
-      `SELECT u.id, u.name, u.email, u.title, u.timezone, u.working_hours, u.expertise, u.status, u.status_text, u.focus_until, u.color,
+      `SELECT u.id, u.name, u.email, u.title, u.timezone, u.working_hours, u.expertise, u.status, u.status_text, u.focus_until, u.color, u.ooo_from, u.ooo_until, u.ooo_message,
               m.role, m.guest_expires_at, m.created_at AS joined_at, s.name AS sponsor_name, u.mfa_enabled
          FROM memberships m JOIN users u ON u.id = m.user_id LEFT JOIN users s ON s.id = m.sponsor_id
         WHERE m.workspace_id = ? AND u.id = ? AND m.deactivated_at IS NULL`,
@@ -198,6 +198,51 @@ export function workspaceRouter(ctx: Ctx) {
       mentions: (await serializeMessages(db, auth, mentions.slice(0, 30))).map((m) => ({ ...m, channel: channelNames.get(m.channel_id) ?? null })),
       files: files.slice(0, 10).map((f) => ({ id: f.id, name: f.name, owner_name: f.owner_name, created_at: f.created_at, channel_id: f.channel_id })),
     });
+  });
+
+  /** A team's recurring check-in: its schedule and the last two weeks of answers. */
+  r.get('/teams/:id/checkins', async (req, res) => {
+    const auth = authOf(req);
+    const team = await loadTeam(auth, req.params.id);
+    const schedule = await db.get('SELECT days, time, enabled FROM team_checkin_schedules WHERE team_id = ?', team.id);
+    const isMember = !!await db.get('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?', team.id, auth.userId);
+    const checkins = await db.all(
+      `SELECT c.id, c.user_id, c.done, c.next, c.blockers, c.created_at, u.name AS user_name, u.color AS user_color FROM checkins c
+         JOIN users u ON u.id = c.user_id WHERE c.team_id = ? AND c.created_at >= ? ORDER BY c.created_at DESC LIMIT 200`,
+      team.id,
+      new Date(Date.now() - 14 * 86_400_000).toISOString(),
+    );
+    res.json({
+      schedule: schedule ? { days: parseJson<number[]>(schedule.days, []), time: schedule.time, enabled: !!schedule.enabled } : null,
+      can_edit: isMember || atLeast(auth, 'lead'),
+      is_member: isMember,
+      checkins,
+    });
+  });
+
+  r.put('/teams/:id/checkin-schedule', async (req, res) => {
+    const auth = authOf(req);
+    const team = await loadTeam(auth, req.params.id);
+    if (!atLeast(auth, 'lead') && !await db.get('SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?', team.id, auth.userId)) {
+      throw forbidden('Only people on the team, leads and admins can change its check-in');
+    }
+    const body = parse(
+      z.object({
+        days: z.array(z.number().int().min(0).max(6)).min(1, 'choose at least one day').max(7),
+        time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'use HH:MM'),
+        enabled: z.boolean().default(true),
+      }),
+      req.body,
+    );
+    const days = JSON.stringify([...new Set(body.days)].sort());
+    const values = { days, time: body.time, enabled: body.enabled, updated_by: auth.userId, updated_at: now() };
+    if (await db.get('SELECT 1 FROM team_checkin_schedules WHERE team_id = ?', team.id)) {
+      await db.run('UPDATE team_checkin_schedules SET days = ?, time = ?, enabled = ?, updated_by = ?, updated_at = ? WHERE team_id = ?', days, body.time, body.enabled, auth.userId, values.updated_at, team.id);
+    } else {
+      await db.insert('team_checkin_schedules', { team_id: team.id, workspace_id: auth.workspaceId, ...values });
+    }
+    await audit(ctx, auth.workspaceId, auth.userId, 'team.checkin_schedule', 'team', team.id, { days: body.days, time: body.time, enabled: body.enabled });
+    res.json({ days: JSON.parse(days), time: body.time, enabled: body.enabled });
   });
 
   r.post('/teams', async (req, res) => {

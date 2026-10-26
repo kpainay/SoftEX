@@ -3,7 +3,7 @@ import { dateLabel, timeAgo } from '../format';
 import { useSearchParams } from 'react-router-dom';
 import { api, type Me } from '../api';
 import { Icon } from '../components/Icon';
-import { CategoryLayout, type Category, Callout, FormField, Loading, LoadingRows, Modal, Page, PageHeader, Panel, PasswordInput, Pill, SecretReveal, SwitchField, TimePicker, useAction, useConfirm } from '@/components/kit';
+import { CategoryLayout, type Category, Callout, DatePicker, FormField, Loading, LoadingRows, Modal, Page, PageHeader, Panel, PasswordInput, Pill, SecretReveal, SwitchField, TimePicker, useAction, useConfirm } from '@/components/kit';
 import { Kbd } from '@/components/ui/kbd';
 import { Progress } from '@/components/ui/progress';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -17,6 +17,8 @@ import { disablePush, enablePush, pushState, type PushState } from '../pwa';
 import { useTheme, type ThemeChoice } from '../theme';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Textarea } from '@/components/ui/textarea';
+import { awayDay, awayLater, isAway } from '../away';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -26,7 +28,7 @@ type Section = 'account' | 'security' | 'notifications' | 'general' | 'developer
 const SECTIONS: Category<Section>[] = [
   { id: 'account', label: 'Account', icon: 'user', hint: 'Profile, your data, delete account' },
   { id: 'security', label: 'Security', icon: 'shield', hint: 'Multifactor sign-in, password, devices' },
-  { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Focus time, quiet hours, email, push' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', hint: 'Out of office, focus time, quiet hours, email, push' },
   { id: 'general', label: 'General', icon: 'settings', hint: 'Appearance, getting started' },
   { id: 'developer', label: 'Developer', icon: 'code', hint: 'API tokens' },
 ];
@@ -52,7 +54,12 @@ export function Settings() {
               </>
             )}
             {shown.id === 'security' && <Security />}
-            {shown.id === 'notifications' && <Notifications />}
+            {shown.id === 'notifications' && (
+              <>
+                <OutOfOffice />
+                <Notifications />
+              </>
+            )}
             {shown.id === 'general' && (
               <>
                 <Appearance />
@@ -198,6 +205,71 @@ function Profile() {
         <Button type="submit">Save profile</Button>
       </div>
     </form>
+    </Panel>
+  );
+}
+
+/** Dates away and the note colleagues get when they write to you meanwhile. */
+function OutOfOffice() {
+  const { me, setMe, reloadPeople } = useSession();
+  const act = useAction();
+  const u = me!.user;
+  const today = new Date().toLocaleDateString('en-CA');
+  const [form, setForm] = useState({ from: u.ooo_from ?? today, until: u.ooo_until ?? '', message: u.ooo_message ?? '' });
+  const on = isAway(u);
+  const later = awayLater(u);
+  const save = async (patch: Record<string, unknown>, done: string) => {
+    const updated = await act(() => api.patch<Me>('/me', patch), done);
+    if (updated) {
+      setMe(updated);
+      reloadPeople();
+      if (!updated.user.ooo_until) setForm({ from: today, until: '', message: updated.user.ooo_message });
+    }
+  };
+  return (
+    <Panel
+      id="out-of-office"
+      title={
+        <span className="flex flex-wrap items-center gap-2">
+          Out of office {on ? <Pill tone="warning">On now</Pill> : later ? <Pill tone="neutral">Scheduled</Pill> : null}
+        </span>
+      }
+      description="While you’re away, people see it on your profile and in chats. Direct messages get your note as an automatic reply (once a day per chat), and anyone who @mentions you is told when you’re back."
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save({ ooo_from: form.from || null, ooo_until: form.until, ooo_message: form.message }, 'Out of office saved');
+        }}
+      >
+        <div className="flex flex-wrap gap-4">
+          <FormField label="First day away" className="w-auto">
+            <DatePicker value={form.from} onChange={(v) => setForm({ ...form, from: v ?? '' })} clearable={false} aria-label="First day away" />
+          </FormField>
+          <FormField label="Last day away" className="w-auto">
+            <DatePicker value={form.until || null} min={form.from || undefined} onChange={(v) => setForm({ ...form, until: v ?? '' })} placeholder="Choose a day" clearable={false} aria-label="Last day away" />
+          </FormField>
+        </div>
+        <FormField label="Automatic reply" hint="Who to contact meanwhile, or when you’ll reply. Up to 500 characters.">
+          <Textarea rows={3} maxLength={500} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="I’m away with limited access to messages. For anything urgent, ask Maya." />
+        </FormField>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {(on || later) && (
+            <Button type="button" variant="outline" onClick={() => save({ ooo_until: null }, 'Welcome back — out of office is off')}>
+              Turn off
+            </Button>
+          )}
+          <Button type="submit" disabled={!form.until || (!!form.from && form.from > form.until)}>
+            {on || later ? 'Save changes' : 'Turn on'}
+          </Button>
+        </div>
+        {(on || later) && (
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {on ? 'You’re out of office' : `Starts ${awayDay(u.ooo_from!)}`} until the end of {awayDay(u.ooo_until!)}.
+          </p>
+        )}
+      </form>
     </Panel>
   );
 }

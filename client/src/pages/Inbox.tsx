@@ -33,6 +33,8 @@ export const KIND_ICON: Record<string, string> = {
   channel: 'hash',
   page: 'book',
   file: 'file',
+  away: 'away',
+  checkin: 'target',
 };
 
 /** Names for notification kinds in the "Last 24 hours" summary: [one, many]. */
@@ -48,6 +50,8 @@ const KIND_LABEL: Record<string, [string, string]> = {
   assigned: ['assignment', 'assignments'],
   review: ['review request', 'review requests'],
   handoff: ['handoff', 'handoffs'],
+  away: ['out-of-office reply', 'out-of-office replies'],
+  checkin: ['check-in reminder', 'check-in reminders'],
   status: ['status change', 'status changes'],
   comment: ['comment', 'comments'],
   meeting: ['meeting update', 'meeting updates'],

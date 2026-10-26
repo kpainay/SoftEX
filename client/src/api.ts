@@ -105,6 +105,9 @@ export interface Me {
     email_digest: boolean;
     email_urgent: boolean;
     email_verified: boolean;
+    ooo_from: string | null;
+    ooo_until: string | null;
+    ooo_message: string;
   };
   workspace: {
     id: string;
@@ -198,6 +201,8 @@ export interface Message {
   decisions: { id: string; title: string }[];
   poll?: MessagePoll | null;
   forwarded?: ForwardedMessage | null;
+  /** Sent on the author's behalf while they are out of office. */
+  auto_reply?: boolean;
 }
 
 export interface MessagePoll {
@@ -321,6 +326,9 @@ export interface Person extends UserRef {
   status: string;
   status_text: string;
   focus_until: string | null;
+  ooo_from?: string | null;
+  ooo_until?: string | null;
+  ooo_message?: string;
   role: Role;
   guest_expires_at: string | null;
   sponsor_name: string | null;

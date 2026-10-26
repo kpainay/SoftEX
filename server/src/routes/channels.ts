@@ -18,6 +18,7 @@ import type { Database, Row } from '../db.js';
 import { audit, authOf, notify, publishToChannel, readNotificationGroup, recordActivity, type Ctx } from '../context.js';
 import { emitEvent } from '../webhooks.js';
 import { extractTeamMentionIds, syncTeamChannels } from '../teams.js';
+import { sendAutoReplies } from '../away.js';
 import { badRequest, extractMentionIds, forbidden, newId, notFound, now, parse, filterAsync } from '../util.js';
 
 const ChannelName = z
@@ -104,6 +105,7 @@ export async function serializeMessages(db: Database, auth: Auth, rows: Row[]) {
       decisions: decisions.filter((d) => d.message_id === m.id),
       poll: deleted ? null : polls.get(m.id) ?? null,
       forwarded: deleted || !m.forwarded_from ? null : forwardView(forwards.get(m.forwarded_from)),
+      auto_reply: !!m.auto_reply,
     };
   });
 }
@@ -303,10 +305,12 @@ export async function postMessage(ctx: Ctx, auth: Auth, channel: Row, input: New
   const preview = body.body.replace(/@\[([^\]]+)\]\((?:team:)?[0-9a-f-]{36}\)/g, '@$1');
   const notified = new Set<string>([auth.userId]);
   const prefs = new Map((await db.all('SELECT user_id, notify FROM channel_members WHERE channel_id = ?', channel.id)).map((m) => [m.user_id, m.notify]));
+  const mentioned: string[] = [];
   for (const userId of extractMentionIds(body.body)) {
     if (notified.has(userId) || !await isActiveMember(db, auth.workspaceId, userId)) continue;
     const role = (await db.get('SELECT role FROM memberships WHERE workspace_id = ? AND user_id = ?', auth.workspaceId, userId))!.role;
     if (!await canViewChannel(db, { userId, workspaceId: auth.workspaceId, role }, channel)) continue;
+    mentioned.push(userId);
     if (prefs.get(userId) === 'none' && !body.urgent) continue;
     notified.add(userId);
     await notify(ctx, auth.workspaceId, { userId, kind: 'mention', title: `${actor.name} mentioned you in ${where}`, body: preview, link, viewKey, actorId: auth.userId, urgent: body.urgent });
@@ -355,6 +359,8 @@ export async function postMessage(ctx: Ctx, auth: Auth, channel: Row, input: New
   } else if (body.urgent) {
     await recipients(memberIds, 'urgent', `Urgent message from ${actor.name} in ${where}`);
   }
+  // Anyone written to who is out of office answers automatically.
+  await sendAutoReplies(ctx, auth, channel, { dm: channel.kind === 'dm' ? memberIds : [], mentioned });
   return message;
 }
 

@@ -94,7 +94,8 @@ export const authOf = (req: Request): Auth => {
 
 /** Public shape of a user; never includes credentials. */
 export const USER_FIELDS =
-  'u.id, u.name, u.email, u.title, u.timezone, u.working_hours, u.expertise, u.status, u.status_text, u.focus_until, u.color';
+  'u.id, u.name, u.email, u.title, u.timezone, u.working_hours, u.expertise, u.status, u.status_text, u.focus_until, u.color, ' +
+  'u.ooo_from, u.ooo_until, u.ooo_message';
 
 export async function userSummary(db: Database, userId: string | null | undefined) {
   if (!userId) return null;

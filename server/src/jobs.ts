@@ -1,6 +1,7 @@
 import { processTranscriptions } from './routes/recordings.js';
 import type { Ctx } from './context.js';
 import { backupIfDue } from './backup.js';
+import { processCheckinPrompts } from './checkins.js';
 import { processEmailQueue, queueDigests } from './mailer.js';
 import { processWebhookQueue } from './webhooks.js';
 import { processBillingNotices } from './routes/billing.js';
@@ -15,9 +16,10 @@ export async function runJobsOnce(ctx: Ctx) {
   await processTranscriptions(ctx);
 }
 
-/** Slower jobs: deadline reminders, retention and digests. */
+/** Slower jobs: deadline reminders, check-in prompts, retention and digests. */
 export async function runPeriodicJobs(ctx: Ctx) {
   await processDeadlines(ctx);
+  await processCheckinPrompts(ctx);
   await applyRetention(ctx);
   await queueDigests(ctx);
   await processBillingNotices(ctx);
