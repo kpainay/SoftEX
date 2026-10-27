@@ -49,14 +49,14 @@ test('changing a task in the drawer or on its page keeps the screen working', as
   await page.goto('/my-work');
   await page.getByText(task.title).click();
   const drawer = page.locator('.task-detail');
-  await drawer.locator('.status-steps').getByRole('button', { name: 'In progress' }).click();
+  await drawer.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'In progress' }).click();
   await drawer.getByLabel('Reviewer').selectOption({ label: 'Maya Singh' });
-  await drawer.locator('.status-steps').getByRole('button', { name: 'Done' }).click();
-  await expect(drawer.locator('.status-steps').getByRole('button', { name: 'Done' })).toHaveAttribute('aria-pressed', 'true');
+  await drawer.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Done' }).click();
+  await expect(drawer.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Done' })).toHaveAttribute('aria-pressed', 'true');
   await expect(drawer.getByLabel('Task title')).toHaveValue(task.title);
 
   await page.goto(`/tasks/${task.id}`);
-  await page.locator('.status-steps').getByRole('button', { name: 'Review' }).click();
+  await page.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Review' }).click();
   await page.getByLabel('Reviewer').selectOption({ label: 'Jordan Wells' });
   await expect(page.getByLabel('Reviewer')).toHaveValue(/.+/);
   await expect(page.getByLabel('Task title')).toHaveValue(task.title);

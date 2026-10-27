@@ -100,7 +100,7 @@ function Appearance() {
   };
   return (
     <Panel title="Appearance" description="Saved on this device. You can also switch from the menu under your name.">
-      <RadioGroup value={choice} onValueChange={(v) => setTheme(v as ThemeChoice)} aria-label="Appearance" className="grid gap-3 sm:grid-cols-3">
+      <RadioGroup value={choice} onValueChange={(v) => setTheme(v as ThemeChoice)} aria-label="Appearance" className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
         {options.map((o) => (
           <Label
             key={o.id}

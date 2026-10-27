@@ -401,7 +401,7 @@ function WidgetBody({ widget: w, data }: { widget: Widget; data: WidgetData | un
           {data.items.map((item) =>
             item.task ? (
               <li key={item.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                <Button variant="link" size="inline" className="min-w-0 flex-1 justify-start truncate text-left text-foreground" onClick={() => openTask(item.id)}>
+                <Button variant="link" size="inline" className="min-w-0 flex-1 basis-40 justify-start truncate text-left text-foreground" onClick={() => openTask(item.id)}>
                   {item.title}
                 </Button>
                 {item.owner && <span className="text-xs text-muted-foreground">{item.owner}</span>}
@@ -410,13 +410,13 @@ function WidgetBody({ widget: w, data }: { widget: Widget; data: WidgetData | un
               </li>
             ) : (
               <li key={item.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                <Link to={item.link ?? '#'} className="flex min-w-0 flex-1 items-center gap-1.5 hover:underline">
+                <Link to={item.link ?? '#'} className="flex min-w-0 flex-1 basis-48 items-center gap-1.5 hover:underline">
                   {item.color && <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--c-${item.color})` }} />}
-                  <span className="truncate">{item.title}</span>
-                  {item.detail && <span className="text-xs text-muted-foreground"> · {item.detail}</span>}
+                  <span className="min-w-0 truncate">{item.title}</span>
+                  {item.detail && <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">· {item.detail}</span>}
                 </Link>
                 {item.progress !== undefined && (
-                  <span className="flex w-32 items-center gap-2">
+                  <span className="ml-auto flex w-32 items-center gap-2">
                     <Progress value={Math.round(item.progress * 100)} className="flex-1" aria-label={`${item.title} progress`} />
                     <span className="w-8 text-right text-xs tabular-nums">{Math.round(item.progress * 100)}%</span>
                   </span>

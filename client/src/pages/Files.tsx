@@ -158,7 +158,7 @@ export function Files() {
         }
       />
       <FilterBar>
-        <SearchField value={search} onChange={setSearch} placeholder="Search files" className="min-w-0 flex-1 sm:max-w-xs" />
+        <SearchField value={search} onChange={setSearch} placeholder="Search files" className="flex-1 sm:max-w-xs" />
         <NativeSelect size="sm" value={where} onChange={(e) => setWhere(e.target.value as Where)} aria-label="Shared in">
           <NativeSelectOption value="all">Shared anywhere</NativeSelectOption>
           <NativeSelectOption value="chat">In chats</NativeSelectOption>

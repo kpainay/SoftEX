@@ -51,7 +51,10 @@ export function TabBar<T extends string>({
   );
 }
 
-/** Two to five mutually exclusive choices shown side by side (a view switcher, a time range). */
+/**
+ * Two to five mutually exclusive choices shown side by side (a view switcher, a time range). On a narrow
+ * screen the row fills the width and long labels wrap inside their segment rather than spilling out.
+ */
 export function Segmented<T extends string>({
   options,
   value,
@@ -74,11 +77,61 @@ export function Segmented<T extends string>({
       spacing={0}
       value={[value]}
       onValueChange={(v) => v[0] && onChange(v[0] as T)}
-      className={className}
+      className={cn('max-w-full', className)}
       aria-label={ariaLabel}
     >
       {options.map((o) => (
-        <ToggleGroupItem key={o.value} value={o.value} title={o.title} aria-label={o.title}>
+        <ToggleGroupItem key={o.value} value={o.value} title={o.title} aria-label={o.title} className="h-auto min-h-8 min-w-0 shrink py-1 text-center leading-tight whitespace-normal">
+          {o.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+
+type ChoiceTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+const CHOICE_TONE: Record<ChoiceTone, string> = {
+  neutral: 'data-pressed:border-foreground/30 data-pressed:bg-muted data-pressed:text-foreground',
+  info: 'data-pressed:border-info/40 data-pressed:bg-info-soft data-pressed:text-info',
+  success: 'data-pressed:border-success/40 data-pressed:bg-success-soft data-pressed:text-success',
+  warning: 'data-pressed:border-warning/40 data-pressed:bg-warning-soft data-pressed:text-warning',
+  danger: 'data-pressed:border-destructive/40 data-pressed:bg-destructive/10 data-pressed:text-destructive',
+};
+const DOT_TONE: Record<ChoiceTone, string> = { neutral: 'bg-muted-foreground', info: 'bg-info', success: 'bg-success', warning: 'bg-warning', danger: 'bg-destructive' };
+
+/**
+ * Pick one of a few states (a task's status, a goal's health) as chips with a coloured dot. Each chip keeps
+ * its natural width, so labels never squeeze; on a narrow screen they wrap onto another line.
+ */
+export function ChoiceChips<T extends string>({
+  options,
+  value,
+  onChange,
+  disabled,
+  className,
+  'aria-label': ariaLabel,
+}: {
+  options: { value: T; label: ReactNode; tone?: ChoiceTone }[];
+  value: T;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+  className?: string;
+  'aria-label': string;
+}) {
+  return (
+    <ToggleGroup
+      variant="outline"
+      size="sm"
+      spacing={1.5}
+      value={[value]}
+      disabled={disabled}
+      onValueChange={(v) => v[0] && v[0] !== value && onChange(v[0] as T)}
+      className={cn('w-full flex-wrap', className)}
+      aria-label={ariaLabel}
+    >
+      {options.map((o) => (
+        <ToggleGroupItem key={o.value} value={o.value} className={cn('flex-auto gap-1.5 rounded-full px-3 text-muted-foreground sm:flex-none', CHOICE_TONE[o.tone ?? 'neutral'])}>
+          <span className={cn('size-2 shrink-0 rounded-full', DOT_TONE[o.tone ?? 'neutral'])} aria-hidden />
           {o.label}
         </ToggleGroupItem>
       ))}
@@ -103,7 +156,8 @@ export function SearchField({
   'aria-label'?: string;
 }) {
   return (
-    <InputGroup className={cn('max-w-sm', className)}>
+    // Never narrower than 12rem (or the whole row on a very small screen): beside filters it wraps instead of collapsing.
+    <InputGroup className={cn('max-w-sm min-w-[min(100%,12rem)]', className)}>
       <InputGroupAddon>
         <Search />
       </InputGroupAddon>
