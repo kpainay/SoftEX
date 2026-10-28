@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { api, type Activity, type Decision, type Notification, type Task } from '@/lib/api';
-import { plainMentions, timeAgo, timeOf } from '@/lib/format';
+import { localToday, plainMentions, timeAgo, timeOf } from '@/lib/format';
 import { useApi, useRealtime, useReloadOnFocus } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { useShell } from '@/lib/shell';
@@ -11,6 +11,7 @@ import { swatch, useTheme } from '@/lib/theme';
 import { Icon } from '@/ui/Icon';
 import { Avatar, AvatarStack, Button, Card, Checkbox, ErrorState, Eyebrow, H1, HealthPill, LinkText, ListRow, Loading, Muted, ProgressBar, Row, Screen, Section, Sheet, T, Toggle, useAction } from '@/ui/kit';
 import { AccountBanners } from '@/ui/plan';
+import { QuickAddTask } from '@/ui/quickAdd';
 import { TaskList } from '@/ui/work';
 import { CheckinSheet } from '@/ui/checkin';
 
@@ -228,12 +229,10 @@ export default function Home() {
       <Section title="Today’s focus" action={<LinkText onPress={() => router.push('/my-work')}>View all</LinkText>}>
         <Muted style={{ marginTop: -6, marginBottom: 4 }}>{data.focus.length ? `${data.focus.length} task${data.focus.length > 1 ? 's' : ''} need your attention` : 'Nothing due today. Nice.'}</Muted>
         <TaskList tasks={data.focus} onOpen={(t) => openTask(t.id)} onToggle={complete} />
-        <Pressable onPress={() => openCreate('task')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }} accessibilityRole="button">
-          <Icon name="plus" size={16} color={c.accentInk} />
-          <T weight="semibold" tone="accent">
-            Add a task
-          </T>
-        </Pressable>
+        {/* Type it and press Done; anything without a date is for today. */}
+        <View style={{ marginTop: 8 }}>
+          <QuickAddTask defaultDue={localToday()} onCreated={reload} placeholder="Add a task for today — or “… friday !high”" />
+        </View>
       </Section>
 
       {data.blocked.length > 0 && (

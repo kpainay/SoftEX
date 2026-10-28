@@ -14,14 +14,26 @@ import { UpgradeNotice, usePlan } from './plan';
 // ---------- Task rows ----------
 
 /** Compact task row used in lists across the app. */
-export function TaskRow({ task, onOpen, onToggle, showProject = true }: { task: Task; onOpen: () => void; onToggle?: (done: boolean) => void; showProject?: boolean }) {
+/** Choosing tasks for a bulk change: the box picks the task instead of completing it. */
+export interface TaskSelection {
+  selected: boolean;
+  onChange: (selected: boolean) => void;
+}
+
+export function TaskRow({ task, onOpen, onToggle, showProject = true, selection }: { task: Task; onOpen: () => void; onToggle?: (done: boolean) => void; showProject?: boolean; selection?: TaskSelection }) {
   const { c } = useTheme();
   const done = task.status === 'done';
   const due = task.due_date ? dueLabel(task.due_date) : '';
   return (
-    <Pressable onPress={onOpen} style={({ pressed }) => ({ flexDirection: 'row', gap: 12, paddingVertical: 11, alignItems: 'flex-start', backgroundColor: pressed ? c.hover : 'transparent' })} accessibilityRole="button" accessibilityLabel={task.title}>
+    <Pressable
+      onPress={selection ? () => selection.onChange(!selection.selected) : onOpen}
+      style={({ pressed }) => ({ flexDirection: 'row', gap: 12, paddingVertical: 11, alignItems: 'flex-start', backgroundColor: pressed ? c.hover : selection?.selected ? c.accentWash : 'transparent' })}
+      accessibilityRole={selection ? 'checkbox' : 'button'}
+      accessibilityState={selection ? { checked: selection.selected } : undefined}
+      accessibilityLabel={selection ? `Select ${task.title}` : task.title}
+    >
       <View style={{ paddingTop: 1 }}>
-        <Checkbox checked={done} disabled={!onToggle} onChange={(v) => onToggle?.(v)} />
+        {selection ? <Checkbox checked={selection.selected} onChange={selection.onChange} /> : <Checkbox checked={done} disabled={!onToggle} onChange={(v) => onToggle?.(v)} />}
       </View>
       <View style={{ flex: 1, gap: 4, minWidth: 0 }}>
         <T weight="semibold" numberOfLines={2} style={done ? { textDecorationLine: 'line-through', color: c.muted } : undefined}>
@@ -75,14 +87,35 @@ function Meta({ icon, text }: { icon: string; text: string }) {
 }
 
 /** A thin list of tasks with dividers. */
-export function TaskList({ tasks, onToggle, onOpen, showProject, empty }: { tasks: Task[]; onToggle?: (t: Task, done: boolean) => void; onOpen: (t: Task) => void; showProject?: boolean; empty?: ReactNode }) {
+export function TaskList({
+  tasks,
+  onToggle,
+  onOpen,
+  showProject,
+  empty,
+  selection,
+}: {
+  tasks: Task[];
+  onToggle?: (t: Task, done: boolean) => void;
+  onOpen: (t: Task) => void;
+  showProject?: boolean;
+  empty?: ReactNode;
+  /** While choosing several tasks: which are picked, and how to pick or drop one. */
+  selection?: { picked: Set<string>; onChange: (t: Task, selected: boolean) => void };
+}) {
   const { c } = useTheme();
   if (!tasks.length) return <>{empty ?? null}</>;
   return (
     <View>
       {tasks.map((t, i) => (
         <View key={t.id} style={i ? { borderTopWidth: 1, borderColor: c.line2 } : undefined}>
-          <TaskRow task={t} showProject={showProject} onOpen={() => onOpen(t)} onToggle={onToggle ? (d) => onToggle(t, d) : undefined} />
+          <TaskRow
+            task={t}
+            showProject={showProject}
+            onOpen={() => onOpen(t)}
+            onToggle={onToggle ? (d) => onToggle(t, d) : undefined}
+            selection={selection ? { selected: selection.picked.has(t.id), onChange: (on) => selection.onChange(t, on) } : undefined}
+          />
         </View>
       ))}
     </View>
