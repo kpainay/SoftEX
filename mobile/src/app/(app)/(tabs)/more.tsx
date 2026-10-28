@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api, type Me } from '@/lib/api';
+import { awayLabel, isAway } from '@/lib/away';
 import { ROLE_LABEL } from '@/lib/format';
 import { useApi, useReloadOnFocus } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
@@ -105,8 +106,8 @@ export default function More() {
         <View style={{ flex: 1 }}>
           <T weight="bold">{me.user.name}</T>
           <Row gap={6}>
-            <Dot color={STATUS_DOT[me.user.status] ?? c.dotAway} />
-            <Muted size={12}>{me.user.status_text || statusLabel(me.user.status)}</Muted>
+            {isAway(me.user) ? <Icon name="away" size={12} color={c.muted} /> : <Dot color={STATUS_DOT[me.user.status] ?? c.dotAway} />}
+            <Muted size={12}>{isAway(me.user) ? awayLabel(me.user) : me.user.status_text || statusLabel(me.user.status)}</Muted>
           </Row>
         </View>
         <Icon name="more" size={17} color={c.muted} />

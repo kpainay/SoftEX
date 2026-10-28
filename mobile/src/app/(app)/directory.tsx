@@ -1,6 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { awayLabel, isAway } from '@/lib/away';
 import { localTimeIn, ROLE_LABEL } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
@@ -51,9 +52,9 @@ export default function Directory() {
                   <T weight="bold">{p.name}</T>
                   <Muted size={13}>{p.title || ROLE_LABEL[p.role]}</Muted>
                   <Row gap={5}>
-                    <Dot color={STATUS_DOT[p.status] ?? c.dotAway} />
-                    <T size={12} tone="ink2">
-                      {p.status_text || statusLabel(p.status)} · {localTimeIn(p.timezone)}
+                    {isAway(p) ? <Icon name="away" size={12} color={c.ink2} /> : <Dot color={STATUS_DOT[p.status] ?? c.dotAway} />}
+                    <T size={12} tone="ink2" style={{ flexShrink: 1 }}>
+                      {isAway(p) ? awayLabel(p) : p.status_text || statusLabel(p.status)} · {localTimeIn(p.timezone)}
                     </T>
                   </Row>
                   <Row wrap gap={4}>

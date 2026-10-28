@@ -40,6 +40,83 @@ interface HomeData {
   checked_in_today: boolean;
   reviews_due: { id: string; title: string; review_date: string }[];
   counts: { open_tasks: number; overdue: number; unread: number };
+  catch_up?: CatchUpCounts;
+}
+
+interface CatchUpCounts {
+  assigned: number;
+  due_today: number;
+  chats: number;
+  completed: number;
+  decisions: number;
+  files: number;
+}
+
+const word = (n: number, one: string, many = `${one}s`) => (n === 1 ? one : many);
+/** Each count with what it means ("3 tasks given to you") and where to go and see (as on the web). */
+const CATCH_UP: { key: keyof CatchUpCounts; icon: string; label: (n: number) => string; to?: string }[] = [
+  { key: 'assigned', icon: 'task', label: (n) => `${word(n, 'task')} given to you`, to: '/my-work' },
+  { key: 'due_today', icon: 'calendar', label: (n) => `${word(n, 'task')} due today`, to: '/my-work' },
+  { key: 'chats', icon: 'chat', label: (n) => `${word(n, 'chat')} waiting for you`, to: '/chats' },
+  // Listed under "What changed" further down.
+  { key: 'completed', icon: 'check', label: (n) => `${word(n, 'task')} finished by others` },
+  { key: 'decisions', icon: 'gavel', label: (n) => word(n, 'new decision'), to: '/decisions' },
+  { key: 'files', icon: 'file', label: (n) => word(n, 'new file'), to: '/files' },
+];
+
+/** What arrived since the last visit, counted, each a way in. */
+function CatchUp({ counts, since, firstVisit, showChanges }: { counts: CatchUpCounts; since: string; firstVisit?: boolean; showChanges: boolean }) {
+  const { c } = useTheme();
+  const items = CATCH_UP.filter((x) => counts[x.key] > 0 && (x.to || showChanges));
+  return (
+    <Card style={{ gap: 10 }}>
+      <Row gap={8} wrap style={{ justifyContent: 'space-between' }}>
+        <T size={16} weight="display">
+          Catch up
+        </T>
+        <Muted size={12}>{firstVisit ? 'From the last few days' : `Since your last visit · ${timeAgo(since)}`}</Muted>
+      </Row>
+      {items.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {items.map((x) => (
+            <Pressable
+              key={x.key}
+              disabled={!x.to}
+              onPress={() => x.to && router.push(x.to as never)}
+              accessibilityRole={x.to ? 'button' : 'text'}
+              style={({ pressed }) => ({
+                flexGrow: 1,
+                flexBasis: '45%',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                padding: 8,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: c.line,
+                backgroundColor: pressed ? c.hover : c.canvas,
+              })}
+            >
+              <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name={x.icon} size={15} color={c.accentInk} />
+              </View>
+              <T size={13} style={{ flex: 1 }}>
+                <T size={13} weight="bold">
+                  {counts[x.key]}
+                </T>{' '}
+                {x.label(counts[x.key])}
+              </T>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Row gap={6}>
+          <Icon name="check" size={16} color={c.green} />
+          <Muted>You’re all caught up — nothing new needs you.</Muted>
+        </Row>
+      )}
+    </Card>
+  );
 }
 
 const OPTIONAL = [
@@ -145,6 +222,8 @@ export default function Home() {
       )}
 
       {data.setup && <SetupGuide steps={data.setup} />}
+
+      {data.catch_up && <CatchUp counts={data.catch_up} since={data.since} firstVisit={data.first_visit} showChanges={show('changes')} />}
 
       <Section title="Today’s focus" action={<LinkText onPress={() => router.push('/my-work')}>View all</LinkText>}>
         <Muted style={{ marginTop: -6, marginBottom: 4 }}>{data.focus.length ? `${data.focus.length} task${data.focus.length > 1 ? 's' : ''} need your attention` : 'Nothing due today. Nice.'}</Muted>

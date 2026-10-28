@@ -3,12 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, qs, type Channel, type Message, type Person } from '@/lib/api';
-import { awayDay, isAway } from '@/lib/away';
+import { isAway } from '@/lib/away';
 import { bytes, dateLabel, timeAgo } from '@/lib/format';
 import { useApi, useRealtime, useViewing } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { useShell } from '@/lib/shell';
 import { swatch, useTheme } from '@/lib/theme';
+import { AwayNotice } from '@/ui/away';
 import { channelIcon, FavoriteButton, ForwardSheet } from '@/ui/chat';
 import { NewMeetingForm } from '@/ui/create';
 import { Icon } from '@/ui/Icon';
@@ -292,18 +293,8 @@ export default function ChannelView() {
   );
 }
 
-interface ChannelOverview {
-  created_by: { id: string; name: string; color: string } | null;
-  created_at: string;
-  file_count: number;
-  pin_count: number;
-  tasks: { id: string; title: string; status: string; due_date: string | null; owner: { id: string; name: string; color: string } | null }[];
-  meetings: { id: string; title: string; starts_at: string; ends_at: string }[];
-}
-
 /** In a direct message with someone who is away: say so, with their note, above the message box. */
 function DmAwayNotice({ members }: { members: { id: string }[] }) {
-  const { c } = useTheme();
   const { me, people } = useSession();
   const away = members
     .filter((m) => m.id !== me!.user.id)
@@ -313,18 +304,19 @@ function DmAwayNotice({ members }: { members: { id: string }[] }) {
   return (
     <View style={{ gap: 6, paddingHorizontal: 12, paddingBottom: 8 }}>
       {away.map((p) => (
-        <View key={p.id} style={{ flexDirection: 'row', gap: 8, padding: 10, borderRadius: 12, backgroundColor: c.blueSoft, borderWidth: 1, borderColor: c.blueLine }} accessibilityLiveRegion="polite">
-          <Icon name="away" size={16} color={c.blueInk} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <T size={13} weight="bold" style={{ color: c.blueInk }}>
-              {p.name.split(' ')[0]} is out of office until {awayDay(p.ooo_until!)}
-            </T>
-            {!!p.ooo_message?.trim() && <T size={13}>{p.ooo_message.trim()}</T>}
-          </View>
-        </View>
+        <AwayNotice key={p.id} person={p} />
       ))}
     </View>
   );
+}
+
+interface ChannelOverview {
+  created_by: { id: string; name: string; color: string } | null;
+  created_at: string;
+  file_count: number;
+  pin_count: number;
+  tasks: { id: string; title: string; status: string; due_date: string | null; owner: { id: string; name: string; color: string } | null }[];
+  meetings: { id: string; title: string; starts_at: string; ends_at: string }[];
 }
 
 /** About, members, files, pinned messages and settings: the web's channel details. */

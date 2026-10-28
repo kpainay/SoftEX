@@ -6,6 +6,7 @@ import { useApi } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { statusLabel } from '@/lib/shell';
 import { swatch, useTheme } from '@/lib/theme';
+import { AwayNotice } from '@/ui/away';
 import { STATUS_DOT } from '@/ui/header';
 import { Avatar, Button, Card, Dot, ErrorState, H1, LinkText, Loading, Muted, Pill, Row, Screen, T, useAction } from '@/ui/kit';
 import { openLink } from '@/ui/Markdown';
@@ -51,6 +52,7 @@ export default function PersonView() {
             />
           )}
         </Card>
+        <AwayNotice person={p} />
         <Card style={{ gap: 16 }}>
           <Prop label="Email">
             <T tone="accent" onPress={() => openLink(`mailto:${p.email}`)}>
