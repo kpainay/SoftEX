@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { api, qs, type Notification } from '@/lib/api';
 import { plainMentions, timeAgo } from '@/lib/format';
@@ -80,8 +80,12 @@ function GroupCount({ n }: { n: Notification }) {
 export default function Activities() {
   const { c } = useTheme();
   const { reloadCounts, counts } = useShell();
-  // Opens on Unread when there is something unread, like the web.
+  // Opens on Unread when there is something unread, like the web (once the count is known, unless a filter was picked).
   const [filter, setFilter] = useState<Filter>(() => (counts.inbox > 0 ? 'unread' : 'all'));
+  const picked = useRef(false);
+  useEffect(() => {
+    if (!picked.current && counts.inbox > 0) setFilter((f) => (f === 'all' ? 'unread' : f));
+  }, [counts.inbox]);
   const [kind, setKind] = useState<string | null>(null);
   const act = useAction();
   const { data, error, reload, refresh, refreshing, setData } = useApi<{ notifications: Item[]; unread: number }>(`/notifications${qs({ filter, kind, limit: 100 })}`);
@@ -137,6 +141,7 @@ export default function Activities() {
                 <Pressable
                   key={d.kind}
                   onPress={() => {
+                    picked.current = true;
                     setKind(on ? null : d.kind);
                     setFilter('all');
                   }}
@@ -166,6 +171,7 @@ export default function Activities() {
       <Tabs
         value={filter}
         onChange={(f) => {
+          picked.current = true;
           setFilter(f);
           setKind(null);
         }}

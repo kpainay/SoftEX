@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { authHeaders, session } from './api';
 
 /** WebSocket connection with automatic reconnection and a tiny pub/sub, like the web app's. */
@@ -48,7 +48,7 @@ class Realtime {
     const url = `${session.server.replace(/^http/, 'ws')}/ws`;
     // React Native's WebSocket accepts headers as a third argument; browsers send the cookie instead.
     const Ctor = WebSocket as unknown as new (url: string, protocols?: string[] | null, options?: { headers: Record<string, string> }) => WebSocket;
-    const socket = new Ctor(url, null, { headers: authHeaders() });
+    const socket = Platform.OS === 'web' ? new WebSocket(url) : new Ctor(url, null, { headers: authHeaders() });
     this.socket = socket;
     socket.onopen = () => {
       if (this.retry > 0) this.emit({ type: 'reconnected' });

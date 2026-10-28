@@ -145,6 +145,7 @@ cd mobile && npm run typecheck && npm run export:check   # the phone app: types,
 GitHub Actions run on every pull request and on `main`:
 
 - **CI** (`.github/workflows/ci.yml`): type checks, server tests on Node 22 and 24, production build, and Playwright browser smoke tests on desktop and mobile. The **Mobile app** job type-checks the Expo app and bundles it for iOS, Android and web.
+- **Mobile update** (`mobile-update.yml`): publishes the phone app's JavaScript over the air with EAS Update — to the `preview` channel on every push to `main` that touches `mobile/`, and to `production` when run by hand. Installed apps pick it up without a store release. Inert until the `EXPO_TOKEN` secret is set; see [mobile/README.md](mobile/README.md#over-the-air-updates-eas-update).
 - **Security** (`security.yml`, also weekly):
   - `npm audit` (fails on high or critical advisories in production dependencies)
   - CodeQL static analysis

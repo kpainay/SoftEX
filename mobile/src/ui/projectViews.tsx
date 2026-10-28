@@ -282,12 +282,12 @@ export function TaskCalendar({ tasks, canEdit, onOpen, onChanged }: { tasks: Tas
                 style={{ width: `${100 / 7}%`, height: 50, padding: 2, opacity: d.getMonth() !== month.getMonth() ? 0.4 : 1 }}
               >
                 <View style={{ flex: 1, borderRadius: 9, alignItems: 'center', paddingTop: 4, gap: 3, backgroundColor: on ? c.accent : key === today ? c.accentSoft : 'transparent' }}>
-                  <T size={13} weight={on || key === today ? 'bold' : 'medium'} style={{ color: on ? '#fff' : c.ink }}>
+                  <T size={13} weight={on || key === today ? 'bold' : 'medium'} style={{ color: on ? c.onAccent : c.ink }}>
                     {d.getDate()}
                   </T>
                   <Row gap={2}>
                     {items.slice(0, 3).map((t) => (
-                      <Dot key={t.id} size={5} color={on ? '#fff' : t.overdue ? c.red : colors[t.status]} />
+                      <Dot key={t.id} size={5} color={on ? c.onAccent : t.overdue ? c.red : colors[t.status]} />
                     ))}
                   </Row>
                 </View>

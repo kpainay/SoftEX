@@ -236,17 +236,20 @@ function BulkBar({ tasks, onClear, onChanged }: { tasks: Task[]; onClear: () => 
           {undo.text}
         </T>
         <Button small variant="primary" title="Undo" onPress={undo.run} />
-        <Button
-          small
-          variant="ghost"
-          title="OK"
+        <Pressable
           onPress={() => {
             clearTimeout(timer.current);
             setUndo(null);
             onClear();
           }}
-          style={{ borderColor: 'transparent' }}
-        />
+          accessibilityRole="button"
+          hitSlop={8}
+          style={{ paddingHorizontal: 8, paddingVertical: 6 }}
+        >
+          <T size={13} weight="bold" style={{ color: c.navText }}>
+            OK
+          </T>
+        </Pressable>
       </View>
     );
 

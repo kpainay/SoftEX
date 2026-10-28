@@ -2,14 +2,17 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useColorScheme } from 'react-native';
 import { storage } from './storage';
 
-/** The same colour tokens as the web app (client/src/styles.css), for light and dark. */
+/**
+ * The same colour tokens as the web app (client/src/styles.css and the readable-contrast values in
+ * client/src/index.css), for light and dark. Text colours meet WCAG AA (4.5:1) on their backgrounds.
+ */
 const light = {
   brandTerracotta: '#b5461b',
   brandCream: '#fef6eb',
   brandPeach: '#ea9c5e',
   ink: '#2b1d16',
   ink2: '#4b3a30',
-  muted: '#7a695e',
+  muted: '#6b5b50',
   line: '#eadfd1',
   line2: '#f3eadf',
   lineStrong: '#e0d0bd',
@@ -30,19 +33,21 @@ const light = {
   accentLine: '#f1c7ad',
   accentWash: '#fdf0e7',
   onAccent: '#ffffff',
+  /** Text and icons on a red background. */
+  onRed: '#ffffff',
   hover: 'rgba(181, 70, 27, 0.06)',
   blue: '#4e83e5',
   blueSoft: '#e7efff',
   blueInk: '#2c5fbf',
   blueLine: '#c7d8fb',
-  green: '#3f9a6d',
+  green: '#2c7a52',
   greenSoft: '#e4f5ec',
   greenLine: '#bfe3cf',
   amber: '#c9861a',
   amberSoft: '#fdf1dc',
   amberInk: '#8a5a0b',
   amberLine: '#f0d7a3',
-  red: '#c93a3a',
+  red: '#b0302f',
   redSoft: '#fde6e3',
   redLine: '#f4c3c3',
   dotAway: '#b8a595',
@@ -71,12 +76,15 @@ const dark: Palette = {
   navText: '#ededec',
   navMuted: '#8f8b86',
   navAccent: '#f08c5a',
-  accent: '#d4602e',
+  // Lighter orange with dark text on it, so both the button and orange text read on the dark background.
+  accent: '#e2733f',
   accent2: '#e06d3a',
   accentSoft: 'rgba(232, 118, 70, 0.14)',
   accentInk: '#f59a70',
   accentLine: 'rgba(232, 118, 70, 0.4)',
   accentWash: 'rgba(232, 118, 70, 0.06)',
+  onAccent: '#1c1c1b',
+  onRed: '#1c1c1b',
   hover: 'rgba(255, 255, 255, 0.05)',
   blue: '#6c9cf2',
   blueSoft: 'rgba(108, 156, 242, 0.14)',
@@ -89,7 +97,7 @@ const dark: Palette = {
   amberSoft: 'rgba(226, 164, 68, 0.13)',
   amberInk: '#efc27a',
   amberLine: 'rgba(226, 164, 68, 0.38)',
-  red: '#ef6b6b',
+  red: '#f58a8a',
   redSoft: 'rgba(239, 107, 107, 0.13)',
   redLine: 'rgba(239, 107, 107, 0.38)',
   dotAway: '#6f6b67',

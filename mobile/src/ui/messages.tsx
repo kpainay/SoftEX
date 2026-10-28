@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { api, formWith, session, type Message, type Person, type PickedFile } from '../lib/api';
-import { awayLabel, isAway } from '../lib/away';
+import { awayDay, isAway } from '../lib/away';
 import { pickDocuments, pickMedia } from '../lib/files';
 import { plainMentions, timeAgo, timeOf } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -438,7 +438,7 @@ export function Composer({
         <Row gap={6} style={{ alignItems: 'flex-start', paddingHorizontal: 4 }} accessibilityLiveRegion="polite">
           <Icon name="away" size={14} color={c.muted} />
           <Muted size={12} style={{ flex: 1 }}>
-            {awayMentioned.map((p) => `${p.name.split(' ')[0]} is ${awayLabel(p).toLowerCase()}`).join('; ')}. They’ll see this when they’re back.
+            {awayMentioned.map((p) => `${p.name.split(' ')[0]} is out of office until ${awayDay(p.ooo_until!)}`).join('; ')}. They’ll see this when they’re back.
           </Muted>
         </Row>
       )}
@@ -491,7 +491,7 @@ export function Composer({
             accessibilityLabel="Send"
             style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: canSend ? (urgent ? c.red : c.accent) : c.lineStrong, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Icon name="send" size={18} color="#fff" />
+            <Icon name="send" size={18} color={urgent ? c.onRed : c.onAccent} />
           </Pressable>
         ) : (
           <VoiceNoteButton onRecorded={(f) => upload([f])} disabled={uploading} />

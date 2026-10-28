@@ -30,7 +30,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: c.accent,
         tabBarInactiveTintColor: c.muted,
         tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: 11 },
-        tabBarBadgeStyle: { backgroundColor: c.accent, color: '#fff', fontFamily: fonts.bold, fontSize: 10 },
+        tabBarBadgeStyle: { backgroundColor: c.accent, color: c.onAccent, fontFamily: fonts.bold, fontSize: 10 },
         tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.line, ...(Platform.OS === 'web' ? { height: 62 } : {}) },
       })}
     >

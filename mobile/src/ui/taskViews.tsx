@@ -47,13 +47,16 @@ export function TaskViewPanel({ view, onSaved, onDeleted }: { view: SavedView | 
 
   // Switching to another view starts from its filters.
   useEffect(() => {
-    if (!view) return;
-    setFilters(view.filters);
-    setSearch(view.filters.q ?? '');
+    const saved = view?.filters;
+    if (!saved) return;
+    setFilters(saved);
+    setSearch(saved.q ?? '');
   }, [view?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (patch: Partial<TaskFilters>) => setFilters({ ...filters, ...patch });
-  const changed = !!view && !sameFilters(view.filters, current);
+  // Optional chains rather than `view &&` guards: the React Compiler can read a guarded property early when memoising.
+  const viewFilters = view?.filters;
+  const changed = !!viewFilters && !sameFilters(viewFilters, current);
   const description = describeFilters(current, names);
 
   const toggle = async (t: Task, done: boolean) => {
@@ -71,12 +74,12 @@ export function TaskViewPanel({ view, onSaved, onDeleted }: { view: SavedView | 
     }
   };
   const update = async () => {
-    const saved = await act(() => api.patch<SavedView>(`/views/${view!.id}`, { filters: current }), 'View updated');
+    const saved = await act(() => api.patch<SavedView>(`/views/${view?.id}`, { filters: current }), 'View updated');
     if (saved) onSaved(saved);
   };
   const remove = async () => {
-    if (!(await confirm(`Delete “${view!.name}”?`, 'Only the view goes; the tasks stay as they are.', 'Delete view'))) return;
-    if (await act(() => api.del(`/views/${view!.id}`), 'View deleted')) onDeleted?.();
+    if (!(await confirm(`Delete “${view?.name}”?`, 'Only the view goes; the tasks stay as they are.', 'Delete view'))) return;
+    if (await act(() => api.del(`/views/${view?.id}`), 'View deleted')) onDeleted?.();
   };
 
   return (
@@ -129,7 +132,7 @@ export function TaskViewPanel({ view, onSaved, onDeleted }: { view: SavedView | 
                 small
                 title="Rename"
                 onPress={() => {
-                  setName(view.name);
+                  setName(view?.name ?? '');
                   setNaming('rename');
                 }}
               />
