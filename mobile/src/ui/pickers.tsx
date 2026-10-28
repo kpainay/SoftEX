@@ -66,7 +66,7 @@ export function Calendar({ value, onChange, min }: { value: string | null; onCha
                     opacity: disabled ? 0.35 : 1,
                   }}
                 >
-                  <T weight={on || d === today ? 'bold' : 'medium'} style={{ color: on ? '#fff' : d === today ? c.accentInk : c.ink }}>
+                  <T weight={on || d === today ? 'bold' : 'medium'} style={{ color: on ? c.onAccent : d === today ? c.accentInk : c.ink }}>
                     {Number(d.slice(8))}
                   </T>
                 </Pressable>
@@ -198,7 +198,7 @@ export function DateTimeField({ value, onChange, label = 'When' }: { value: stri
                 accessibilityState={{ selected: on }}
                 style={{ paddingHorizontal: 12, height: 36, justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: on ? c.accent : c.line, backgroundColor: on ? c.accent : c.surface }}
               >
-                <T size={13} weight="bold" style={{ color: on ? '#fff' : c.ink2 }}>
+                <T size={13} weight="bold" style={{ color: on ? c.onAccent : c.ink2 }}>
                   {new Date(2000, 0, 1, t.h, t.m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
                 </T>
               </Pressable>

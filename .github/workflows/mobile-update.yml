@@ -1,0 +1,83 @@
+name: Mobile update
+
+# Publishes the phone app's JavaScript and assets with EAS Update, so installed builds pick up
+# the change on their next launch without a store release (see mobile/README.md, "Over-the-air updates").
+# - Every push to main that touches mobile/ goes to the "preview" channel (testers' builds).
+# - Run it by hand (Actions → Mobile update → Run workflow) to publish to "production".
+# Inert until the EXPO_TOKEN secret is set and app.json has an EAS project ID. Builds only accept updates with the same native
+# fingerprint, so a change to native modules or app.json still needs `eas build`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-update.yml'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Channel to publish to
+        type: choice
+        options: [preview, production]
+        default: preview
+      message:
+        description: What changed (shown in the EAS dashboard)
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-update-${{ github.event.inputs.channel || 'preview' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to ${{ github.event.inputs.channel || 'preview' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      CHANNEL: ${{ github.event.inputs.channel || 'preview' }}
+      # Passed through the environment, never interpolated into the script.
+      MESSAGE: ${{ github.event.inputs.message || github.event.head_commit.message || 'Manual update' }}
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check the project is linked to Expo
+        id: token
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::notice::EXPO_TOKEN is not set, so no update was published. See mobile/README.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif ! node -e 'process.exit(require("./app.json").expo.extra?.eas?.projectId ? 0 : 1)'; then
+            echo "::notice::app.json has no EAS project ID yet. Run 'eas init' and 'eas update:configure' in mobile/ and commit app.json."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v7
+        if: steps.token.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: expo/expo-github-action@v8
+        if: steps.token.outputs.ready == 'true'
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+        if: steps.token.outputs.ready == 'true'
+      - run: npm run typecheck
+        if: steps.token.outputs.ready == 'true'
+      # --environment uses the EAS environment variables of the same name (EXPO_PUBLIC_KUU_SERVER and so on),
+      # the same ones `eas build` uses for that channel's builds.
+      - name: Publish the update
+        if: steps.token.outputs.ready == 'true'
+        run: eas update --channel "$CHANNEL" --environment "$CHANNEL" --message "$(echo "$MESSAGE" | head -n 1 | cut -c1-200)" --non-interactive

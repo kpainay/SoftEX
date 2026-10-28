@@ -4,7 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { api, formWith, qs, type Task } from '@/lib/api';
 import { pickDocuments, pickMedia } from '@/lib/files';
 import { bytes, STATUS_LABEL, timeAgo } from '@/lib/format';
-import { useApi, useRealtime } from '@/lib/hooks';
+import { useApi, useRealtime, useViewing } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { swatch, useTheme } from '@/lib/theme';
 import { NewTaskForm, PRIORITIES } from '@/ui/create';
@@ -66,6 +66,8 @@ function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: () => v
   const { has: planHas } = usePlan();
   const act = useAction();
   const { data: task, error, reload, refresh, refreshing, setData } = useApi<TaskFull>(`/tasks/${taskId}`);
+  const { data: teams } = useApi<{ id: string; name: string }[]>('/teams');
+  useViewing([`/tasks/${taskId}`]);
   const [title, setTitle] = useState('');
   const [blockedReason, setBlockedReason] = useState('');
   const [estimate, setEstimate] = useState('');
@@ -101,7 +103,11 @@ function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: () => v
 
   const update = async (patch: Record<string, unknown>) => {
     const updated = await act(() => api.patch<Task>(`/tasks/${task.id}`, patch));
-    if (updated) setData({ ...task, ...updated });
+    if (!updated) return;
+    // The response is the list shape, where checklist and subtasks are counts; keep the detail's lists, then refetch them.
+    const { checklist: _checklist, subtasks: _subtasks, ...fields } = updated;
+    setData({ ...task, ...fields });
+    reload();
   };
   const disabled = !task.can_edit;
   const showStart = planHas('planning') || !!task.start_date;
@@ -199,6 +205,23 @@ function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: () => v
         <Card style={{ gap: 14 }}>
           <Prop label="Owner">
             <PeopleField disabled={disabled} multiple={false} title="Owner" allowNone="Unassigned" placeholder="Unassigned" value={task.owner ? [task.owner.id] : []} onChange={(ids) => update({ ownerId: ids[0] ?? null })} />
+          </Prop>
+          <Prop label="Team">
+            <Row gap={8}>
+              <View style={{ flex: 1 }}>
+                <Select
+                  title="Team"
+                  disabled={disabled}
+                  value={task.team?.id ?? ''}
+                  onChange={(v) => update({ teamId: v || null })}
+                  options={[{ id: '', label: 'No team' }, ...(teams ?? []).map((t) => ({ id: t.id, label: t.name }))]}
+                />
+              </View>
+              {task.team && !task.owner && !disabled && (
+                // Given to the team and nobody has it yet: anyone on the team can take it.
+                <Button small title="Take it" onPress={() => update({ ownerId: me!.user.id })} />
+              )}
+            </Row>
           </Prop>
           <Row gap={10}>
             <View style={{ flex: 1 }}>

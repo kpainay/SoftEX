@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api, type Me } from '@/lib/api';
 import { shareApiDownload } from '@/lib/files';
-import { dateLabel, timeAgo } from '@/lib/format';
+import { awayDay, awayLater, isAway } from '@/lib/away';
+import { dateLabel, localToday, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { pushState, registerPush, unregisterPush, type PushState } from '@/lib/push';
 import { useSession } from '@/lib/session';
 import { useTheme, type ThemeChoice } from '@/lib/theme';
 import { MfaSetupBody } from '@/screens/auth';
+import { DateField } from '@/ui/pickers';
 import { Icon } from '@/ui/Icon';
 import {
   Button,
@@ -43,8 +45,10 @@ import { UpgradeNotice, usePlan } from '@/ui/plan';
 type Tab = 'profile' | 'notifications' | 'security' | 'api' | 'onboarding';
 
 export default function Settings() {
-  const params = useLocalSearchParams<{ tab?: Tab }>();
-  const [tab, setTab] = useState<Tab>(params.tab ?? 'profile');
+  // The web's links say ?section= (its categories); older ones ?tab=.
+  const params = useLocalSearchParams<{ tab?: Tab; section?: string }>();
+  const fromSection = params.section === 'notifications' ? 'notifications' : params.section === 'security' ? 'security' : params.section === 'developer' ? 'api' : undefined;
+  const [tab, setTab] = useState<Tab>(params.tab ?? fromSection ?? 'profile');
   const { has } = usePlan();
   return (
     <>
@@ -56,7 +60,7 @@ export default function Settings() {
           onChange={setTab}
           tabs={[
             { id: 'profile', label: 'Profile' },
-            { id: 'notifications', label: 'Notifications & focus' },
+            { id: 'notifications', label: 'Away & notifications' },
             { id: 'security', label: 'Security' },
             { id: 'api', label: 'API tokens' },
             { id: 'onboarding', label: 'Onboarding' },
@@ -68,7 +72,12 @@ export default function Settings() {
             <Profile />
           </>
         )}
-        {tab === 'notifications' && <Notifications />}
+        {tab === 'notifications' && (
+          <>
+            <OutOfOffice />
+            <Notifications />
+          </>
+        )}
         {tab === 'security' && <Security />}
         {tab === 'api' && (has('api') ? <ApiTokens /> : <UpgradeNotice feature="api" />)}
         {tab === 'onboarding' && <Onboarding />}
@@ -213,6 +222,57 @@ function Profile() {
 
 const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
 
+/** Dates away and the note colleagues get when they write to you meanwhile. */
+function OutOfOffice() {
+  const { me, setMe, reloadPeople } = useSession();
+  const act = useAction();
+  const u = me!.user;
+  const today = localToday();
+  const [form, setForm] = useState({ from: u.ooo_from ?? today, until: u.ooo_until ?? '', message: u.ooo_message ?? '' });
+  const on = isAway(u);
+  const later = awayLater(u);
+  const save = async (patch: Record<string, unknown>, done: string) => {
+    const updated = await act(() => api.patch<Me>('/me', patch), done);
+    if (updated) {
+      setMe(updated);
+      reloadPeople();
+      if (!updated.user.ooo_until) setForm({ from: today, until: '', message: updated.user.ooo_message });
+    }
+  };
+  return (
+    <Section title="Out of office" action={on ? <Pill label="On now" tone="amber" /> : later ? <Pill label="Scheduled" /> : undefined}>
+      <Muted style={{ marginBottom: 8 }}>
+        While you’re away, people see it on your profile and in chats. Direct messages get your note as an automatic reply (once a day per chat), and anyone who @mentions you is told when you’re back.
+      </Muted>
+      <Row gap={10}>
+        <Field label="First day away" style={{ flex: 1 }}>
+          <DateField value={form.from} onChange={(v) => setForm({ ...form, from: v ?? '' })} clearable={false} label="First day away" />
+        </Field>
+        <Field label="Last day away" style={{ flex: 1 }}>
+          <DateField value={form.until || null} min={form.from || undefined} onChange={(v) => setForm({ ...form, until: v ?? '' })} placeholder="Choose a day" clearable={false} label="Last day away" />
+        </Field>
+      </Row>
+      <Field label="Automatic reply" hint="Who to contact meanwhile, or when you’ll reply. Up to 500 characters.">
+        <Input multiline maxLength={500} value={form.message} onChangeText={(message) => setForm({ ...form, message })} placeholder="I’m away with limited access to messages. For anything urgent, ask Maya." />
+      </Field>
+      <Row gap={8} wrap>
+        <Button
+          variant="primary"
+          title={on || later ? 'Save changes' : 'Turn on'}
+          disabled={!form.until || (!!form.from && form.from > form.until)}
+          onPress={() => save({ ooo_from: form.from || null, ooo_until: form.until, ooo_message: form.message }, 'Out of office saved')}
+        />
+        {(on || later) && <Button title="Turn off" onPress={() => save({ ooo_until: null }, 'Welcome back — out of office is off')} />}
+      </Row>
+      {(on || later) && (
+        <Muted size={12} style={{ marginTop: 6 }}>
+          {on ? 'You’re out of office' : `Starts ${awayDay(u.ooo_from!)}`} until the end of {awayDay(u.ooo_until!)}.
+        </Muted>
+      )}
+    </Section>
+  );
+}
+
 function Notifications() {
   const { me, setMe } = useSession();
   const act = useAction();
@@ -230,7 +290,7 @@ function Notifications() {
     <>
       <PhoneNotifications />
       <Section title="Focus time">
-        <Muted style={{ marginBottom: 8 }}>During focus time, notifications are collected in your Inbox without interrupting you. Urgent messages still come through.</Muted>
+        <Muted style={{ marginBottom: 8 }}>During focus time, notifications are collected in Activities without interrupting you. Urgent messages still come through.</Muted>
         {focusActive ? (
           <Row wrap>
             <T weight="bold">Focusing until {new Date(me!.user.focus_until!).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.</T>

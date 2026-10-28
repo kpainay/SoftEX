@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import { pushTarget, registerPush } from '@/lib/push';
 import { SessionProvider, useSession } from '@/lib/session';
 import { fonts, ThemeProvider, useTheme } from '@/lib/theme';
+import { UpdateBanner } from '@/lib/updates';
 import { MfaRequired } from '@/screens/auth';
 import { ToastProvider } from '@/ui/kit';
 
@@ -84,6 +85,7 @@ function Root() {
         <Stack.Screen name="verify-email/[token]" />
         <Stack.Screen name="reset-password/[token]" />
       </Stack>
+      <UpdateBanner />
     </NavThemeProvider>
   );
 }

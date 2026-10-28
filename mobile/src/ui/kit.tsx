@@ -364,7 +364,7 @@ export function Badge({ count, tone = 'accent' }: { count: number; tone?: 'accen
   const { c } = useTheme();
   if (!count) return null;
   const bg = { accent: c.accent, muted: c.line2, red: c.red }[tone];
-  const fg = tone === 'muted' ? c.ink2 : '#fff';
+  const fg = { accent: c.onAccent, muted: c.ink2, red: c.onRed }[tone];
   return (
     <View style={{ minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 5, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
       <T size={10} weight="bold" style={{ color: fg, lineHeight: 13 }}>
@@ -421,6 +421,16 @@ export function Ring({ value, size = 44, stroke = 5, color, label }: { value: nu
 
 const AVATAR = { xs: 22, sm: 28, md: 36, lg: 48, xl: 72 } as const;
 
+/**
+ * Initials stay readable on every member colour (WCAG AA, 4.5:1), as on the web: dark ink on the light
+ * colours, white on slightly deepened purple and blue.
+ */
+const ON_COLOUR: Record<string, { bg?: string; fg: string }> = {
+  purple: { bg: '#6252dc', fg: '#ffffff' },
+  blue: { bg: '#3a6bd0', fg: '#ffffff' },
+};
+const AVATAR_INK = '#2b2118';
+
 export function Avatar({
   user,
   size = 'md',
@@ -443,8 +453,8 @@ export function Avatar({
     );
   return (
     <View style={{ width: px, height: px }} accessibilityLabel={user.name}>
-      <View style={{ width: px, height: px, borderRadius: px / 2, backgroundColor: swatch(user.color), alignItems: 'center', justifyContent: 'center' }}>
-        <T size={Math.max(9, px * 0.38)} weight="bold" style={{ color: '#fff', lineHeight: px * 0.5 }}>
+      <View style={{ width: px, height: px, borderRadius: px / 2, backgroundColor: ON_COLOUR[user.color ?? 'purple']?.bg ?? swatch(user.color), alignItems: 'center', justifyContent: 'center' }}>
+        <T size={Math.max(9, px * 0.38)} weight="bold" style={{ color: ON_COLOUR[user.color ?? 'purple']?.fg ?? AVATAR_INK, lineHeight: px * 0.5 }}>
           {initials(user.name)}
         </T>
       </View>
@@ -678,7 +688,7 @@ export function Checkbox({ checked, onChange, label, disabled }: { checked: bool
           justifyContent: 'center',
         }}
       >
-        {checked && <Icon name="check" size={14} color="#fff" strokeWidth={2.6} />}
+        {checked && <Icon name="check" size={14} color={c.onAccent} strokeWidth={2.6} />}
       </View>
       {typeof label === 'string' ? <T style={{ flexShrink: 1 }}>{label}</T> : label}
     </Pressable>
@@ -741,6 +751,53 @@ export function Segmented<V extends string>({ options, value, onChange }: { opti
             style={{ flex: 1, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.surface : 'transparent' }}
           >
             <T size={13} weight="bold" tone={on ? 'ink' : 'muted'}>
+              {o.label}
+            </T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Chips that keep their natural width and wrap onto the next line, for choices with longer labels
+ * (task status, goal health, days of the week). Pass `multiple` for several at once.
+ */
+export function ChoiceChips<V extends string>(
+  props: { options: { id: V; label: string; dot?: string }[]; disabled?: boolean } & ({ value: V; onChange: (v: V) => void } | { value: V[]; onChange: (v: V[]) => void }),
+) {
+  const { options, value, disabled } = props;
+  const onChange = props.onChange as (v: V | V[]) => void;
+  const { c } = useTheme();
+  const selected = Array.isArray(value) ? value : [value];
+  const multiple = Array.isArray(value);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole={multiple ? undefined : 'radiogroup'}>
+      {options.map((o) => {
+        const on = selected.includes(o.id);
+        return (
+          <Pressable
+            key={o.id}
+            disabled={disabled}
+            onPress={() => onChange(multiple ? (on ? selected.filter((v) => v !== o.id) : [...selected, o.id]) : o.id)}
+            accessibilityRole={multiple ? 'checkbox' : 'radio'}
+            accessibilityState={multiple ? { checked: on, disabled } : { selected: on, disabled }}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              minHeight: 34,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: on ? c.accent : c.lineStrong,
+              backgroundColor: on ? c.accentSoft : pressed ? c.hover : c.surface,
+              opacity: disabled ? 0.6 : 1,
+            })}
+          >
+            {o.dot && <Dot color={o.dot} />}
+            <T size={13} weight="bold" style={{ color: on ? c.accentInk : c.ink2 }}>
               {o.label}
             </T>
           </Pressable>
@@ -944,7 +1001,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               elevation: 4,
             }}
           >
-            <T size={14} weight="semibold" style={{ color: '#fff' }}>
+            <T size={14} weight="semibold" style={{ color: t.tone === 'error' ? c.onRed : '#fff' }}>
               {t.text}
             </T>
           </View>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
+import { awayLabel, isAway } from '../lib/away';
 import { useSession } from '../lib/session';
 import { statusLabel, useShell } from '../lib/shell';
 import { fonts, useTheme } from '../lib/theme';
@@ -56,7 +57,7 @@ export function ProfileSheet({ open, onClose }: { open: boolean; onClose: () => 
             {me.user.name}
           </T>
           <T size={13} tone="muted">
-            {me.user.status_text || statusLabel(me.user.status)} · {me.user.email}
+            {isAway(me.user) ? awayLabel(me.user) : me.user.status_text || statusLabel(me.user.status)} · {me.user.email}
           </T>
         </View>
       </Row>
@@ -78,6 +79,7 @@ export function ProfileSheet({ open, onClose }: { open: boolean; onClose: () => 
       <View style={{ height: 1, backgroundColor: c.line }} />
       <View>
         <ListRow title={dark ? 'Light mode' : 'Dark mode'} left={<Icon name={dark ? 'sun' : 'moon'} size={19} color={c.ink2} />} onPress={() => setChoice(dark ? 'light' : 'dark')} />
+        <ListRow title={isAway(me.user) ? awayLabel(me.user) : 'Set out of office…'} left={<Icon name="away" size={19} color={c.ink2} />} onPress={() => go('/settings?tab=notifications')} />
         <ListRow title="Profile & preferences" left={<Icon name="settings" size={19} color={c.ink2} />} onPress={() => go('/settings')} />
         <ListRow title="View my profile" left={<Icon name="users" size={19} color={c.ink2} />} onPress={() => go(`/people/${me.user.id}`)} />
         <ListRow

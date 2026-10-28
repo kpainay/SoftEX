@@ -4,9 +4,11 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
-import { api, formWith, session, type Message, type PickedFile } from '../lib/api';
+import { api, formWith, session, type Message, type Person, type PickedFile } from '../lib/api';
+import { awayDay, isAway } from '../lib/away';
 import { pickDocuments, pickMedia } from '../lib/files';
 import { plainMentions, timeAgo, timeOf } from '../lib/format';
+import { useApi } from '../lib/hooks';
 import { realtime } from '../lib/realtime';
 import { useSession } from '../lib/session';
 import { storage } from '../lib/storage';
@@ -31,6 +33,8 @@ export interface MessageActions {
   reply: (m: Message) => void;
   task: (m: Message) => void;
   decision: (m: Message) => void;
+  /** In a chat (not a thread): everything from this message on counts as unread again. */
+  markUnread?: (m: Message) => void;
 }
 
 /** One message: avatar, name, body, attachments, reactions and thread link. Long-press for actions. */
@@ -89,6 +93,7 @@ export function MessageItem({
     { label: m.pinned ? 'Unpin' : 'Pin to channel', icon: 'pin', onPress: () => actions.pin(m), hidden: !canPost },
     { label: m.saved ? 'Remove from saved' : 'Save for later', icon: 'bookmark', onPress: () => actions.save(m) },
     { label: 'Remind me about this', icon: 'clock', onPress: () => setRemind(true) },
+    { label: 'Mark unread from here', icon: 'inbox', onPress: () => actions.markUnread?.(m), hidden: inThread || !actions.markUnread },
     { label: 'Copy text', icon: 'file', onPress: () => Clipboard.setStringAsync(plainMentions(m.body)), hidden: !m.body },
     { label: 'Copy link', icon: 'link', onPress: () => Clipboard.setStringAsync(`${session.server}/channels/${m.channel_id}?message=${m.parent_id ?? m.id}`) },
     {
@@ -133,6 +138,7 @@ export function MessageItem({
             </T>
             <Muted size={12}>{timeOf(m.created_at)}</Muted>
             {m.urgent && <Pill label="Urgent" tone="red" />}
+            {m.auto_reply && <Pill label="Automatic reply" icon="away" />}
             {m.pinned && <Pill label="Pinned" icon="pin" />}
           </Row>
         )}
@@ -301,6 +307,7 @@ export function Composer({
 }) {
   const { c } = useTheme();
   const { people } = useSession();
+  const { data: teams } = useApi<{ id: string; name: string }[]>('/teams');
   const act = useAction();
   const storageKey = `kuu.draft.${channelId}.${parentId ?? 'root'}`;
   const [text, setText] = useState('');
@@ -330,8 +337,23 @@ export function Composer({
     const pool = [...members, ...people.filter((p) => !members.some((m) => m.id === p.id))];
     const found = pool.filter((p) => p.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6);
     const everyone = members.length > 2 ? BROADCASTS.filter((b) => b.name.startsWith(query.toLowerCase())) : [];
-    return [...found, ...everyone].slice(0, 7);
-  }, [query, members, people]);
+    // @Team notifies everyone on a team (who can see this conversation) and goes to the team's inbox.
+    const groups = (teams ?? [])
+      .filter((t) => t.name.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 3)
+      .map((t) => ({ id: `team:${t.id}`, name: t.name, color: 'gold', team: true as const }));
+    return [...found, ...groups, ...everyone].slice(0, 8);
+  }, [query, members, people, teams]);
+
+  // People you're @mentioning who are out of office, so you know before you send.
+  const awayMentioned = useMemo(
+    () =>
+      Object.entries(mentions)
+        .filter(([name]) => text.includes(`@${name}`))
+        .map(([, id]) => people.find((p) => p.id === id))
+        .filter((p): p is Person => isAway(p)),
+    [mentions, text, people],
+  );
 
   const onChange = (value: string, caret = value.length) => {
     setText(value);
@@ -399,12 +421,26 @@ export function Composer({
         <View style={{ borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.surface, overflow: 'hidden' }} accessibilityRole="list" accessibilityLabel="Mention someone">
           {candidates.map((p) => (
             <Pressable key={p.id} onPress={() => pick(p)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, backgroundColor: pressed ? c.hover : 'transparent' })}>
-              {'hint' in p ? <Icon name="megaphone" size={16} color={c.amberInk} /> : <Avatar user={p} size="xs" />}
-              <T weight="semibold">{'hint' in p ? `@${p.name}` : p.name}</T>
+              {'hint' in p ? <Icon name="megaphone" size={16} color={c.amberInk} /> : 'team' in p ? <Icon name="users" size={16} color={c.ink2} /> : <Avatar user={p} size="xs" />}
+              <T weight="semibold">{'hint' in p || 'team' in p ? `@${p.name}` : p.name}</T>
               {'hint' in p && <Muted size={12}>{String(p.hint)}</Muted>}
+              {'team' in p && <Muted size={12}>Notify the team</Muted>}
+              {!('hint' in p) && !('team' in p) && isAway(people.find((x) => x.id === p.id)) && (
+                <Muted size={12} style={{ marginLeft: 'auto' }}>
+                  Out of office
+                </Muted>
+              )}
             </Pressable>
           ))}
         </View>
+      )}
+      {awayMentioned.length > 0 && (
+        <Row gap={6} style={{ alignItems: 'flex-start', paddingHorizontal: 4 }} accessibilityLiveRegion="polite">
+          <Icon name="away" size={14} color={c.muted} />
+          <Muted size={12} style={{ flex: 1 }}>
+            {awayMentioned.map((p) => `${p.name.split(' ')[0]} is out of office until ${awayDay(p.ooo_until!)}`).join('; ')}. They’ll see this when they’re back.
+          </Muted>
+        </Row>
       )}
       {files.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
@@ -455,7 +491,7 @@ export function Composer({
             accessibilityLabel="Send"
             style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: canSend ? (urgent ? c.red : c.accent) : c.lineStrong, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Icon name="send" size={18} color="#fff" />
+            <Icon name="send" size={18} color={urgent ? c.onRed : c.onAccent} />
           </Pressable>
         ) : (
           <VoiceNoteButton onRecorded={(f) => upload([f])} disabled={uploading} />
@@ -549,7 +585,13 @@ export function DecisionSheet({ message, onClose }: { message: Message | null; o
 }
 
 /** The shared message actions for a conversation or thread. */
-export function useMessageActions(opts: { onSaved?: (m: Message, saved: boolean) => void; setTaskFrom: (m: Message) => void; setDecisionFrom: (m: Message) => void; setForwarding: (m: Message) => void }): MessageActions {
+export function useMessageActions(opts: {
+  onSaved?: (m: Message, saved: boolean) => void;
+  setTaskFrom: (m: Message) => void;
+  setDecisionFrom: (m: Message) => void;
+  setForwarding: (m: Message) => void;
+  markUnread?: (m: Message) => void;
+}): MessageActions {
   const act = useAction();
   return {
     forward: opts.setForwarding,
@@ -567,6 +609,7 @@ export function useMessageActions(opts: { onSaved?: (m: Message, saved: boolean)
     reply: (m) => router.push(`/threads/${m.id}`),
     task: opts.setTaskFrom,
     decision: opts.setDecisionFrom,
+    markUnread: opts.markUnread,
   };
 }
 

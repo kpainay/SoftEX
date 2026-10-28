@@ -7,14 +7,24 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": { "EXPO_PUBLIC_KUU_SERVER": "http://localhost:4000" }
+      "env": {
+        "EXPO_PUBLIC_KUU_SERVER": "http://localhost:4000"
+      },
+      "channel": "development",
+      "environment": "development"
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "preview",
+      "environment": "preview"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production",
+      "environment": "production"
     }
   },
   "submit": {

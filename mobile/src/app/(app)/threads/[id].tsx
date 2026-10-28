@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Message } from '@/lib/api';
-import { useApi, useRealtime } from '@/lib/hooks';
+import { useApi, useRealtime, useViewing } from '@/lib/hooks';
 import { useTheme } from '@/lib/theme';
 import { ForwardSheet, ThreadAi } from '@/ui/chat';
 import { ErrorState, Loading, Muted } from '@/ui/kit';
@@ -17,6 +17,7 @@ export default function Thread() {
   const insets = useSafeAreaInsets();
   const { data, error, reload } = useApi<{ root: Message; replies: Message[]; channel: { id: string; name: string } }>(`/messages/${id}/thread`);
   const { data: channel } = useApi<ChannelDetail>(data ? `/channels/${data.root.channel_id}` : null);
+  useViewing(data ? [`/channels/${data.root.channel_id}?thread=${data.root.id}`] : []);
   const [taskFrom, setTaskFrom] = useState<Message | null>(null);
   const [decisionFrom, setDecisionFrom] = useState<Message | null>(null);
   const [forwarding, setForwarding] = useState<Message | null>(null);

@@ -2,8 +2,9 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api, type Me } from '@/lib/api';
+import { awayLabel, isAway } from '@/lib/away';
 import { ROLE_LABEL } from '@/lib/format';
-import { useReloadOnFocus } from '@/lib/hooks';
+import { useApi, useReloadOnFocus } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { statusLabel, useShell } from '@/lib/shell';
 import { swatch, useTheme } from '@/lib/theme';
@@ -54,10 +55,15 @@ export default function More() {
   const { me, setMe, can, logout } = useSession();
   const { channels, counts, reloadChannels } = useShell();
   const favorites = useFavorites();
+  const { data: teams, reload: reloadTeams } = useApi<{ id: string; name: string; is_member: boolean }[]>('/teams');
+  const myTeams = (teams ?? []).filter((t) => t.is_member);
   const act = useAction();
   const [switching, setSwitching] = useState(false);
   const [profile, setProfile] = useState(false);
-  useReloadOnFocus(reloadChannels);
+  useReloadOnFocus(() => {
+    reloadChannels();
+    reloadTeams();
+  });
   if (!me) return null;
   const joined = (channels ?? []).filter((ch) => ch.kind !== 'dm' && ch.joined);
   const guest = me.role === 'guest';
@@ -100,8 +106,8 @@ export default function More() {
         <View style={{ flex: 1 }}>
           <T weight="bold">{me.user.name}</T>
           <Row gap={6}>
-            <Dot color={STATUS_DOT[me.user.status] ?? c.dotAway} />
-            <Muted size={12}>{me.user.status_text || statusLabel(me.user.status)}</Muted>
+            {isAway(me.user) ? <Icon name="away" size={12} color={c.muted} /> : <Dot color={STATUS_DOT[me.user.status] ?? c.dotAway} />}
+            <Muted size={12}>{isAway(me.user) ? awayLabel(me.user) : me.user.status_text || statusLabel(me.user.status)}</Muted>
           </Row>
         </View>
         <Icon name="more" size={17} color={c.muted} />
@@ -124,9 +130,18 @@ export default function More() {
           />
         ))}
         <Item icon="folder" label="Projects" to="/projects" />
+        <Item icon="files" label="Files" to="/files" />
         {!guest && <Item icon="target" label="Goals" to="/goals" />}
         {!guest && <Item icon="chart" label="Dashboards" to="/dashboards" />}
       </NavGroup>
+
+      {myTeams.length > 0 && (
+        <NavGroup title="Your teams">
+          {myTeams.map((t) => (
+            <Item key={t.id} icon="users" label={t.name} to={`/teams/${t.id}`} />
+          ))}
+        </NavGroup>
+      )}
 
       {favorites.length > 0 && (
         <NavGroup title="Favorites">

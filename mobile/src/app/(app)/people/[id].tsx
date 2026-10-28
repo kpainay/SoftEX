@@ -6,8 +6,9 @@ import { useApi } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { statusLabel } from '@/lib/shell';
 import { swatch, useTheme } from '@/lib/theme';
+import { AwayNotice } from '@/ui/away';
 import { STATUS_DOT } from '@/ui/header';
-import { Avatar, Button, Card, Dot, ErrorState, H1, Loading, Muted, Pill, Row, Screen, T, useAction } from '@/ui/kit';
+import { Avatar, Button, Card, Dot, ErrorState, H1, LinkText, Loading, Muted, Pill, Row, Screen, T, useAction } from '@/ui/kit';
 import { openLink } from '@/ui/Markdown';
 import { Prop } from '@/ui/work';
 
@@ -51,6 +52,7 @@ export default function PersonView() {
             />
           )}
         </Card>
+        <AwayNotice person={p} />
         <Card style={{ gap: 16 }}>
           <Prop label="Email">
             <T tone="accent" onPress={() => openLink(`mailto:${p.email}`)}>
@@ -66,7 +68,17 @@ export default function PersonView() {
             <T>{p.working_hours}</T>
           </Prop>
           <Prop label="Teams">
-            <T>{p.teams.map((t) => t.name).join(', ') || '—'}</T>
+            {p.teams.length ? (
+              <Row wrap gap={10}>
+                {p.teams.map((t) => (
+                  <LinkText key={t.id} onPress={() => router.push(`/teams/${t.id}`)}>
+                    {t.name}
+                  </LinkText>
+                ))}
+              </Row>
+            ) : (
+              <T>—</T>
+            )}
           </Prop>
           <Prop label="Expertise">
             {p.expertise.length ? (

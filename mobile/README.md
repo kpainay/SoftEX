@@ -1,6 +1,6 @@
 # Küü for iOS and Android
 
-The native Küü app, built with [Expo](https://expo.dev) and React Native from one TypeScript code base. It has the same screens, features and look as the web app, laid out for phones: Home, Inbox, Chats, My work and More along the bottom, and everything else (projects, goals, dashboards, whiteboards, knowledge, meetings, directory, settings, administration, billing, operator console) one tap away.
+The native Küü app, built with [Expo](https://expo.dev) and React Native from one TypeScript code base. It has the same screens, features and look as the web app, laid out for phones: Home, Chats, Activities, My work and More along the bottom, and everything else (projects, files, teams, goals, dashboards, whiteboards, knowledge, meetings, directory, settings, administration, billing, operator console) one tap away.
 
 It talks to the same server as the web app (`../server`). Nothing in it is a web view.
 
@@ -9,11 +9,11 @@ It talks to the same server as the web app (`../server`). Nothing in it is a web
 | Area | On the phone |
 | --- | --- |
 | **Sign-in** | Email and password, authenticator codes, required MFA set-up, single sign-on (opens the identity provider in the system browser and hands back with PKCE), sign-up in hosted mode, invitations, password reset and email confirmation links. **Use a different server** under the sign-in form points the app at a self-hosted Küü |
-| **Communication** | Channels, DMs and group chats, threads, mentions (`@name`, `@channel`, `@here`), reactions, pins, saved items, polls, voice notes, photos, files and video, forwarding, urgent messages, send later, drafts, remind me, turn a message into a task or decision, typing indicators, AI thread summaries |
-| **Work** | My work, tasks (owner, reviewer, collaborators, checklist, subtasks, dependencies, recurrence, labels, custom fields, timer and time entries, comments, attachments), projects in list, board, table, calendar and timeline views, milestones, status updates, risks, automations, intake forms, CSV import, goals and key results, dashboards, workload, timesheet, requests, decisions, Later |
-| **Knowledge & meetings** | Nested pages with live co-editing (Yjs), comments and publish to the web; files with versions; meetings with agenda, RSVP, notes, decisions, follow-ups and `.ics` export; **audio** recording and searchable, seekable transcripts |
+| **Communication** | Channels, DMs and group chats, threads, mentions (`@name`, `@Team`, `@channel`, `@here`), reactions, pins, saved items, polls, voice notes, photos, files and video, forwarding, urgent messages, send later, drafts, remind me, turn a message into a task or decision, typing indicators, AI thread summaries. A *New* line where unread messages start, *Mark unread from here*, channel details (about, people, files, pins, tasks and meetings from the channel), and out-of-office notices in direct messages |
+| **Work** | Home with a *Catch up* card, Activities (grouped, with *Clear read*), My work with smart quick-add (`Call @maya friday !high #brand`), select-and-change several tasks with Undo, and saved task views; tasks (owner, reviewer, collaborators, checklist, subtasks, dependencies, recurrence, labels, custom fields, timer and time entries, comments, attachments), projects in list, board, table, calendar and timeline views, milestones, status updates, risks, automations, intake forms, CSV import, goals and key results, dashboards, workload, timesheet, requests, decisions, Later |
+| **Knowledge & meetings** | Nested pages with live co-editing (Yjs), comments and publish to the web; a Files screen of everything shared with you (by place and type), with versions; meetings with agenda, RSVP, notes, decisions, follow-ups and `.ics` export; **audio** recording and searchable, seekable transcripts |
 | **Whiteboards** | Touch canvas with sticky notes, shapes, text, arrows and drawing, pinch to zoom, two-finger pan, live cursors, undo, SVG export to the share sheet |
-| **People & admin** | Directory and profiles, check-ins, status and focus time, settings (theme, notifications, quiet hours, security, sessions, API tokens, calendar link, data export, account deletion), the full Administration area, plan and billing, and the operator console |
+| **People & admin** | Directory and profiles, teams (shared inbox, team tasks anyone can take, check-ins on a schedule, channels, files), out of office, check-ins, status and focus time, settings (theme, notifications, quiet hours, security, sessions, API tokens, calendar link, data export, account deletion), the full Administration area, plan and billing, and the operator console |
 | **Notifications** | Native push on iOS and Android through Expo's push service. Tapping one opens the message, task or page it is about |
 
 Two things differ on a phone on purpose:
@@ -78,6 +78,36 @@ The server sends to Expo's push service, which delivers through Apple (APNs) and
 - **Server:** mobile push is on by default. If you turn on *Enhanced security for push notifications* in your Expo account, set `EXPO_ACCESS_TOKEN` on the server. `SOFTEX_MOBILE_PUSH=off` turns mobile push off.
 
 People are asked for permission after they sign in. They can test push, or turn it off, under *Settings → Notifications*.
+
+## Over-the-air updates (EAS Update)
+
+Most changes to the app are JavaScript, styles and images. Those ship to phones that already have the app **without a store release or review**: the app looks for an update when it starts and when it comes back to the front (at most every 15 minutes), downloads it in the background, and uses it on the next launch. When an update has downloaded while the app is open, a bar offers **Restart** to use it now. *Help → Check for updates* does the same on demand, and shows which version and update are running.
+
+Each build profile in `eas.json` listens on its own channel:
+
+| Build profile | Channel | Who has it |
+| --- | --- | --- |
+| `development` | `development` | Developers' dev-client builds (they can also load any update by URL) |
+| `preview` | `preview` | Testers: internal APK and ad-hoc iOS builds |
+| `production` | `production` | App Store and Google Play |
+
+An update only reaches builds with the same **native runtime**. `runtimeVersion` uses Expo's *fingerprint* policy, which hashes the native dependencies and native configuration. So if a change adds or upgrades a native module, or edits native settings in `app.json` (permissions, plugins, icons, bundle ID), the fingerprint changes: old builds keep running the last update they can safely use, and you need a new `eas build` for that change. `npx expo-updates fingerprint:generate` shows the current fingerprint if you want to check before publishing.
+
+### One-time set-up
+
+1. `cd mobile`, `eas login`, then `eas init` (links the Expo project and writes `extra.eas.projectId`) and `eas update:configure` (adds the update URL to `app.json`). Commit `app.json`.
+2. Create the server address for each environment, which updates are bundled with: `eas env:create --name EXPO_PUBLIC_KUU_SERVER --value https://your-kuu.example --environment preview` (and the same for `production`).
+3. Make builds on those channels: `eas build --profile preview --platform all` for testers, `--profile production` for the stores. Only builds made after step 1 receive updates.
+4. For CI publishing, create an access token at expo.dev (*Account settings → Access tokens*) and add it to the GitHub repository as the **`EXPO_TOKEN`** secret.
+
+### Publishing
+
+- **Automatically:** every push to `main` that touches `mobile/` publishes to `preview` (`.github/workflows/mobile-update.yml`). Testers get it the next time they open the app.
+- **To production:** once a preview update has been checked, run *Actions → Mobile update → Run workflow* with channel `production`. Or from your computer: `eas update --channel production --environment production --message "What changed"`.
+- **By hand, any channel:** `eas update --channel preview --environment preview --message "What changed"`.
+- **Rolling back:** `eas update:rollback` (pick the channel), or republish an earlier update with `eas update:republish`. Phones switch on their next launch.
+
+Store rules allow updates that fix bugs and change the app's look and behaviour within its purpose; a new build and review are still needed for anything that changes what the app is.
 
 ## Checks
 
