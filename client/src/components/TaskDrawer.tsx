@@ -9,7 +9,7 @@ import { Icon } from './Icon';
 import { RemindButton } from './Later';
 import { Markdown } from './Markdown';
 import { NewTaskForm } from './QuickCreate';
-import { Callout, DatePicker, ErrorBoundary, ErrorState, IconButton, Loading, Pill, PriorityPill, StatusPill, useAction, useConfirm } from '@/components/kit';
+import { Callout, ChoiceChips, DatePicker, ErrorBoundary, ErrorState, IconButton, Loading, Pill, PriorityPill, StatusPill, useAction, useConfirm } from '@/components/kit';
 import { LabelChips, LabelPicker, TaskFieldRows, TimeTracker } from './Work';
 import { usePlan } from './Plan';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -23,14 +23,15 @@ import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from '@/components
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
+
+const STATUS_TONE = { todo: 'neutral', in_progress: 'info', blocked: 'danger', review: 'warning', done: 'success' } as const;
 
 /** Side drawer wrapper around TaskDetail, opened from any list. */
 export function TaskDrawer({ taskId, onClose }: { taskId: string | null; onClose: () => void }) {
   return (
     <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 sm:max-w-xl" showCloseButton={false}>
+      <SheetContent side="right" className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl" showCloseButton={false}>
         <SheetHeader className="flex-row items-center justify-between border-b py-2.5">
           <SheetTitle className="sr-only">Task details</SheetTitle>
           {taskId && (
@@ -223,22 +224,13 @@ export function TaskDetail({ taskId, onDeleted }: { taskId: string; onDeleted?: 
         }}
       />
 
-      <ToggleGroup
-        className="status-steps w-full flex-wrap"
-        variant="outline"
-        size="sm"
-        spacing={0}
+      <ChoiceChips
         aria-label="Status"
-        value={[task.status]}
+        value={task.status}
         disabled={disabled}
-        onValueChange={(v) => v[0] && v[0] !== task.status && update({ status: v[0] })}
-      >
-        {(['todo', 'in_progress', 'blocked', 'review', 'done'] as const).map((s) => (
-          <ToggleGroupItem key={s} value={s} className="flex-1 data-pressed:bg-accent data-pressed:text-accent-foreground">
-            {STATUS_LABEL[s]}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+        onChange={(status) => update({ status })}
+        options={(['todo', 'in_progress', 'blocked', 'review', 'done'] as const).map((s) => ({ value: s, label: STATUS_LABEL[s], tone: STATUS_TONE[s] }))}
+      />
       {task.status === 'blocked' && (
         <Input
           placeholder="What is blocking this? (visible to the team)"
@@ -742,7 +734,7 @@ export function TaskRow({
         onClick={selection ? () => selection.onChange(!selection.selected) : onOpen}
       >
         <strong className={cn('text-sm font-medium', done && 'text-muted-foreground line-through')}>{task.title}</strong>
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           {showProject &&
             (task.project ? (
               <span className="inline-flex min-w-0 items-center gap-1.5">

@@ -55,7 +55,7 @@ export function DatePicker({ value, onChange, placeholder = 'Pick a date', clear
   return (
     <Popover open={open} onOpenChange={setOpen}>
       {clearable && selected ? (
-        <ButtonGroup className={className}>
+        <ButtonGroup className={cn('max-w-full', className)}>
           {trigger}
           <Button variant="outline" size={size === 'sm' ? 'icon-sm' : 'icon'} aria-label="Clear date" onClick={() => onChange(null)} disabled={disabled}>
             <X />

@@ -6,7 +6,7 @@ import { Avatar } from '../components/Avatar';
 import { FavoriteButton } from '../components/Favorites';
 import { Icon } from '../components/Icon';
 import { UpgradeNotice, usePlan } from '../components/Plan';
-import { DatePicker, EmptyState, ErrorState, FormField, HealthPill, IconButton, Loading, Modal, Page, PageHeader, Pill, Segmented, StatCard, StatGrid, TabBar, useAction, useConfirm } from '@/components/kit';
+import { ChoiceChips, DatePicker, EmptyState, ErrorState, FormField, HealthPill, IconButton, Loading, Modal, Page, PageHeader, Pill, Segmented, StatCard, StatGrid, TabBar, useAction, useConfirm } from '@/components/kit';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FieldLegend, FieldSet } from '@/components/ui/field';
@@ -327,11 +327,15 @@ export function GoalDetail() {
             <Progress value={goal.progress} className="h-2.5 flex-1" />
           </div>
           {goal.can_edit && (
-            <Segmented
+            <ChoiceChips
               aria-label="Status"
               value={goal.status}
               onChange={(s) => update({ status: s })}
-              options={(['on_track', 'at_risk', 'off_track', 'done'] as GoalStatus[]).map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
+              options={(['on_track', 'at_risk', 'off_track', 'done'] as GoalStatus[]).map((s) => ({
+                value: s,
+                label: STATUS_LABEL[s],
+                tone: s === 'on_track' || s === 'done' ? 'success' : s === 'at_risk' ? 'warning' : 'danger',
+              }))}
             />
           )}
           {goal.description && <p className="text-sm whitespace-pre-wrap">{goal.description}</p>}
@@ -432,8 +436,9 @@ function KeyResultRow({ kr, canEdit, onChanged }: { kr: KeyResult; canEdit: bool
   const confirm = useConfirm();
   const fmt = (n: number) => `${Number(n).toLocaleString()}${kr.unit ? ` ${kr.unit}` : ''}`;
   return (
-    <div className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-muted/50">
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+    // The name and bar take the row; on a narrow screen the value, percentage and delete move under them.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-2 py-2.5 hover:bg-muted/50">
+      <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1.5">
         <strong className="text-sm font-semibold">{kr.title}</strong>
         <span className="text-xs text-muted-foreground">
           {kr.kind === 'tasks' ? (
@@ -456,36 +461,38 @@ function KeyResultRow({ kr, canEdit, onChanged }: { kr: KeyResult; canEdit: bool
         </span>
         <Progress value={kr.progress} />
       </div>
-      {kr.kind === 'number' && (
-        <Input
-          type="number"
-          className="w-24"
-          defaultValue={kr.current_value}
-          key={kr.current_value}
-          aria-label={`Current value of ${kr.title}`}
-          onBlur={async (e) => {
-            const v = Number(e.target.value);
-            if (e.target.value === '' || v === kr.current_value) return;
-            await act(() => api.patch(`/key-results/${kr.id}`, { currentValue: v }), 'Progress updated');
-            onChanged();
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        />
-      )}
-      <strong className="w-10 text-right text-sm tabular-nums">{pct(kr.progress)}</strong>
-      {canEdit && (
-        <IconButton
-          label={`Delete ${kr.title}`}
-          size="icon-xs"
-          onClick={async () => {
-            if (!(await confirm({ title: 'Delete this key result?', confirmLabel: 'Delete', destructive: true }))) return;
-            await act(() => api.del(`/key-results/${kr.id}`));
-            onChanged();
-          }}
-        >
-          <Icon name="x" />
-        </IconButton>
-      )}
+      <div className="ml-auto flex shrink-0 items-center gap-3">
+        {kr.kind === 'number' && (
+          <Input
+            type="number"
+            className="w-24"
+            defaultValue={kr.current_value}
+            key={kr.current_value}
+            aria-label={`Current value of ${kr.title}`}
+            onBlur={async (e) => {
+              const v = Number(e.target.value);
+              if (e.target.value === '' || v === kr.current_value) return;
+              await act(() => api.patch(`/key-results/${kr.id}`, { currentValue: v }), 'Progress updated');
+              onChanged();
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          />
+        )}
+        <strong className="w-10 text-right text-sm tabular-nums">{pct(kr.progress)}</strong>
+        {canEdit && (
+          <IconButton
+            label={`Delete ${kr.title}`}
+            size="icon-xs"
+            onClick={async () => {
+              if (!(await confirm({ title: 'Delete this key result?', confirmLabel: 'Delete', destructive: true }))) return;
+              await act(() => api.del(`/key-results/${kr.id}`));
+              onChanged();
+            }}
+          >
+            <Icon name="x" />
+          </IconButton>
+        )}
+      </div>
     </div>
   );
 }

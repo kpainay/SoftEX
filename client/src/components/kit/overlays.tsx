@@ -75,7 +75,7 @@ export function SidePanel({
 }: OverlayProps & { side?: 'left' | 'right'; 'aria-label'?: string }) {
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent side={side} className={cn('w-full gap-0 sm:max-w-xl', className)} aria-label={rest['aria-label']}>
+      <SheetContent side={side} className={cn('gap-0 data-[side=left]:w-full data-[side=right]:w-full data-[side=left]:sm:max-w-xl data-[side=right]:sm:max-w-xl', className)} aria-label={rest['aria-label']}>
         <SheetHeader className={cn('border-b pr-12', hideTitle && 'sr-only')}>
           <Eyebrow>{eyebrow}</Eyebrow>
           <SheetTitle>{title}</SheetTitle>
