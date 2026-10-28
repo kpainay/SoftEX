@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { api, type Me } from '@/lib/api';
 import { ROLE_LABEL } from '@/lib/format';
-import { useReloadOnFocus } from '@/lib/hooks';
+import { useApi, useReloadOnFocus } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { statusLabel, useShell } from '@/lib/shell';
 import { swatch, useTheme } from '@/lib/theme';
@@ -54,10 +54,15 @@ export default function More() {
   const { me, setMe, can, logout } = useSession();
   const { channels, counts, reloadChannels } = useShell();
   const favorites = useFavorites();
+  const { data: teams, reload: reloadTeams } = useApi<{ id: string; name: string; is_member: boolean }[]>('/teams');
+  const myTeams = (teams ?? []).filter((t) => t.is_member);
   const act = useAction();
   const [switching, setSwitching] = useState(false);
   const [profile, setProfile] = useState(false);
-  useReloadOnFocus(reloadChannels);
+  useReloadOnFocus(() => {
+    reloadChannels();
+    reloadTeams();
+  });
   if (!me) return null;
   const joined = (channels ?? []).filter((ch) => ch.kind !== 'dm' && ch.joined);
   const guest = me.role === 'guest';
@@ -124,9 +129,18 @@ export default function More() {
           />
         ))}
         <Item icon="folder" label="Projects" to="/projects" />
+        <Item icon="files" label="Files" to="/files" />
         {!guest && <Item icon="target" label="Goals" to="/goals" />}
         {!guest && <Item icon="chart" label="Dashboards" to="/dashboards" />}
       </NavGroup>
+
+      {myTeams.length > 0 && (
+        <NavGroup title="Your teams">
+          {myTeams.map((t) => (
+            <Item key={t.id} icon="users" label={t.name} to={`/teams/${t.id}`} />
+          ))}
+        </NavGroup>
+      )}
 
       {favorites.length > 0 && (
         <NavGroup title="Favorites">

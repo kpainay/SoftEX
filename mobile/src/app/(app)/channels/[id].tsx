@@ -2,16 +2,17 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api, qs, type Channel, type Message } from '@/lib/api';
-import { bytes, timeAgo } from '@/lib/format';
-import { useApi, useRealtime } from '@/lib/hooks';
+import { api, qs, type Channel, type Message, type Person } from '@/lib/api';
+import { awayDay, isAway } from '@/lib/away';
+import { bytes, dateLabel, timeAgo } from '@/lib/format';
+import { useApi, useRealtime, useViewing } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { useShell } from '@/lib/shell';
 import { swatch, useTheme } from '@/lib/theme';
 import { channelIcon, FavoriteButton, ForwardSheet } from '@/ui/chat';
 import { NewMeetingForm } from '@/ui/create';
 import { Icon } from '@/ui/Icon';
-import { Avatar, Button, confirm, Empty, ErrorState, Field, IconButton, Input, ListRow, Loading, Muted, Row, Segmented, Sheet, T, Toggle, useAction } from '@/ui/kit';
+import { Avatar, Button, confirm, Empty, ErrorState, Field, IconButton, Input, ListRow, Loading, Muted, Row, Segmented, Sheet, StatusPill, T, Toggle, useAction } from '@/ui/kit';
 import { Markdown } from '@/ui/Markdown';
 import { Composer, DecisionSheet, MessageItem, TaskFromMessageSheet, useMessageActions } from '@/ui/messages';
 import { PeopleField } from '@/ui/pickers';
@@ -26,7 +27,7 @@ export interface ChannelDetail extends Channel {
   ai_excluded: boolean;
 }
 
-type ListItem = { type: 'message'; message: Message; grouped: boolean } | { type: 'day'; label: string; key: string };
+type ListItem = { type: 'message'; message: Message; grouped: boolean } | { type: 'day'; label: string; key: string } | { type: 'new'; key: string };
 
 export default function ChannelView() {
   const { id, message: highlight } = useLocalSearchParams<{ id: string; message?: string }>();
@@ -47,6 +48,10 @@ export default function ChannelView() {
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const [meeting, setMeeting] = useState(false);
   const list = useRef<FlatList<ListItem>>(null);
+  // Where unread messages began when you opened the chat (or from where you marked it unread): a "New" line goes there.
+  const [unread, setUnread] = useState<{ from: string; count: number } | null>(null);
+  const [jumped, setJumped] = useState(false);
+  useViewing([`/channels/${id}`]);
 
   const markRead = useCallback(() => {
     api
@@ -57,19 +62,27 @@ export default function ChannelView() {
 
   const load = useCallback(
     async (before?: string) => {
-      const res = await api.get<{ messages: Message[]; has_more: boolean }>(`/channels/${id}/messages${qs({ before, limit: 50 })}`);
+      const res = await api.get<{ messages: Message[]; has_more: boolean; last_read_at: string | null }>(`/channels/${id}/messages${qs({ before, limit: 50 })}`);
       setHasMore(res.has_more);
       setMessages((prev) => (before ? [...res.messages, ...prev] : res.messages));
       setLoaded(true);
+      if (!before && res.last_read_at) {
+        const fresh = res.messages.filter((m) => m.created_at > res.last_read_at! && m.user?.id !== me!.user.id && !m.deleted);
+        setUnread(fresh.length ? { from: fresh[0].id, count: fresh.length } : null);
+      }
     },
-    [id],
+    [id], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   useEffect(() => {
     setMessages([]);
     setLoaded(false);
-    load().catch(() => setLoaded(true));
-    markRead();
+    setUnread(null);
+    setJumped(false);
+    // Marked read once loaded, so the load still knows what was new.
+    load()
+      .catch(() => setLoaded(true))
+      .finally(markRead);
   }, [id, load, markRead]);
 
   // A link to a reply opens its thread.
@@ -109,6 +122,14 @@ export default function ChannelView() {
     setDecisionFrom,
     setForwarding,
     onSaved: (m, saved) => setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, saved } : x))),
+    markUnread: async (m) => {
+      if (await act(() => api.post(`/channels/${m.channel_id}/unread`, { messageId: m.id }), 'Marked unread from here')) {
+        const after = messages.filter((x) => x.created_at >= m.created_at && !x.deleted);
+        setUnread({ from: after[0]?.id ?? m.id, count: after.length || 1 });
+        setJumped(true);
+        reloadChannels();
+      }
+    },
   });
 
   // Newest first for the inverted list, with a date divider above each day's first message.
@@ -117,8 +138,9 @@ export default function ChannelView() {
     const m = messages[i];
     const prev = messages[i - 1];
     const newDay = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
-    const grouped = !!prev && !newDay && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
+    const grouped = !!prev && !newDay && !m.auto_reply && unread?.from !== m.id && prev.user?.id === m.user?.id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000;
     rows.push({ type: 'message', message: m, grouped });
+    if (unread?.from === m.id) rows.push({ type: 'new', key: `new-${m.id}` });
     if (newDay) rows.push({ type: 'day', key: `day-${m.id}`, label: new Date(m.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) });
   }
 
@@ -183,12 +205,20 @@ export default function ChannelView() {
         ref={list}
         inverted
         data={rows}
-        keyExtractor={(r) => (r.type === 'day' ? r.key : r.message.id)}
+        keyExtractor={(r) => (r.type === 'message' ? r.message.id : r.key)}
         contentContainerStyle={{ paddingVertical: 8 }}
         keyboardShouldPersistTaps="handled"
         onScrollToIndexFailed={() => {}}
         renderItem={({ item }) =>
-          item.type === 'day' ? (
+          item.type === 'new' ? (
+            <Row style={{ paddingHorizontal: 14, paddingVertical: 6 }} accessibilityRole="text" accessibilityLabel="New messages">
+              <View style={{ flex: 1, height: 1, backgroundColor: c.red, opacity: 0.5 }} />
+              <T size={12} weight="bold" tone="red">
+                New
+              </T>
+              <View style={{ width: 24, height: 1, backgroundColor: c.red, opacity: 0.5 }} />
+            </Row>
+          ) : item.type === 'day' ? (
             <Row style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: c.line }} />
               <T size={12} weight="bold" tone="muted">
@@ -220,11 +250,27 @@ export default function ChannelView() {
           )
         }
       />
+      {unread && unread.count > 4 && !jumped && (
+        <View style={{ position: 'absolute', top: channel.joined || channel.kind === 'dm' ? 10 : 58, alignSelf: 'center', zIndex: 2 }}>
+          <Button
+            small
+            icon="chevronDown"
+            title={`${unread.count} new message${unread.count === 1 ? '' : 's'}`}
+            style={{ borderRadius: 999, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, elevation: 3 }}
+            onPress={() => {
+              const index = rows.findIndex((r) => r.type === 'new');
+              if (index >= 0) list.current?.scrollToIndex({ index, viewPosition: 0.9, animated: true });
+              setJumped(true);
+            }}
+          />
+        </View>
+      )}
       {typingNames.length > 0 && (
         <Muted size={12} style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
           {typingNames.join(', ')} {typingNames.length > 1 ? 'are' : 'is'} typing…
         </Muted>
       )}
+      {channel.kind === 'dm' && <DmAwayNotice members={channel.members} />}
       <View style={{ paddingBottom: insets.bottom, backgroundColor: c.surface }}>
         {channel.can_post ? (
           <Composer channelId={channel.id} placeholder={channel.kind === 'dm' ? `Message ${dmName}` : `Message #${channel.name}`} members={channel.members} />
@@ -246,13 +292,49 @@ export default function ChannelView() {
   );
 }
 
-/** Members, pinned messages, files and settings: the web's side panel. */
+interface ChannelOverview {
+  created_by: { id: string; name: string; color: string } | null;
+  created_at: string;
+  file_count: number;
+  pin_count: number;
+  tasks: { id: string; title: string; status: string; due_date: string | null; owner: { id: string; name: string; color: string } | null }[];
+  meetings: { id: string; title: string; starts_at: string; ends_at: string }[];
+}
+
+/** In a direct message with someone who is away: say so, with their note, above the message box. */
+function DmAwayNotice({ members }: { members: { id: string }[] }) {
+  const { c } = useTheme();
+  const { me, people } = useSession();
+  const away = members
+    .filter((m) => m.id !== me!.user.id)
+    .map((m) => people.find((p) => p.id === m.id))
+    .filter((p): p is Person => isAway(p));
+  if (!away.length) return null;
+  return (
+    <View style={{ gap: 6, paddingHorizontal: 12, paddingBottom: 8 }}>
+      {away.map((p) => (
+        <View key={p.id} style={{ flexDirection: 'row', gap: 8, padding: 10, borderRadius: 12, backgroundColor: c.blueSoft, borderWidth: 1, borderColor: c.blueLine }} accessibilityLiveRegion="polite">
+          <Icon name="away" size={16} color={c.blueInk} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <T size={13} weight="bold" style={{ color: c.blueInk }}>
+              {p.name.split(' ')[0]} is out of office until {awayDay(p.ooo_until!)}
+            </T>
+            {!!p.ooo_message?.trim() && <T size={13}>{p.ooo_message.trim()}</T>}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** About, members, files, pinned messages and settings: the web's channel details. */
 function ChannelInfo({ open, onClose, channel, onChanged }: { open: boolean; onClose: () => void; channel: ChannelDetail; onChanged: () => void }) {
   const { c } = useTheme();
   const { me } = useSession();
   const { reloadChannels } = useShell();
   const act = useAction();
-  const [tab, setTab] = useState<'members' | 'pins' | 'files'>('members');
+  const [tab, setTab] = useState<'about' | 'members' | 'pins' | 'files'>('about');
+  const { data: overview } = useApi<ChannelOverview>(open ? `/channels/${channel.id}/overview` : null);
   const [adding, setAdding] = useState<string[]>([]);
   const [topic, setTopic] = useState(channel.topic);
   useEffect(() => setTopic(channel.topic), [channel.topic]);
@@ -296,11 +378,61 @@ function ChannelInfo({ open, onClose, channel, onChanged }: { open: boolean; onC
         value={tab}
         onChange={setTab}
         options={[
-          { id: 'members', label: `Members ${channel.members.length}` },
-          { id: 'pins', label: 'Pinned' },
-          { id: 'files', label: 'Files' },
+          { id: 'about', label: 'About' },
+          { id: 'members', label: `People ${channel.members.length}` },
+          { id: 'files', label: overview?.file_count ? `Files ${overview.file_count}` : 'Files' },
+          { id: 'pins', label: overview?.pin_count ? `Pins ${overview.pin_count}` : 'Pins' },
         ]}
       />
+      {tab === 'about' &&
+        (!overview ? (
+          <Loading inline />
+        ) : (
+          <View style={{ gap: 14 }}>
+            {!!channel.topic && <T tone="ink2">{channel.topic}</T>}
+            <Muted size={13}>
+              {channel.kind === 'dm' ? 'Started' : 'Created'}
+              {overview.created_by ? ` by ${overview.created_by.name}` : ''} on {dateLabel(overview.created_at)}
+            </Muted>
+            <View style={{ gap: 4 }}>
+              <T weight="display" size={15}>
+                Tasks from this {channel.kind === 'dm' ? 'conversation' : 'channel'}
+              </T>
+              {!overview.tasks.length ? (
+                <Muted size={13}>Long-press a message and choose Create task to turn it into work; it shows here.</Muted>
+              ) : (
+                overview.tasks.map((t) => (
+                  <ListRow
+                    key={t.id}
+                    left={<StatusPill status={t.status} />}
+                    title={t.title}
+                    subtitle={t.due_date ? `Due ${dateLabel(t.due_date)}` : undefined}
+                    right={t.owner ? <Avatar user={t.owner} size="xs" /> : undefined}
+                    onPress={() => go(`/tasks/${t.id}`)}
+                  />
+                ))
+              )}
+            </View>
+            <View style={{ gap: 4 }}>
+              <T weight="display" size={15}>
+                Meetings
+              </T>
+              {!overview.meetings.length ? (
+                <Muted size={13}>Meetings scheduled from here show up in this list.</Muted>
+              ) : (
+                overview.meetings.map((m) => (
+                  <ListRow
+                    key={m.id}
+                    left={<Icon name="video" size={17} color={c.ink2} />}
+                    title={m.title}
+                    subtitle={new Date(m.starts_at).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    onPress={() => go(`/meetings/${m.id}`)}
+                  />
+                ))
+              )}
+            </View>
+          </View>
+        ))}
       {tab === 'members' && (
         <View>
           {channel.members.map((m) => (

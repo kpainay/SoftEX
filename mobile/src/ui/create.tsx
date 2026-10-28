@@ -76,15 +76,18 @@ export function NewTaskForm({
 }: {
   onDone: (task?: Task) => void;
   projectId?: string;
-  defaults?: Partial<{ title: string; ownerId: string; dueDate: string; status: string; milestoneId: string; meetingId: string; parentId: string }>;
+  defaults?: Partial<{ title: string; ownerId: string; teamId: string; dueDate: string; status: string; milestoneId: string; meetingId: string; parentId: string }>;
   endpoint?: string;
 }) {
   const { me, people } = useSession();
   const act = useAction();
   const { data: projects } = useApi<Project[]>(fixedProject ? null : '/projects');
+  const { data: teams } = useApi<{ id: string; name: string }[]>('/teams');
   const [title, setTitle] = useState(defaults.title ?? '');
   const [projectId, setProjectId] = useState(fixedProject ?? '');
-  const [ownerId, setOwnerId] = useState(defaults.ownerId ?? me!.user.id);
+  // A person's id, or "team:<id>" to give the task to a whole team.
+  const [ownerId, setOwnerId] = useState(defaults.teamId ? `team:${defaults.teamId}` : defaults.ownerId ?? me!.user.id);
+  const team = ownerId.startsWith('team:') ? ownerId.slice(5) : null;
   const [dueDate, setDueDate] = useState<string | null>(defaults.dueDate ?? null);
   const [priority, setPriority] = useState('medium');
   const [description, setDescription] = useState('');
@@ -95,7 +98,8 @@ export function NewTaskForm({
           title,
           description: description || undefined,
           projectId: projectId || null,
-          ownerId: ownerId || null,
+          ownerId: team ? null : ownerId || null,
+          teamId: team,
           dueDate: dueDate || null,
           priority,
           status: defaults.status,
@@ -122,7 +126,7 @@ export function NewTaskForm({
           />
         </Field>
       )}
-      <Field label="Owner">
+      <Field label="Owner" hint={team ? 'Everyone on the team is told; anyone can pick it up.' : undefined}>
         <PeopleField
           title="Owner"
           multiple={false}
@@ -130,7 +134,10 @@ export function NewTaskForm({
           placeholder="Unassigned"
           value={ownerId ? [ownerId] : []}
           onChange={(ids) => setOwnerId(ids[0] ?? '')}
-          people={people.map((p) => (p.id === me!.user.id ? { ...p, name: `${p.name} (me)` } : p))}
+          people={[
+            ...people.map((p) => (p.id === me!.user.id ? { ...p, name: `${p.name} (me)` } : p)),
+            ...(teams ?? []).map((t) => ({ id: `team:${t.id}`, name: `${t.name} (team)`, color: 'sky', title: 'Team' })),
+          ]}
         />
       </Field>
       <Row gap={10}>

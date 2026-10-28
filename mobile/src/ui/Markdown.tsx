@@ -26,7 +26,7 @@ export function openLink(href: string) {
 
 function inline(text: string, keyBase: string, c: Palette): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(@\[[^\]]+\]\([0-9a-f-]{36}\))|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
+  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*|_[^_\s][^_]*_)|(@\[[^\]]+\]\((?:team:)?[0-9a-f-]{36}\))|(\[[^\]]+\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -55,7 +55,7 @@ function inline(text: string, keyBase: string, c: Palette): ReactNode[] {
     else if (m[4]) {
       const [, name, id] = token.match(/@\[([^\]]+)\]\(([^)]+)\)/)!;
       out.push(
-        <Text key={k} style={{ color: c.accentInk, fontFamily: fonts.semibold, backgroundColor: c.accentSoft }} onPress={() => router.push(`/people/${id}` as never)}>
+        <Text key={k} style={{ color: c.accentInk, fontFamily: fonts.semibold, backgroundColor: c.accentSoft }} onPress={() => router.push((id.startsWith('team:') ? `/teams/${id.slice(5)}` : `/people/${id}`) as never)}>
           @{name}
         </Text>,
       );

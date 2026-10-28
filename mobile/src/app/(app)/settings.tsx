@@ -230,7 +230,7 @@ function Notifications() {
     <>
       <PhoneNotifications />
       <Section title="Focus time">
-        <Muted style={{ marginBottom: 8 }}>During focus time, notifications are collected in your Inbox without interrupting you. Urgent messages still come through.</Muted>
+        <Muted style={{ marginBottom: 8 }}>During focus time, notifications are collected in Activities without interrupting you. Urgent messages still come through.</Muted>
         {focusActive ? (
           <Row wrap>
             <T weight="bold">Focusing until {new Date(me!.user.focus_until!).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.</T>

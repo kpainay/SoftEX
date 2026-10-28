@@ -750,6 +750,53 @@ export function Segmented<V extends string>({ options, value, onChange }: { opti
   );
 }
 
+/**
+ * Chips that keep their natural width and wrap onto the next line, for choices with longer labels
+ * (task status, goal health, days of the week). Pass `multiple` for several at once.
+ */
+export function ChoiceChips<V extends string>(
+  props: { options: { id: V; label: string; dot?: string }[]; disabled?: boolean } & ({ value: V; onChange: (v: V) => void } | { value: V[]; onChange: (v: V[]) => void }),
+) {
+  const { options, value, disabled } = props;
+  const onChange = props.onChange as (v: V | V[]) => void;
+  const { c } = useTheme();
+  const selected = Array.isArray(value) ? value : [value];
+  const multiple = Array.isArray(value);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }} accessibilityRole={multiple ? undefined : 'radiogroup'}>
+      {options.map((o) => {
+        const on = selected.includes(o.id);
+        return (
+          <Pressable
+            key={o.id}
+            disabled={disabled}
+            onPress={() => onChange(multiple ? (on ? selected.filter((v) => v !== o.id) : [...selected, o.id]) : o.id)}
+            accessibilityRole={multiple ? 'checkbox' : 'radio'}
+            accessibilityState={multiple ? { checked: on, disabled } : { selected: on, disabled }}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              minHeight: 34,
+              borderRadius: radius.pill,
+              borderWidth: 1,
+              borderColor: on ? c.accent : c.lineStrong,
+              backgroundColor: on ? c.accentSoft : pressed ? c.hover : c.surface,
+              opacity: disabled ? 0.6 : 1,
+            })}
+          >
+            {o.dot && <Dot color={o.dot} />}
+            <T size={13} weight="bold" style={{ color: on ? c.accentInk : c.ink2 }}>
+              {o.label}
+            </T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // ---------- Sheets ----------
 
 /** A bottom sheet: the phone's version of the web's modal dialogs. */

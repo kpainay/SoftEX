@@ -30,6 +30,9 @@ export interface Me {
     email_digest: boolean;
     email_urgent: boolean;
     email_verified: boolean;
+    ooo_from: string | null;
+    ooo_until: string | null;
+    ooo_message: string;
   };
   workspace: {
     id: string;
@@ -123,6 +126,8 @@ export interface Message {
   decisions: { id: string; title: string }[];
   poll?: MessagePoll | null;
   forwarded?: ForwardedMessage | null;
+  /** Sent on the author's behalf while they are out of office. */
+  auto_reply?: boolean;
 }
 
 export interface MessagePoll {
@@ -166,6 +171,8 @@ export interface Task {
   milestone_id: string | null;
   parent_id: string | null;
   owner: UserRef | null;
+  /** A team the task was given to; anyone on it can pick it up. */
+  team?: { id: string; name: string } | null;
   reviewer: UserRef | null;
   source_message_id: string | null;
   meeting_id: string | null;
@@ -244,6 +251,9 @@ export interface Person extends UserRef {
   status: string;
   status_text: string;
   focus_until: string | null;
+  ooo_from?: string | null;
+  ooo_until?: string | null;
+  ooo_message?: string;
   role: Role;
   guest_expires_at: string | null;
   sponsor_name: string | null;
@@ -263,6 +273,10 @@ export interface Notification {
   urgent: number;
   read_at: string | null;
   created_at: string;
+  /** What it is about ("/channels/<id>", "/tasks/<id>"); unread updates about one thing come as a single row. */
+  group_key?: string;
+  /** How many unread updates this row stands for (1 when it isn't grouped). */
+  group_count?: number;
 }
 
 export interface Meeting {

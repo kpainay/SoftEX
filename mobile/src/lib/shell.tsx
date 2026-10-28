@@ -22,7 +22,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [create, setCreate] = useState<{ open: boolean; kind?: CreateKind }>({ open: false });
   const { data: unread, reload: reloadUnread } = useApi<{ unread: number }>('/notifications?filter=unread&limit=1');
   const { data: channels, reload: reloadChannels } = useApi<Channel[]>('/channels');
-  const { data: work, reload: reloadWork } = useApi<{ overdue: unknown[]; today: unknown[] }>('/my-work');
+  const { data: work, reload: reloadWork } = useApi<{ overdue: unknown[]; today: unknown[]; team?: unknown[] }>('/my-work');
 
   useRealtime((e) => {
     if (e.type === 'notification' || e.type === 'notifications.read' || e.type === 'reconnected') reloadUnread();
@@ -45,7 +45,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         inbox: unread?.unread ?? 0,
         chats: (channels ?? []).filter((c) => c.kind === 'dm').reduce((n, c) => n + c.unread, 0),
         channels: (channels ?? []).filter((c) => c.kind !== 'dm' && c.joined).reduce((n, c) => n + c.mentions, 0),
-        work: (work?.overdue.length ?? 0) + (work?.today.length ?? 0),
+        work: (work?.overdue.length ?? 0) + (work?.today.length ?? 0) + (work?.team?.length ?? 0),
       },
       reloadCounts,
       channels,

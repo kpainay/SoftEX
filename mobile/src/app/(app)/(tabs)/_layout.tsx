@@ -6,7 +6,7 @@ import { fonts, useTheme } from '@/lib/theme';
 import { AppHeader } from '@/ui/header';
 import { Icon } from '@/ui/Icon';
 
-const TITLES: Record<string, string> = { index: 'Home', inbox: 'Inbox', chats: 'Chats', 'my-work': 'My work', more: 'More' };
+const TITLES: Record<string, string> = { index: 'Home', chats: 'Chats', activities: 'Activities', 'my-work': 'My work', more: 'More' };
 
 export default function TabsLayout() {
   const { c } = useTheme();
@@ -35,8 +35,9 @@ export default function TabsLayout() {
       })}
     >
       {tab('index', 'home')}
-      {tab('inbox', 'inbox', counts.inbox)}
       {tab('chats', 'chat', counts.chats)}
+      {/* Activities sits in the middle: what needs you, front and centre (as on the web). */}
+      {tab('activities', 'inbox', counts.inbox)}
       {tab('my-work', 'check', counts.work)}
       {tab('more', 'menu', counts.channels)}
     </Tabs>

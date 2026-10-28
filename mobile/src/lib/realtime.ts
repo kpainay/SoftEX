@@ -12,6 +12,9 @@ class Realtime {
   private stopped = true;
   private timer?: ReturnType<typeof setTimeout>;
   private appState?: { remove: () => void };
+  private viewing = new Map<number, string[]>();
+  private nextView = 0;
+  private reported = '';
   online = new Set<string>();
 
   start() {
@@ -20,6 +23,7 @@ class Realtime {
     // Phones suspend sockets in the background; reconnect (and refetch) when the app comes back.
     this.appState ??= AppState.addEventListener('change', (state) => {
       if (this.stopped) return;
+      this.reportViewing();
       if (state === 'active' && this.socket?.readyState !== WebSocket.OPEN) {
         clearTimeout(this.timer);
         this.retry = Math.max(this.retry, 1);
@@ -49,6 +53,7 @@ class Realtime {
     socket.onopen = () => {
       if (this.retry > 0) this.emit({ type: 'reconnected' });
       this.retry = 0;
+      this.reportViewing(true);
     };
     socket.onmessage = (e) => {
       try {
@@ -71,6 +76,31 @@ class Realtime {
       this.retry += 1;
       this.timer = setTimeout(() => this.connect(), Math.min(30_000, 500 * 2 ** this.retry));
     };
+  }
+
+  /** Add what one screen shows; call the returned function when it goes away. */
+  addViewing(keys: string[]) {
+    const id = this.nextView++;
+    this.viewing.set(id, keys);
+    this.reportViewing();
+    return () => {
+      this.viewing.delete(id);
+      this.reportViewing();
+    };
+  }
+
+  /**
+   * Tell the server what is on screen and whether the app is in front: it skips notifications about
+   * the chat or task being looked at, and pushes to this person's devices only when they aren't using Küü.
+   */
+  private reportViewing(force = false) {
+    const inFront = AppState.currentState === 'active';
+    const keys = inFront ? [...new Set([...this.viewing.values()].flat())] : [];
+    const next = JSON.stringify({ keys, active: inFront });
+    if (!force && next === this.reported) return;
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    this.reported = next;
+    this.socket.send(JSON.stringify({ type: 'viewing', keys, active: inFront }));
   }
 
   private emit(event: any) {

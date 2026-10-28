@@ -7,7 +7,7 @@ import { useApi, useRealtime } from '@/lib/hooks';
 import { useShell } from '@/lib/shell';
 import { useTheme } from '@/lib/theme';
 import { Icon } from '@/ui/Icon';
-import { Avatar, Button, Empty, ErrorState, IconButton, LinkText, Loading, Muted, Row, T, Tabs, useAction } from '@/ui/kit';
+import { Avatar, Badge, Button, Empty, ErrorState, IconButton, LinkText, Loading, Muted, Row, T, Tabs, useAction } from '@/ui/kit';
 
 type Filter = 'all' | 'unread' | 'mentions' | 'assigned' | 'meetings';
 export const KIND_ICON: Record<string, string> = {
@@ -31,6 +31,8 @@ export const KIND_ICON: Record<string, string> = {
   channel: 'hash',
   page: 'book',
   file: 'file',
+  away: 'away',
+  checkin: 'target',
 };
 
 const KIND_LABEL: Record<string, [string, string]> = {
@@ -45,6 +47,8 @@ const KIND_LABEL: Record<string, [string, string]> = {
   assigned: ['assignment', 'assignments'],
   review: ['review request', 'review requests'],
   handoff: ['handoff', 'handoffs'],
+  away: ['out-of-office reply', 'out-of-office replies'],
+  checkin: ['check-in reminder', 'check-in reminders'],
   status: ['status change', 'status changes'],
   comment: ['comment', 'comments'],
   meeting: ['meeting update', 'meeting updates'],
@@ -62,16 +66,28 @@ const kindLabel = (kind: string, count: number) => {
 
 type Item = Notification & { actor_name: string; actor_color: string };
 
-export default function Inbox() {
+/** The number on a row that stands for several unread updates about the same chat, task or meeting. */
+function GroupCount({ n }: { n: Notification }) {
+  const count = n.group_count ?? 1;
+  if (count < 2 || n.read_at) return null;
+  return (
+    <View accessibilityLabel={`${count} unread updates`}>
+      <Badge count={count} />
+    </View>
+  );
+}
+
+export default function Activities() {
   const { c } = useTheme();
-  const { reloadCounts } = useShell();
-  const [filter, setFilter] = useState<Filter>('all');
+  const { reloadCounts, counts } = useShell();
+  // Opens on Unread when there is something unread, like the web.
+  const [filter, setFilter] = useState<Filter>(() => (counts.inbox > 0 ? 'unread' : 'all'));
   const [kind, setKind] = useState<string | null>(null);
   const act = useAction();
   const { data, error, reload, refresh, refreshing, setData } = useApi<{ notifications: Item[]; unread: number }>(`/notifications${qs({ filter, kind, limit: 100 })}`);
   const { data: digest, reload: reloadDigest } = useApi<{ kind: string; count: number; unread: number }[]>('/notifications/digest');
   useRealtime((e) => {
-    if (e.type === 'notification') {
+    if (e.type === 'notification' || e.type === 'notifications.read') {
       reload();
       reloadDigest();
     }
@@ -81,14 +97,25 @@ export default function Inbox() {
     await api.post(`/notifications/${n.id}/read`, { read }).catch(() => {});
     setData(data && { ...data, unread: Math.max(0, data.unread + (read ? -1 : 1)), notifications: data.notifications.map((x) => (x.id === n.id ? { ...x, read_at: read ? new Date().toISOString() : null } : x)) });
     reloadCounts();
+    // Reading a grouped row reads the rest of its group on the server; refetch so they show as read.
+    if (read && (n.group_count ?? 1) > 1) reload();
   };
 
   const header = (
     <View style={{ gap: 12, paddingBottom: 6 }}>
-      <Row style={{ justifyContent: 'space-between' }}>
-        <Muted size={14} style={{ flex: 1 }}>
-          Mentions, assignments, reviews, meeting updates and approvals in one place.
-        </Muted>
+      <Muted size={14}>Mentions, assignments, reviews, meeting updates and approvals in one place.</Muted>
+      <Row gap={8} wrap>
+        <Button
+          small
+          variant="ghost"
+          icon="trash"
+          title="Clear read"
+          onPress={async () => {
+            await act(() => api.post('/notifications/clear'), 'Read notifications cleared');
+            reload();
+            reloadDigest();
+          }}
+        />
         <Button
           small
           icon="check"
@@ -204,6 +231,7 @@ export default function Inbox() {
               <T size={14} weight={n.read_at ? 'medium' : 'bold'} style={{ flex: 1 }}>
                 {n.title}
               </T>
+              <GroupCount n={n} />
             </Row>
             {!!n.body && (
               <Muted size={13} numberOfLines={3}>

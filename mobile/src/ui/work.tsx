@@ -36,7 +36,7 @@ export function TaskRow({ task, onOpen, onToggle, showProject = true }: { task: 
                   {task.project.name}
                 </Muted>
               </Row>
-            ) : (
+            ) : task.team ? null : (
               <Muted size={12}>Personal</Muted>
             ))}
           {task.status !== 'todo' && task.status !== 'done' && <StatusPill status={task.status} />}
@@ -57,7 +57,8 @@ export function TaskRow({ task, onOpen, onToggle, showProject = true }: { task: 
             {due}
           </T>
         )}
-        <Avatar user={task.owner} size="xs" />
+        {/* Given to a team and nobody has it yet: show the team instead of an empty avatar. */}
+        {!task.owner && task.team ? <Pill label={task.team.name} icon="users" /> : <Avatar user={task.owner} size="xs" />}
       </View>
     </Pressable>
   );

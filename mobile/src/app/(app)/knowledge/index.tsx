@@ -1,15 +1,14 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Platform, ScrollView, View } from 'react-native';
-import { api, formWith, qs } from '@/lib/api';
-import { pickDocuments, pickMedia } from '@/lib/files';
-import { bytes, timeAgo } from '@/lib/format';
+import { ScrollView, View } from 'react-native';
+import { qs } from '@/lib/api';
+import { timeAgo } from '@/lib/format';
 import { useApi, useReloadOnFocus } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
 import { useShell } from '@/lib/shell';
 import { useTheme } from '@/lib/theme';
 import { Icon } from '@/ui/Icon';
-import { ActionSheet, Button, Card, Empty, ErrorState, Field, IconButton, Input, ListRow, Loading, Muted, Pill, Row, Screen, SearchBox, Select, Sheet, T, Tabs, Toggle, useAction } from '@/ui/kit';
+import { Card, Empty, ErrorState, IconButton, LinkText, Loading, Muted, Pill, Row, Screen, SearchBox, Select, T, Toggle } from '@/ui/kit';
 
 export interface PageSummary {
   id: string;
@@ -28,34 +27,16 @@ export interface PageSummary {
   icon: string | null;
   public: boolean;
 }
-interface FileSummary {
-  id: string;
-  name: string;
-  label: string;
-  external_url: string | null;
-  version: number;
-  mime: string | null;
-  size: number | null;
-  owner: { id: string; name: string; color: string } | null;
-  updated_at: string;
-}
-
 export default function Knowledge() {
   const { c } = useTheme();
-  const params = useLocalSearchParams<{ tab?: 'pages' | 'files' }>();
-  const [tab, setTab] = useState<'pages' | 'files'>(params.tab === 'files' ? 'files' : 'pages');
+  const params = useLocalSearchParams<{ tab?: string }>();
   const { openCreate } = useShell();
   const { me } = useSession();
-  const act = useAction();
   const [filter, setFilter] = useState('');
   const [status, setStatus] = useState<'all' | 'approved' | 'draft' | 'review'>('all');
   const [archived, setArchived] = useState(false);
-  const pages = useApi<PageSummary[]>(tab === 'pages' ? `/pages${qs({ archived: archived ? 'true' : undefined })}` : null);
-  const files = useApi<FileSummary[]>(tab === 'files' ? `/files${qs({ archived: archived ? 'true' : undefined })}` : null);
-  useReloadOnFocus(() => (tab === 'pages' ? pages.reload() : files.reload()));
-  const [linking, setLinking] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [link, setLink] = useState({ name: '', url: '' });
+  const pages = useApi<PageSummary[]>(`/pages${qs({ archived: archived ? 'true' : undefined })}`);
+  useReloadOnFocus(pages.reload);
   const guest = me!.role === 'guest';
 
   const pageIds = new Set((pages.data ?? []).map((p) => p.id));
@@ -67,12 +48,9 @@ export default function Knowledge() {
       (!filter || `${p.title} ${p.excerpt}`.toLowerCase().includes(filter.toLowerCase())) &&
       (status === 'all' || (status === 'review' ? p.needs_review : p.status === status)),
   );
-  const fileList = (files.data ?? []).filter((f) => !filter || `${f.name} ${f.label}`.toLowerCase().includes(filter.toLowerCase()));
-  const send = async (picked: { uri: string; name: string; type: string; file?: Blob }[]) => {
-    for (const f of picked) await act(() => api.upload('/files', formWith({ file: f })), 'File uploaded');
-    files.reload();
-  };
-  const current = tab === 'pages' ? pages : files;
+  const current = pages;
+  // Files moved to their own screen; old links (?tab=files) go there.
+  if (params.tab === 'files') return <Redirect href="/files" />;
 
   return (
     <>
@@ -80,30 +58,22 @@ export default function Knowledge() {
         options={{
           title: 'Knowledge',
           headerRight: () =>
-            guest ? null : tab === 'files' ? (
-              <Row gap={0}>
-                <IconButton name="link" label="Link a file" onPress={() => setLinking(true)} />
-                <IconButton name="upload" label="Upload" color={c.accentInk} onPress={() => setUploading(true)} />
-              </Row>
-            ) : (
+            guest ? null : (
               <IconButton name="plus" label="New page" color={c.accentInk} onPress={() => openCreate('page')} />
             ),
         }}
       />
       <Screen refreshing={current.refreshing} onRefresh={current.refresh}>
-        <Muted size={14}>Policies, how-tos, decisions and files — with owners and review dates so they stay trustworthy.</Muted>
-        <Tabs
-          value={tab}
-          onChange={setTab}
-          tabs={[
-            { id: 'pages', label: 'Pages' },
-            { id: 'files', label: 'Files' },
-          ]}
-        />
-        <SearchBox value={filter} onChangeText={setFilter} placeholder={`Filter ${tab}`} />
+        <Muted size={14}>Policies, how-tos and decisions — with owners and review dates so they stay trustworthy.</Muted>
+        <Row gap={4} wrap>
+          <Muted size={13}>Looking for a file?</Muted>
+          <LinkText size={13} onPress={() => router.push('/files')}>
+            Open Files
+          </LinkText>
+        </Row>
+        <SearchBox value={filter} onChangeText={setFilter} placeholder="Filter pages" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: 'center' }}>
-          {tab === 'pages' && (
-            <View style={{ width: 170 }}>
+          <View style={{ width: 170 }}>
               <Select
                 title="Status"
                 value={status}
@@ -115,8 +85,7 @@ export default function Knowledge() {
                   { id: 'review', label: 'Due for review' },
                 ]}
               />
-            </View>
-          )}
+          </View>
           <View style={{ width: 150 }}>
             <Toggle label="Archived" value={archived} onChange={setArchived} />
           </View>
@@ -125,8 +94,7 @@ export default function Knowledge() {
           <ErrorState error={current.error} retry={current.reload} />
         ) : !current.data ? (
           <Loading inline />
-        ) : tab === 'pages' ? (
-          !pageList.length ? (
+        ) : !pageList.length ? (
             <Empty icon="book" title="No pages yet">
               Capture how your team works: policies, onboarding guides, runbooks.
             </Empty>
@@ -150,62 +118,8 @@ export default function Knowledge() {
                 </Muted>
               </Card>
             ))
-          )
-        ) : !fileList.length ? (
-          <Empty icon="file" title="No files here" />
-        ) : (
-          <Card padded={false} style={{ paddingHorizontal: 14 }}>
-            {fileList.map((f) => (
-              <ListRow
-                key={f.id}
-                left={<Icon name={f.external_url ? 'link' : 'file'} size={18} color={c.ink2} />}
-                title={f.name}
-                subtitle={`${f.label ? `${f.label} · ` : ''}${f.owner?.name ?? ''} · ${f.external_url ? 'Link' : `${bytes(f.size)} · v${f.version}`} · ${timeAgo(f.updated_at)}`}
-                chevron
-                onPress={() => router.push(`/files/${f.id}`)}
-              />
-            ))}
-          </Card>
         )}
       </Screen>
-      <ActionSheet
-        open={uploading}
-        onClose={() => setUploading(false)}
-        title="Upload"
-        actions={[
-          { label: 'Photo or video', icon: 'upload', onPress: () => act(async () => send(await pickMedia('library', true))) },
-          { label: 'Take a photo', icon: 'eye', onPress: () => act(async () => send(await pickMedia('camera'))), hidden: Platform.OS === 'web' },
-          { label: 'File', icon: 'file', onPress: () => act(async () => send(await pickDocuments(true))) },
-        ]}
-      />
-      <Sheet
-        open={linking}
-        onClose={() => setLinking(false)}
-        title="Link an external file"
-        footer={
-          <Button
-            title="Add link"
-            variant="primary"
-            full
-            disabled={!link.name.trim() || !/^https?:\/\//.test(link.url)}
-            onPress={async () => {
-              const ok = await act(() => api.post('/files/link', link), 'Link added');
-              if (ok) {
-                setLinking(false);
-                setLink({ name: '', url: '' });
-                files.reload();
-              }
-            }}
-          />
-        }
-      >
-        <Field label="Name">
-          <Input value={link.name} onChangeText={(v) => setLink({ ...link, name: v })} />
-        </Field>
-        <Field label="URL">
-          <Input value={link.url} onChangeText={(v) => setLink({ ...link, url: v })} placeholder="https://…" keyboardType="url" autoCapitalize="none" />
-        </Field>
-      </Sheet>
     </>
   );
 }

@@ -51,6 +51,12 @@ export function useRealtime(handler: (event: any) => void) {
   useEffect(() => realtime.subscribe((e) => ref.current(e)), []);
 }
 
+/** Tell the server what this screen shows, so it skips notifications about it while the person is looking. */
+export function useViewing(keys: string[]) {
+  const key = keys.join('\n');
+  useFocusEffect(useCallback(() => (key ? realtime.addViewing(key.split('\n')) : undefined), [key]));
+}
+
 /** Reload when the user comes back to a screen (after editing something on the next one). */
 export function useReloadOnFocus(reload: () => void) {
   const first = useRef(true);

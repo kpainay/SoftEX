@@ -7,6 +7,7 @@ import { useSession } from '@/lib/session';
 import { statusLabel } from '@/lib/shell';
 import { useTheme } from '@/lib/theme';
 import { STATUS_DOT } from '@/ui/header';
+import { Icon } from '@/ui/Icon';
 import { Avatar, Card, Dot, Empty, Muted, Pill, Row, Screen, SearchBox, Select, T, Tabs } from '@/ui/kit';
 
 export default function Directory() {
@@ -73,9 +74,12 @@ export default function Directory() {
           <>
             {teams?.map((t) => (
               <Card key={t.id} style={{ gap: 8 }}>
-                <T size={16} weight="display">
-                  {t.name}
-                </T>
+                <Pressable onPress={() => router.push(`/teams/${t.id}`)} accessibilityRole="link" style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <T size={16} weight="display" style={{ flex: 1 }}>
+                    {t.name}
+                  </T>
+                  <Icon name="chevronRight" size={18} color={c.muted} />
+                </Pressable>
                 <Muted>{t.description || 'No description.'}</Muted>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
                   {t.members.map((m) => (
