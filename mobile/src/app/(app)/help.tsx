@@ -4,9 +4,10 @@ import { Pressable, View } from 'react-native';
 import { useShell } from '@/lib/shell';
 import { useTheme } from '@/lib/theme';
 import { Icon } from '@/ui/Icon';
-import { Card, LinkText, Muted, Row, Screen, SearchBox, T } from '@/ui/kit';
+import { Button, Card, confirm, LinkText, Muted, Row, Screen, SearchBox, T, useAction, useToast } from '@/ui/kit';
 import { openLink } from '@/ui/Markdown';
 import { usePublicPricing } from '@/screens/auth';
+import { fetchLatestUpdate, restartWithUpdate, updatesEnabled, versionLabel } from '@/lib/updates';
 
 interface Topic {
   id: string;
@@ -144,7 +145,25 @@ export default function Help() {
           </Row>
           <Muted size={12}>Messages and pages support **bold**, *italic*, `code`, lists, &gt; quotes, links and @mentions.</Muted>
         </Card>
+        <AppVersion />
       </Screen>
     </>
+  );
+}
+
+/** Which version is running, and a way to fetch the newest one without waiting for the next launch. */
+function AppVersion() {
+  const run = useAction();
+  const toast = useToast();
+  const check = () =>
+    run(async () => {
+      if (!(await fetchLatestUpdate())) return toast('You have the latest version.');
+      if (await confirm('Update downloaded', 'Restart Küü now to use it?', 'Restart', false)) await restartWithUpdate();
+    });
+  return (
+    <Row gap={8} style={{ justifyContent: 'space-between' }}>
+      <Muted size={12}>Küü {versionLabel()}</Muted>
+      {updatesEnabled && <Button title="Check for updates" small variant="ghost" onPress={check} />}
+    </Row>
   );
 }

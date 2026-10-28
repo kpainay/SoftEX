@@ -79,6 +79,36 @@ The server sends to Expo's push service, which delivers through Apple (APNs) and
 
 People are asked for permission after they sign in. They can test push, or turn it off, under *Settings → Notifications*.
 
+## Over-the-air updates (EAS Update)
+
+Most changes to the app are JavaScript, styles and images. Those ship to phones that already have the app **without a store release or review**: the app looks for an update when it starts and when it comes back to the front (at most every 15 minutes), downloads it in the background, and uses it on the next launch. When an update has downloaded while the app is open, a bar offers **Restart** to use it now. *Help → Check for updates* does the same on demand, and shows which version and update are running.
+
+Each build profile in `eas.json` listens on its own channel:
+
+| Build profile | Channel | Who has it |
+| --- | --- | --- |
+| `development` | `development` | Developers' dev-client builds (they can also load any update by URL) |
+| `preview` | `preview` | Testers: internal APK and ad-hoc iOS builds |
+| `production` | `production` | App Store and Google Play |
+
+An update only reaches builds with the same **native runtime**. `runtimeVersion` uses Expo's *fingerprint* policy, which hashes the native dependencies and native configuration. So if a change adds or upgrades a native module, or edits native settings in `app.json` (permissions, plugins, icons, bundle ID), the fingerprint changes: old builds keep running the last update they can safely use, and you need a new `eas build` for that change. `npx expo-updates fingerprint:generate` shows the current fingerprint if you want to check before publishing.
+
+### One-time set-up
+
+1. `cd mobile`, `eas login`, then `eas init` (links the Expo project and writes `extra.eas.projectId`) and `eas update:configure` (adds the update URL to `app.json`). Commit `app.json`.
+2. Create the server address for each environment, which updates are bundled with: `eas env:create --name EXPO_PUBLIC_KUU_SERVER --value https://your-kuu.example --environment preview` (and the same for `production`).
+3. Make builds on those channels: `eas build --profile preview --platform all` for testers, `--profile production` for the stores. Only builds made after step 1 receive updates.
+4. For CI publishing, create an access token at expo.dev (*Account settings → Access tokens*) and add it to the GitHub repository as the **`EXPO_TOKEN`** secret.
+
+### Publishing
+
+- **Automatically:** every push to `main` that touches `mobile/` publishes to `preview` (`.github/workflows/mobile-update.yml`). Testers get it the next time they open the app.
+- **To production:** once a preview update has been checked, run *Actions → Mobile update → Run workflow* with channel `production`. Or from your computer: `eas update --channel production --environment production --message "What changed"`.
+- **By hand, any channel:** `eas update --channel preview --environment preview --message "What changed"`.
+- **Rolling back:** `eas update:rollback` (pick the channel), or republish an earlier update with `eas update:republish`. Phones switch on their next launch.
+
+Store rules allow updates that fix bugs and change the app's look and behaviour within its purpose; a new build and review are still needed for anything that changes what the app is.
+
 ## Checks
 
 ```bash
